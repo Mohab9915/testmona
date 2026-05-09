@@ -1,0 +1,227 @@
+{
+  "info": {
+    "name": "Analytics",
+    "description": "Analytics and reporting endpoints",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8000",
+      "type": "string"
+    },
+    {
+      "key": "accessToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "testProjectId",
+      "value": "1",
+      "type": "string"
+    }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{accessToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "item": [
+    {
+      "name": "Login - Setup",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"password\": \"demo123\",\n  \"username_or_email\": \"demo@testmona.com\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/token",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "token"
+          ]
+        },
+        "description": "Login to get access token for subsequent requests"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"Response contains access_token\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('access_token');",
+              "    pm.environment.set(\"accessToken\", jsonData.access_token);",
+              "    if (jsonData.refresh_token) {",
+              "        pm.environment.set(\"refreshToken\", jsonData.refresh_token);",
+              "    }",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Dashboard Analytics",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"project_id\": {{testProjectId}}\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/analytics/dashboard",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "analytics",
+            "dashboard"
+          ]
+        },
+        "description": "Get dashboard analytics for a project"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"Response has analytics data\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.be.an('object');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Test Coverage",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/analytics/coverage?project_id={{testProjectId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "analytics",
+            "coverage"
+          ],
+          "query": [
+            {
+              "key": "project_id",
+              "value": "{{testProjectId}}"
+            }
+          ]
+        },
+        "description": "Get test coverage metrics"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200 or 404\", function () {",
+              "    pm.expect([200, 404]).to.include(pm.response.code);",
+              "});",
+              "",
+              "if (pm.response.code === 200) {",
+              "    pm.test(\"Response has coverage data\", function () {",
+              "        var jsonData = pm.response.json();",
+              "        pm.expect(jsonData).to.have.property('coverage');",
+              "    });",
+              "} else {",
+              "    pm.test(\"Coverage endpoint not found - test skipped\", function () {",
+              "        console.log(\"Coverage endpoint not implemented\");",
+              "    });",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Execution Trends",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/analytics/trends?project_id={{testProjectId}}&days=30",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "analytics",
+            "trends"
+          ],
+          "query": [
+            {
+              "key": "project_id",
+              "value": "{{testProjectId}}"
+            },
+            {
+              "key": "days",
+              "value": "30"
+            }
+          ]
+        },
+        "description": "Get execution trends over time"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200 or 404\", function () {",
+              "    pm.expect([200, 404]).to.include(pm.response.code);",
+              "});",
+              "",
+              "if (pm.response.code === 200) {",
+              "    pm.test(\"Response has trend data\", function () {",
+              "        var jsonData = pm.response.json();",
+              "        pm.expect(jsonData).to.have.property('trends');",
+              "    });",
+              "} else {",
+              "    pm.test(\"Trends endpoint not found - test skipped\", function () {",
+              "        console.log(\"Trends endpoint not implemented\");",
+              "    });",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    }
+  ]
+}

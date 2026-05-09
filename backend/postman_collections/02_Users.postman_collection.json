@@ -1,0 +1,470 @@
+{
+  "info": {
+    "name": "Users",
+    "description": "User management endpoints with comprehensive tests",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8000",
+      "type": "string"
+    },
+    {
+      "key": "accessToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "testUserId",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{accessToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "item": [
+    {
+      "name": "Login - Setup",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"password\": \"demo123\",\n  \"username_or_email\": \"demo@testmona.com\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/token",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "token"
+          ]
+        },
+        "description": "Login to get access token for subsequent requests"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"Response contains access_token\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('access_token');",
+              "    pm.environment.set(\"accessToken\", jsonData.access_token);",
+              "    if (jsonData.refresh_token) {",
+              "        pm.environment.set(\"refreshToken\", jsonData.refresh_token);",
+              "    }",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Get All Users",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/users?skip=0&limit=100",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "users"
+          ],
+          "query": [
+            {
+              "key": "skip",
+              "value": "0"
+            },
+            {
+              "key": "limit",
+              "value": "100"
+            }
+          ]
+        },
+        "description": "Retrieve paginated list of users"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"Response is an array\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.be.an('array');",
+              "});",
+              "",
+              "pm.test(\"Each user has required fields\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    if (jsonData.length > 0) {",
+              "        pm.expect(jsonData[0]).to.have.property('id');",
+              "        pm.expect(jsonData[0]).to.have.property('username');",
+              "        pm.expect(jsonData[0]).to.have.property('email');",
+              "    }",
+              "});",
+              "",
+              "pm.test(\"Pagination works correctly\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData.length).to.be.at.most(100);",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Get User by ID",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/users/1",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "users",
+            "1"
+          ]
+        },
+        "description": "Retrieve specific user by ID"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"Response contains user data\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('id');",
+              "    pm.expect(jsonData).to.have.property('username');",
+              "    pm.expect(jsonData).to.have.property('email');",
+              "    pm.expect(jsonData).to.have.property('full_name');",
+              "});",
+              "",
+              "pm.test(\"User ID is 1\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData.id.toString()).to.eql('1');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Get Statistics",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/users/me/statistics",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "users",
+            "me",
+            "statistics"
+          ]
+        },
+        "description": "Get user statistics"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"Response contains statistics\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.be.an('object');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Check Username Availability",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/users/check-username/newuser{{$randomInt}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "users",
+            "check-username",
+            "newuser{{$randomInt}}"
+          ]
+        },
+        "description": "Check if username is available"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"Response contains availability status\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('available');",
+              "    pm.expect(jsonData.available).to.be.a('boolean');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Check Email Availability",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/users/check-email/new{{$randomInt}}@example.com",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "users",
+            "check-email",
+            "new{{$randomInt}}@example.com"
+          ]
+        },
+        "description": "Check if email is available"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"Response contains availability status\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('available');",
+              "    pm.expect(jsonData.available).to.be.a('boolean');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Get Notification Preferences",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/users/me/notification-preferences",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "users",
+            "me",
+            "notification-preferences"
+          ]
+        },
+        "description": "Get user notification preferences"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"Response contains preferences\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('do_not_disturb');",
+              "    pm.expect(jsonData).to.have.property('notification_sound_enabled');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Update Notification Preferences",
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"do_not_disturb\": false,\n  \"notification_sound_enabled\": true\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/users/me/notification-preferences",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "users",
+            "me",
+            "notification-preferences"
+          ]
+        },
+        "description": "Update user notification preferences"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"Preferences updated successfully\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('do_not_disturb');",
+              "    pm.expect(jsonData.do_not_disturb).to.eql(false);",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Update User Role",
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"role\": \"manager\",\n  \"is_active\": true\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/users/{{testUserId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "users",
+            "{{testUserId}}"
+          ]
+        },
+        "description": "Update user role and status. Note: Users cannot downgrade their own role."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"User updated successfully\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('id');",
+              "    pm.expect(jsonData).to.have.property('role');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Update User Role - Self Downgrade (Should Fail)",
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"role\": \"viewer\",\n  \"is_active\": true\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/users/{{testUserId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "users",
+            "{{testUserId}}"
+          ]
+        },
+        "description": "Attempt to downgrade own role (should fail with 400 error)"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 400\", function () {",
+              "    pm.response.to.have.status(400);",
+              "});",
+              "",
+              "pm.test(\"Error message about self-downgrade\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData.detail).to.include('Cannot downgrade your own role');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    }
+  ]
+}

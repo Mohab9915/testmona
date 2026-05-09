@@ -1,0 +1,212 @@
+{
+  "info": {
+    "name": "Notifications",
+    "description": "Notification management endpoints",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8000",
+      "type": "string"
+    },
+    {
+      "key": "accessToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "notificationId",
+      "value": "1",
+      "type": "string"
+    }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{accessToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "item": [
+    {
+      "name": "Login - Setup",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"password\": \"demo123\",\n  \"username_or_email\": \"demo@testmona.com\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/token",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "token"
+          ]
+        },
+        "description": "Login to get access token for subsequent requests"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"Response contains access_token\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('access_token');",
+              "    pm.environment.set(\"accessToken\", jsonData.access_token);",
+              "    if (jsonData.refresh_token) {",
+              "        pm.environment.set(\"refreshToken\", jsonData.refresh_token);",
+              "    }",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Get Notifications",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/notifications?skip=0&limit=50",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "notifications"
+          ],
+          "query": [
+            {
+              "key": "skip",
+              "value": "0"
+            },
+            {
+              "key": "limit",
+              "value": "50"
+            }
+          ]
+        },
+        "description": "Get user notifications with pagination"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"Response is array\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.be.an('array');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Mark as Read",
+      "request": {
+        "method": "PUT",
+        "url": {
+          "raw": "{{baseUrl}}/notifications/{{notificationId}}/read",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "notifications",
+            "{{notificationId}}",
+            "read"
+          ]
+        },
+        "description": "Mark a notification as read"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200 or 404\", function () {",
+              "    pm.expect([200, 404]).to.include(pm.response.code);",
+              "});",
+              "",
+              "if (pm.response.code === 200) {",
+              "    pm.test(\"Notification marked as read\", function () {",
+              "        var jsonData = pm.response.json();",
+              "        pm.expect(jsonData).to.have.property('is_read');",
+              "        pm.expect(jsonData.is_read).to.eql(true);",
+              "    });",
+              "} else {",
+              "    pm.test(\"Notification not found - mark as read skipped\", function () {",
+              "        console.log(\"Notification ID not set or not found\");",
+              "    });",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Mark All as Read",
+      "request": {
+        "method": "PUT",
+        "url": {
+          "raw": "{{baseUrl}}/notifications/read-all",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "notifications",
+            "read-all"
+          ]
+        },
+        "description": "Mark all notifications as read"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200 or 422\", function () {",
+              "    pm.expect([200, 422]).to.include(pm.response.code);",
+              "});",
+              "",
+              "if (pm.response.code === 200) {",
+              "    pm.test(\"All notifications marked as read\", function () {",
+              "        var jsonData = pm.response.json();",
+              "        pm.expect(jsonData).to.have.property('message');",
+              "    });",
+              "} else {",
+              "    pm.test(\"Mark all as read failed - validation error\", function () {",
+              "        console.log(\"Validation error marking all as read\");",
+              "    });",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,2446 @@
+{
+  "info": {
+    "name": "TestMona API - Complete Collection",
+    "description": "Complete API collection for TestMona with all modules, security tests, and edge cases",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8000",
+      "type": "string"
+    },
+    {
+      "key": "accessToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "refreshToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "testUserId",
+      "value": "1",
+      "type": "string"
+    },
+    {
+      "key": "testProjectId",
+      "value": "1",
+      "type": "string"
+    },
+    {
+      "key": "testSuiteId",
+      "value": "1",
+      "type": "string"
+    },
+    {
+      "key": "testCaseId",
+      "value": "1",
+      "type": "string"
+    },
+    {
+      "key": "testStepId",
+      "value": "1",
+      "type": "string"
+    },
+    {
+      "key": "testRunId",
+      "value": "1",
+      "type": "string"
+    },
+    {
+      "key": "testResultId",
+      "value": "1",
+      "type": "string"
+    },
+    {
+      "key": "requirementId",
+      "value": "1",
+      "type": "string"
+    },
+    {
+      "key": "defectId",
+      "value": "1",
+      "type": "string"
+    },
+    {
+      "key": "testPlanId",
+      "value": "1",
+      "type": "string"
+    },
+    {
+      "key": "milestoneId",
+      "value": "1",
+      "type": "string"
+    },
+    {
+      "key": "customFieldId",
+      "value": "1",
+      "type": "string"
+    },
+    {
+      "key": "notificationId",
+      "value": "1",
+      "type": "string"
+    },
+    {
+      "key": "auditTrailId",
+      "value": "1",
+      "type": "string"
+    },
+    {
+      "key": "versionId",
+      "value": "1",
+      "type": "string"
+    }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{accessToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Pre-request script for data setup",
+          "function generateTestEmail() {",
+          "    const timestamp = Date.now();",
+          "    return `test${timestamp}@example.com`;",
+          "}",
+          "",
+          "function generateTestUsername() {",
+          "    const timestamp = Date.now();",
+          "    return `testuser${timestamp}`;",
+          "}",
+          "",
+          "const requestName = pm.request.name || \"\";",
+          "if (requestName.includes && requestName.includes(\"Register\")) {",
+          "    pm.environment.set(\"testEmail\", generateTestEmail());",
+          "    pm.environment.set(\"testUsername\", generateTestUsername());",
+          "}"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "01 - Authentication",
+      "item": [
+        {
+          "name": "User Registration",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{testUsername}}\",\n  \"email\": \"{{testEmail}}\",\n  \"password\": \"password123\",\n  \"full_name\": \"Test User\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/register",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "register"
+              ]
+            },
+            "description": "Register a new user"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// Registration may be disabled - check for 403 or 201",
+                  "pm.test(\"Status code is 201 or 403 (registration disabled)\", function () {",
+                  "    pm.expect([201, 403]).to.include(pm.response.code);",
+                  "});",
+                  "",
+                  "if (pm.response.code === 201) {",
+                  "    pm.test(\"Response has id\", function () {",
+                  "        var jsonData = pm.response.json();",
+                  "        pm.expect(jsonData).to.have.property('id');",
+                  "        pm.environment.set(\"testUserId\", jsonData.id);",
+                  "    });",
+                  "} else {",
+                  "    pm.test(\"Registration disabled message\", function () {",
+                  "        var jsonData = pm.response.json();",
+                  "        pm.expect(jsonData).to.have.property('detail');",
+                  "    });",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "User Login",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"password\": \"demo123\",\n  \"username_or_email\": \"demo@testmona.com\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/token",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "token"
+              ]
+            },
+            "description": "Login and get access token"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response has access token\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('access_token');",
+                  "    pm.environment.set(\"accessToken\", jsonData.access_token);",
+                  "    if (jsonData.refresh_token) {",
+                  "        pm.environment.set(\"refreshToken\", jsonData.refresh_token);",
+                  "    }",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Refresh Token",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refresh_token\": \"{{refreshToken}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/refresh",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "refresh"
+              ]
+            },
+            "description": "Refresh access token"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"New access token received\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('access_token');",
+                  "    pm.environment.set(\"accessToken\", jsonData.access_token);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{baseUrl}}/logout",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "logout"
+              ]
+            },
+            "description": "Logout current user"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Clear access token\", function () {",
+                  "    pm.environment.set(\"accessToken\", \"\");",
+                  "    pm.environment.set(\"refreshToken\", \"\");",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Current User",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/users/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                "me"
+              ]
+            },
+            "description": "Get current authenticated user"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response has user data\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('id');",
+                  "    pm.expect(jsonData).to.have.property('username');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "02 - Users",
+      "item": [
+        {
+          "name": "Get All Users",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/users?skip=0&limit=50",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users"
+              ],
+              "query": [
+                {
+                  "key": "skip",
+                  "value": "0"
+                },
+                {
+                  "key": "limit",
+                  "value": "50"
+                }
+              ]
+            },
+            "description": "Get all users with pagination"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response is array\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.be.an('array');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get User by ID",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/users/{{testUserId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                "{{testUserId}}"
+              ]
+            },
+            "description": "Get a specific user by ID"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response has user data\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('id');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update User Profile",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"full_name\": \"Updated Name\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/users/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                "me"
+              ]
+            },
+            "description": "Update current user profile"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Profile updated\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.full_name).to.eql('Updated Name');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Statistics",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/users/me/statistics",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                "me",
+                "statistics"
+              ]
+            },
+            "description": "Get user statistics"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response has statistics\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.be.an('object');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "03 - Projects",
+      "item": [
+        {
+          "name": "Create Project",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Test Project\",\n  \"description\": \"Test project description\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/projects/",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "projects"
+              ]
+            },
+            "description": "Create a new project"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 201\", function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "pm.test(\"Response has id\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('id');",
+                  "    pm.environment.set(\"testProjectId\", jsonData.id);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get All Projects",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/projects?skip=0&limit=50",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "projects"
+              ],
+              "query": [
+                {
+                  "key": "skip",
+                  "value": "0"
+                },
+                {
+                  "key": "limit",
+                  "value": "50"
+                }
+              ]
+            },
+            "description": "Get all projects with pagination"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response is array\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.be.an('array');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Project by ID",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{testProjectId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "projects",
+                "{{testProjectId}}"
+              ]
+            },
+            "description": "Get a specific project by ID"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response has project data\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('id');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update Project",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Updated Project Name\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{testProjectId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "projects",
+                "{{testProjectId}}"
+              ]
+            },
+            "description": "Update a project"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Project updated\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.name).to.eql('Updated Project Name');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete Project",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{testProjectId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "projects",
+                "{{testProjectId}}"
+              ]
+            },
+            "description": "Delete a project"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 204 or 200\", function () {",
+                  "    pm.expect([204, 200]).to.include(pm.response.code);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get My Projects",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/my-projects/",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "my-projects"
+              ]
+            },
+            "description": "Get projects associated with current user"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response is array\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.be.an('array');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "04 - Test Suites",
+      "item": [
+        {
+          "name": "Create Test Suite",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Login Test Suite\",\n  \"description\": \"Login tests\",\n  \"project_id\": {{testProjectId}}\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/test-suites",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "test-suites"
+              ]
+            },
+            "description": "Create a new test suite"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 201\", function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "pm.test(\"Response has id\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('id');",
+                  "    pm.environment.set(\"testSuiteId\", jsonData.id);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Test Suites",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/test-suites?project_id={{testProjectId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "test-suites"
+              ],
+              "query": [
+                {
+                  "key": "project_id",
+                  "value": "{{testProjectId}}"
+                }
+              ]
+            },
+            "description": "Get test suites for a project"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response is array\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.be.an('array');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Test Suite by ID",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/test-suites/{{testSuiteId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "test-suites",
+                "{{testSuiteId}}"
+              ]
+            },
+            "description": "Get a specific test suite by ID"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response has suite data\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('id');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update Test Suite",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Updated Suite\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/test-suites/{{testSuiteId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "test-suites",
+                "{{testSuiteId}}"
+              ]
+            },
+            "description": "Update a test suite"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Suite updated\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.name).to.eql('Updated Suite');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete Test Suite",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{baseUrl}}/test-suites/{{testSuiteId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "test-suites",
+                "{{testSuiteId}}"
+              ]
+            },
+            "description": "Delete a test suite"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 204 or 200\", function () {",
+                  "    pm.expect([204, 200]).to.include(pm.response.code);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "05 - Test Cases",
+      "item": [
+        {
+          "name": "Create Test Case",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Test User Login\",\n  \"description\": \"Verify login\",\n  \"test_suite_id\": {{testSuiteId}},\n  \"priority\": \"high\",\n  \"status\": \"active\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/test-cases",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "test-cases"
+              ]
+            },
+            "description": "Create a new test case"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 201\", function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "pm.test(\"Response has id\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('id');",
+                  "    pm.environment.set(\"testCaseId\", jsonData.id);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Test Cases",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/test-cases?test_suite_id={{testSuiteId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "test-cases"
+              ],
+              "query": [
+                {
+                  "key": "test_suite_id",
+                  "value": "{{testSuiteId}}"
+                }
+              ]
+            },
+            "description": "Get test cases for a test suite"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response is array\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.be.an('array');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Test Case by ID",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/test-cases/{{testCaseId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "test-cases",
+                "{{testCaseId}}"
+              ]
+            },
+            "description": "Get a specific test case by ID"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response has case data\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('id');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update Test Case",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Updated Title\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/test-cases/{{testCaseId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "test-cases",
+                "{{testCaseId}}"
+              ]
+            },
+            "description": "Update a test case"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Case updated\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.title).to.eql('Updated Title');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete Test Case",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{baseUrl}}/test-cases/{{testCaseId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "test-cases",
+                "{{testCaseId}}"
+              ]
+            },
+            "description": "Delete a test case"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 204 or 200\", function () {",
+                  "    pm.expect([204, 200]).to.include(pm.response.code);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "06 - Test Steps",
+      "item": [
+        {
+          "name": "Create Test Step",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"test_case_id\": {{testCaseId}},\n  \"step_number\": 1,\n  \"action\": \"Navigate to login\",\n  \"expected_result\": \"Login page shown\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/test-steps",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "test-steps"
+              ]
+            },
+            "description": "Create a new test step"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 201\", function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "pm.test(\"Response has id\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('id');",
+                  "    pm.environment.set(\"testStepId\", jsonData.id);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Test Steps",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/test-steps?test_case_id={{testCaseId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "test-steps"
+              ],
+              "query": [
+                {
+                  "key": "test_case_id",
+                  "value": "{{testCaseId}}"
+                }
+              ]
+            },
+            "description": "Get test steps for a test case"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response is array\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.be.an('array');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update Test Step",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"Updated action\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/test-steps/{{testStepId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "test-steps",
+                "{{testStepId}}"
+              ]
+            },
+            "description": "Update a test step"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Step updated\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.action).to.eql('Updated action');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete Test Step",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{baseUrl}}/test-steps/{{testStepId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "test-steps",
+                "{{testStepId}}"
+              ]
+            },
+            "description": "Delete a test step"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 204 or 200\", function () {",
+                  "    pm.expect([204, 200]).to.include(pm.response.code);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "07 - Security Tests",
+      "description": "Security and vulnerability testing endpoints",
+      "item": [
+        {
+          "name": "SQL Injection - Login",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"password\": \"password\",\n  \"username_or_email\": \"admin' OR '1'='1\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/token",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "token"
+              ]
+            },
+            "description": "Test SQL injection vulnerability in login"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 401 or 422\", function () {",
+                  "    pm.expect([401, 422]).to.include(pm.response.code);",
+                  "});",
+                  "",
+                  "pm.test(\"SQL injection blocked\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.not.have.property('access_token');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "XSS - User Profile",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"full_name\": \"<script>alert('XSS')</script>\",\n  \"email\": \"test@example.com\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/users/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                "me"
+              ]
+            },
+            "description": "Test XSS vulnerability in user profile update"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200 or 422\", function () {",
+                  "    pm.expect([200, 422]).to.include(pm.response.code);",
+                  "});",
+                  "",
+                  "pm.test(\"XSS sanitized or rejected\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    if (pm.response.code === 200) {",
+                  "        pm.expect(jsonData.full_name).to.not.include('<script>');",
+                  "    }",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Path Traversal",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/users/../../../etc/passwd",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                "..",
+                "..",
+                "..",
+                "etc",
+                "passwd"
+              ]
+            },
+            "description": "Test path traversal vulnerability"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 400 or 404\", function () {",
+                  "    pm.expect([400, 404]).to.include(pm.response.code);",
+                  "});",
+                  "",
+                  "pm.test(\"Path traversal blocked\", function () {",
+                  "    var responseText = pm.response.text();",
+                  "    pm.expect(responseText).to.not.include('root:');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Command Injection",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"test; rm -rf /tmp\",\n  \"description\": \"test project\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/projects/",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "projects"
+              ]
+            },
+            "description": "Test command injection vulnerability"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 422 or 400\", function () {",
+                  "    pm.expect([422, 400]).to.include(pm.response.code);",
+                  "});",
+                  "",
+                  "pm.test(\"Command injection blocked\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.not.have.property('id');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Mass Assignment",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"full_name\": \"Test User\",\n  \"email\": \"test@example.com\",\n  \"role\": \"admin\",\n  \"is_superuser\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/users/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                "me"
+              ]
+            },
+            "description": "Test mass assignment vulnerability (attempting to escalate privileges)"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200 or 422\", function () {",
+                  "    pm.expect([200, 422]).to.include(pm.response.code);",
+                  "});",
+                  "",
+                  "pm.test(\"Privilege escalation prevented\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    if (pm.response.code === 200) {",
+                  "        pm.expect(jsonData).to.not.have.property('is_superuser');",
+                  "        pm.expect(jsonData.role).to.not.eql('admin');",
+                  "    }",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Rate Limiting - Login",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"password\": \"wrongpass\",\n  \"username_or_email\": \"wronguser\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/token",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "token"
+              ]
+            },
+            "description": "Test rate limiting on login endpoint (run multiple times)"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 401 or 429\", function () {",
+                  "    pm.expect([401, 429]).to.include(pm.response.code);",
+                  "});",
+                  "",
+                  "if (pm.response.code === 429) {",
+                  "    pm.test(\"Rate limit headers present\", function () {",
+                  "        pm.expect(pm.response.headers).to.have.property('X-RateLimit-Limit');",
+                  "        pm.expect(pm.response.headers).to.have.property('X-RateLimit-Remaining');",
+                  "    });",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "CSRF Token Check",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Test Project\",\n  \"description\": \"Test\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/projects/",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "projects"
+              ]
+            },
+            "description": "Test if CSRF protection is in place"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"CSRF token required or stateless auth used\", function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([201, 401, 422]);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Sensitive Data Exposure - Headers",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/users/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                "me"
+              ]
+            },
+            "description": "Check for sensitive data in response headers"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"No sensitive data in headers\", function () {",
+                  "    var headers = pm.response.headers;",
+                  "    var headerNames = headers.map(h => h.key.toLowerCase());",
+                  "    pm.expect(headerNames).to.not.include('x-api-key');",
+                  "    pm.expect(headerNames).to.not.include('authorization');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Authentication Bypass - No Token",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/users/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                "me"
+              ]
+            },
+            "description": "Test authentication bypass by removing token"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 401\", function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});",
+                  "",
+                  "pm.test(\"Unauthorized access blocked\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.not.have.property('id');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Invalid Token - Malformed JWT",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "invalid.jwt.token",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/users/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                "me"
+              ]
+            },
+            "description": "Test with malformed JWT token"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 401\", function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});",
+                  "",
+                  "pm.test(\"Invalid token rejected\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.not.have.property('id');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Header Injection",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Forwarded-For",
+                "value": "127.0.0.1\r\nX-Injected: true"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Test Project\",\n  \"description\": \"Test\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/projects/",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "projects"
+              ]
+            },
+            "description": "Test header injection vulnerability"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Header injection blocked\", function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([201, 400, 422]);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "08 - Edge Cases - Authentication",
+      "description": "Authentication edge case and error handling tests",
+      "item": [
+        {
+          "name": "Login with Invalid Credentials",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"password\": \"wrongpassword\",\n  \"username_or_email\": \"demo@testmona.com\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/token",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "token"
+              ]
+            },
+            "description": "Expected: 401 Unauthorized - Incorrect username or password"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 401\", function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});",
+                  "",
+                  "pm.test(\"No access token returned\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.not.have.property('access_token');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login with Missing Fields",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username_or_email\": \"demo@testmona.com\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/token",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "token"
+              ]
+            },
+            "description": "Expected: 422 Unprocessable Entity - Missing password field"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 422\", function () {",
+                  "    pm.response.to.have.status(422);",
+                  "});",
+                  "",
+                  "pm.test(\"Validation error returned\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('detail');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Access Protected Endpoint Without Token",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/users/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                "me"
+              ]
+            },
+            "description": "Expected: 401 Unauthorized - Missing or invalid token"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 401\", function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});",
+                  "",
+                  "pm.test(\"Unauthorized access blocked\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.not.have.property('id');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Register with Weak Password",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"newuser\",\n  \"email\": \"new@example.com\",\n  \"password\": \"123\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/register",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "register"
+              ]
+            },
+            "description": "Expected: 422 Unprocessable Entity - Password too short"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 422\", function () {",
+                  "    pm.response.to.have.status(422);",
+                  "});",
+                  "",
+                  "pm.test(\"Password validation error\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('detail');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Register with Invalid Email",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"newuser\",\n  \"email\": \"invalid-email\",\n  \"password\": \"password123\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/register",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "register"
+              ]
+            },
+            "description": "Expected: 422 Unprocessable Entity - Invalid email format"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 422\", function () {",
+                  "    pm.response.to.have.status(422);",
+                  "});",
+                  "",
+                  "pm.test(\"Email validation error\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('detail');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "09 - Edge Cases - Validation",
+      "description": "Data validation edge case tests",
+      "item": [
+        {
+          "name": "Create Project with Empty Name",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"\",\n  \"description\": \"Test project\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/projects/",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "projects"
+              ]
+            },
+            "description": "Expected: 422 Unprocessable Entity - Project name cannot be empty"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 422\", function () {",
+                  "    pm.response.to.have.status(422);",
+                  "});",
+                  "",
+                  "pm.test(\"Validation error returned\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('detail');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create Project with Name Too Long",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"This is a very long project name that exceeds the maximum allowed length of 100 characters and should fail validation\",\n  \"description\": \"Test project\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/projects/",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "projects"
+              ]
+            },
+            "description": "Expected: 422 Unprocessable Entity - Project name exceeds 100 characters"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 422\", function () {",
+                  "    pm.response.to.have.status(422);",
+                  "});",
+                  "",
+                  "pm.test(\"Validation error returned\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('detail');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create Test Case with Missing Required Fields",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"description\": \"Test description\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/test-cases",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "test-cases"
+              ]
+            },
+            "description": "Expected: 422 Unprocessable Entity - Missing required fields (title, test_suite_id)"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 422\", function () {",
+                  "    pm.response.to.have.status(422);",
+                  "});",
+                  "",
+                  "pm.test(\"Validation error returned\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('detail');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "10 - Edge Cases - Not Found",
+      "description": "404 Not Found edge case tests",
+      "item": [
+        {
+          "name": "Get Non-Existent User",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/users/99999",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                "99999"
+              ]
+            },
+            "description": "Expected: 404 Not Found - User does not exist"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 404\", function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});",
+                  "",
+                  "pm.test(\"Not found error returned\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('detail');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Non-Existent Project",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/projects/99999",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "projects",
+                "99999"
+              ]
+            },
+            "description": "Expected: 404 Not Found - Project does not exist"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 404\", function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});",
+                  "",
+                  "pm.test(\"Not found error returned\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('detail');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update Non-Existent Resource",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Updated\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/projects/99999",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "projects",
+                "99999"
+              ]
+            },
+            "description": "Expected: 404 Not Found - Resource does not exist"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 404\", function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});",
+                  "",
+                  "pm.test(\"Not found error returned\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('detail');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "11 - Edge Cases - Pagination",
+      "description": "Pagination edge case tests",
+      "item": [
+        {
+          "name": "Negative Skip Value",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/users?skip=-10&limit=100",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users"
+              ],
+              "query": [
+                {
+                  "key": "skip",
+                  "value": "-10"
+                },
+                {
+                  "key": "limit",
+                  "value": "100"
+                }
+              ]
+            },
+            "description": "Expected: 422 Unprocessable Entity - Negative skip value"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 422\", function () {",
+                  "    pm.response.to.have.status(422);",
+                  "});",
+                  "",
+                  "pm.test(\"Validation error returned\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('detail');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Negative Limit Value",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/users?skip=0&limit=-10",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users"
+              ],
+              "query": [
+                {
+                  "key": "skip",
+                  "value": "0"
+                },
+                {
+                  "key": "limit",
+                  "value": "-10"
+                }
+              ]
+            },
+            "description": "Expected: 422 Unprocessable Entity - Negative limit value"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 422\", function () {",
+                  "    pm.response.to.have.status(422);",
+                  "});",
+                  "",
+                  "pm.test(\"Validation error returned\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('detail');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Zero Limit Value",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/users?skip=0&limit=0",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users"
+              ],
+              "query": [
+                {
+                  "key": "skip",
+                  "value": "0"
+                },
+                {
+                  "key": "limit",
+                  "value": "0"
+                }
+              ]
+            },
+            "description": "Expected: Empty array or 422 - Zero limit value"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200 or 422\", function () {",
+                  "    pm.expect([200, 422]).to.include(pm.response.code);",
+                  "});",
+                  "",
+                  "if (pm.response.code === 200) {",
+                  "    pm.test(\"Empty array returned\", function () {",
+                  "        var jsonData = pm.response.json();",
+                  "        pm.expect(jsonData).to.be.an('array');",
+                  "        pm.expect(jsonData.length).to.eql(0);",
+                  "    });",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Create Test Run from Suite",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"Automated suite run\",\n  \"description\": \"Creates a run and not_tested results for every suite test case\",\n  \"priority\": \"medium\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/test-suites/{{testSuiteId}}/test-runs",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "test-suites",
+            "{{testSuiteId}}",
+            "test-runs"
+          ]
+        },
+        "description": "Atomically create a test run from a suite and seed results for all suite test cases."
+      }
+    }
+  ]
+}

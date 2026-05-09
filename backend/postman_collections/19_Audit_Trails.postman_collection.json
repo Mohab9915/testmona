@@ -1,0 +1,326 @@
+{
+  "info": {
+    "name": "Audit Trails",
+    "description": "Audit trail management endpoints",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8000",
+      "type": "string"
+    },
+    {
+      "key": "accessToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "auditTrailId",
+      "value": "1",
+      "type": "string"
+    }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{accessToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "item": [
+    {
+      "name": "Login - Setup",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"password\": \"demo123\",\n  \"username_or_email\": \"demo@testmona.com\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/token",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "token"
+          ]
+        },
+        "description": "Login to get access token for subsequent requests"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"Response contains access_token\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('access_token');",
+              "    pm.environment.set(\"accessToken\", jsonData.access_token);",
+              "    if (jsonData.refresh_token) {",
+              "        pm.environment.set(\"refreshToken\", jsonData.refresh_token);",
+              "    }",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Get Audit Trails",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/audit-trails?skip=0&limit=100",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "audit-trails"
+          ],
+          "query": [
+            {
+              "key": "skip",
+              "value": "0"
+            },
+            {
+              "key": "limit",
+              "value": "100"
+            }
+          ]
+        },
+        "description": "Get audit trails with pagination"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"Response has items array\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('items');",
+              "    pm.expect(jsonData.items).to.be.an('array');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Get Audit Trail by ID",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/audit-trails/{{auditTrailId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "audit-trails",
+            "{{auditTrailId}}"
+          ]
+        },
+        "description": "Get a specific audit trail by ID"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"Response has id\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('id');",
+              "    pm.expect(jsonData.id).to.eql(parseInt(pm.environment.get(\"auditTrailId\")));",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Get Audit Trail Configuration",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/system/settings/audit-trail-config",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "system",
+            "settings",
+            "audit-trail-config"
+          ]
+        },
+        "description": "Get audit trail configuration (admin only)"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"Response has enabled field\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('enabled');",
+              "    pm.expect(jsonData).to.have.property('entity_settings');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Update Audit Trail Configuration",
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"enabled\": true,\n  \"entity_settings\": {\n    \"test_case\": true,\n    \"defect\": true\n  }\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/system/settings/audit-trail-config",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "system",
+            "settings",
+            "audit-trail-config"
+          ]
+        },
+        "description": "Update audit trail configuration (admin only)"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"Response has updated configuration\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('enabled');",
+              "    pm.expect(jsonData).to.have.property('entity_settings');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Reset Audit Trail Configuration",
+      "request": {
+        "method": "POST",
+        "url": {
+          "raw": "{{baseUrl}}/system/settings/audit-trail-config/reset",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "system",
+            "settings",
+            "audit-trail-config",
+            "reset"
+          ]
+        },
+        "description": "Reset audit trail configuration to defaults (admin only)"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"Response has default configuration\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('enabled');",
+              "    pm.expect(jsonData.enabled).to.eql(true);",
+              "    pm.expect(jsonData.entity_settings).to.eql({});",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Delete All Audit Trails",
+      "request": {
+        "method": "DELETE",
+        "url": {
+          "raw": "{{baseUrl}}/system/settings/audit-trails/all",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "system",
+            "settings",
+            "audit-trails",
+            "all"
+          ]
+        },
+        "description": "Delete all audit trail records (admin only)"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"Response has message\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('message');",
+              "    pm.expect(jsonData.message).to.include('deleted');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    }
+  ]
+}

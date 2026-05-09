@@ -1,0 +1,90 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    environment:
+      - DATABASE_URL=sqlite:///./test_management.db
+      - SECRET_KEY=${SECRET_KEY:-your-super-secret-key-change-in-production}
+      - ALGORITHM=${ALGORITHM:-HS256}
+      - ACCESS_TOKEN_EXPIRE_MINUTES=${ACCESS_TOKEN_EXPIRE_MINUTES:-480}
+      - REFRESH_TOKEN_EXPIRE_DAYS=${REFRESH_TOKEN_EXPIRE_DAYS:-7}
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:3000}
+    volumes:
+      - ./backend:/app
+      - backend_cache:/app/.cache
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health", "--max-time", "5"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - app-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          cpus: '${BACKEND_CPUS:-1.0}'
+          memory: '${BACKEND_MEMORY_LIMIT:-512m}'
+        reservations:
+          cpus: '0.5'
+          memory: '256m'
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+    environment:
+      - VITE_API_URL=http://localhost:${BACKEND_PORT:-8000}
+    depends_on:
+      backend:
+        condition: service_healthy
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+      - frontend_cache:/app/.cache
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000", "--max-time", "5"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - app-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          cpus: '${FRONTEND_CPUS:-1.0}'
+          memory: '${FRONTEND_MEMORY_LIMIT:-512m}'
+        reservations:
+          cpus: '0.5'
+          memory: '256m'
+
+
+networks:
+  app-network:
+    driver: bridge
+
+volumes:
+  backend_cache:
+    driver: local
+  frontend_cache:
+    driver: local

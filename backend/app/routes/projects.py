@@ -1,0 +1,402 @@
+"""
+Project management routes for projects, assignments, schedules, and executions.
+"""
+
+from fastapi import Depends, HTTPException
+from sqlalchemy.orm import Session
+from typing import List, Optional
+
+from .. import crud, schemas, auth, rbac, models, crud_rbac
+from ..database import get_db
+from ..auth import get_current_active_user, check_password_change_required
+from ..models import Project
+
+
+def register_project_routes(app):
+    """Register project management routes with the FastAPI app."""
+    
+    @app.post("/projects", response_model=schemas.Project)
+    def create_project(
+        project: schemas.ProjectCreate, 
+        db: Session = Depends(get_db),
+        current_user: schemas.User = Depends(get_current_active_user)
+    ):
+        # Check if user needs to change password
+        check_password_change_required(current_user)
+        
+        if not rbac.has_permission(current_user, "manage_projects"):
+            raise HTTPException(status_code=403, detail="Insufficient permissions")
+        
+        if project.owner_id is None:
+            project.owner_id = current_user.id
+        
+        # Check if project with same name already exists for the same owner
+        existing_project = db.query(models.Project).filter(
+            models.Project.name == project.name,
+            models.Project.owner_id == project.owner_id
+        ).first()
+        if existing_project:
+            raise HTTPException(status_code=400, detail="A project with this name already exists")
+        
+        return crud.create_project(db=db, project=project)
+
+    @app.get("/projects")
+    def read_projects(
+        skip: int = 0, 
+        limit: int = 100, 
+        db: Session = Depends(get_db),
+        current_user: schemas.User = Depends(get_current_active_user)
+    ):
+        try:
+            projects = db.query(Project).offset(skip).limit(limit).all()
+            # Convert to dict to avoid serialization issues
+            result = []
+            for project in projects:
+                result.append({
+                    "id": project.id,
+                    "name": project.name,
+                    "description": project.description,
+                    "status": project.status,
+                    "owner_id": project.owner_id,
+                    "created_at": project.created_at,
+                    "updated_at": project.updated_at
+                })
+            return result
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
+
+    @app.get("/projects/{project_id}", response_model=schemas.Project)
+    def read_project(
+        project_id: int, 
+        db: Session = Depends(get_db),
+        current_user: schemas.User = Depends(get_current_active_user)
+    ):
+        if not rbac.has_permission(current_user, "read", project_id, db):
+            raise HTTPException(status_code=403, detail="Insufficient permissions")
+        
+        db_project = crud.get_project(db, project_id=project_id)
+        if db_project is None:
+            raise HTTPException(status_code=404, detail="Project not found")
+        return db_project
+
+    @app.put("/projects/{project_id}", response_model=schemas.Project)
+    def update_project(
+        project_id: int, 
+        project: schemas.ProjectUpdate, 
+        db: Session = Depends(get_db),
+        current_user: schemas.User = Depends(get_current_active_user)
+    ):
+        if not rbac.has_permission(current_user, "write", project_id, db):
+            raise HTTPException(status_code=403, detail="Insufficient permissions")
+        
+        db_project = crud.update_project(db, project_id=project_id, project=project)
+        if db_project is None:
+            raise HTTPException(status_code=404, detail="Project not found")
+        return db_project
+
+    @app.delete("/projects/{project_id}")
+    def delete_project(
+        project_id: int, 
+        db: Session = Depends(get_db),
+        current_user: schemas.User = Depends(get_current_active_user)
+    ):
+        if not rbac.has_permission(current_user, "delete", project_id, db):
+            raise HTTPException(status_code=403, detail="Insufficient permissions")
+        
+        db_project = crud.delete_project(db, project_id=project_id)
+        if db_project is None:
+            raise HTTPException(status_code=404, detail="Project not found")
+        return {"message": "Project deleted successfully"}
+
+    @app.post("/projects/{project_id}/delete")
+    def delete_project_with_verification(
+        project_id: int, 
+        delete_data: dict,
+        db: Session = Depends(get_db),
+        current_user: schemas.User = Depends(get_current_active_user)
+    ):
+        if not rbac.has_permission(current_user, "delete", project_id, db):
+            raise HTTPException(status_code=403, detail="Insufficient permissions")
+        
+        # Get project name from request body
+        project_name = delete_data.get('project_name')
+        if not project_name:
+            raise HTTPException(status_code=400, detail="project_name field is required")
+        
+        # Get project to verify name
+        db_project = crud.get_project(db, project_id=project_id)
+        if db_project is None:
+            raise HTTPException(status_code=404, detail="Project not found")
+        
+        # Verify project name matches
+        if db_project.name != project_name:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Project name mismatch. Expected '{db_project.name}', got '{project_name}'"
+            )
+        
+        # Delete the project
+        deleted_project = crud.delete_project(db, project_id=project_id)
+        if deleted_project is None:
+            raise HTTPException(status_code=404, detail="Project not found")
+        return {"message": "Project deleted successfully"}
+
+    # Project Assignment Endpoints
+    @app.post("/project-assignments", response_model=schemas.ProjectAssignment)
+    def create_project_assignment(
+        assignment: schemas.ProjectAssignmentCreate,
+        db: Session = Depends(get_db),
+        current_user: schemas.User = Depends(get_current_active_user)
+    ):
+        if not rbac.can_assign_users(current_user, assignment.project_id, db):
+            raise HTTPException(status_code=403, detail="Insufficient permissions")
+        
+        if assignment.assigned_by is None:
+            assignment.assigned_by = current_user.id
+        
+        return crud_rbac.create_project_assignment(db=db, assignment=assignment)
+
+    @app.get("/project-assignments", response_model=List[schemas.ProjectAssignment])
+    def read_project_assignments(
+        project_id: int = None,
+        user_id: int = None,
+        skip: int = 0,
+        limit: int = 100,
+        db: Session = Depends(get_db),
+        current_user: schemas.User = Depends(get_current_active_user)
+    ):
+        if not rbac.has_permission(current_user, "read"):
+            raise HTTPException(status_code=403, detail="Insufficient permissions")
+        
+        return crud_rbac.get_project_assignments(db, project_id=project_id, user_id=user_id, skip=skip, limit=limit)
+
+    @app.delete("/project-assignments/{assignment_id}")
+    def delete_project_assignment(
+        assignment_id: int,
+        db: Session = Depends(get_db),
+        current_user: schemas.User = Depends(get_current_active_user)
+    ):
+        assignment = crud_rbac.get_project_assignment(db, assignment_id=assignment_id)
+        if not assignment:
+            raise HTTPException(status_code=404, detail="Assignment not found")
+        
+        if not rbac.can_assign_users(current_user, assignment.project_id, db):
+            raise HTTPException(status_code=403, detail="Insufficient permissions")
+        
+        crud_rbac.delete_project_assignment(db, assignment_id=assignment_id)
+        return {"message": "Project assignment deleted successfully"}
+
+    @app.get("/my-projects")
+    def get_my_projects(
+        db: Session = Depends(get_db),
+        current_user: schemas.User = Depends(get_current_active_user)
+    ):
+        return rbac.get_user_projects(current_user, db)
+
+    # Test Schedule and Execution Endpoints
+    @app.post("/test-schedules", response_model=schemas.TestSchedule)
+    def create_test_schedule(
+        schedule: schemas.TestScheduleCreate,
+        db: Session = Depends(get_db),
+        current_user: schemas.User = Depends(get_current_active_user)
+    ):
+        if not rbac.has_permission(current_user, "execute"):
+            raise HTTPException(status_code=403, detail="Insufficient permissions")
+        
+        db_schedule = crud_rbac.create_test_schedule(db=db, schedule=schedule)
+        
+        # Get project_id for audit trail
+        project_id = None
+        if db_schedule.test_suite_id:
+            from .. import crud
+            test_suite = crud.get_test_suite(db, test_suite_id=db_schedule.test_suite_id)
+            if test_suite:
+                project_id = test_suite.project_id
+        
+        # Create audit trail
+        try:
+            from ..services.audit_service import get_audit_service
+            from ..schemas_audit import AuditTrailCreate
+            from ..models import AuditAction, EntityType
+            audit_service = get_audit_service(db)
+            audit_data = AuditTrailCreate(
+                user_id=current_user.id if current_user else None,
+                action=AuditAction.CREATE.value,
+                entity_type=EntityType.TEST_SCHEDULE.value,
+                entity_id=db_schedule.id,
+                project_id=project_id,
+                description=f"Test schedule created for test suite {db_schedule.test_suite_id}",
+            )
+            audit_service.create_audit_trail(audit_data)
+        except Exception as e:
+            print(f"Failed to create audit trail for test schedule creation: {e}")
+        
+        return db_schedule
+
+    @app.get("/test-schedules", response_model=List[schemas.TestSchedule])
+    def read_test_schedules(
+        test_suite_id: int = None,
+        skip: int = 0,
+        limit: int = 100,
+        db: Session = Depends(get_db),
+        current_user: schemas.User = Depends(get_current_active_user)
+    ):
+        if not rbac.has_permission(current_user, "read"):
+            raise HTTPException(status_code=403, detail="Insufficient permissions")
+        
+        return crud_rbac.get_test_schedules(db, test_suite_id=test_suite_id, skip=skip, limit=limit)
+
+    @app.post("/test-executions", response_model=schemas.TestExecution)
+    def create_test_execution(
+        execution: schemas.TestExecutionCreate,
+        db: Session = Depends(get_db),
+        current_user: schemas.User = Depends(get_current_active_user)
+    ):
+        if not rbac.has_permission(current_user, "execute"):
+            raise HTTPException(status_code=403, detail="Insufficient permissions")
+        
+        db_execution = crud_rbac.create_test_execution(db=db, execution=execution)
+        
+        # Get project_id for audit trail
+        project_id = None
+        if db_execution.test_run_id:
+            from .. import crud
+            test_run = crud.get_test_run(db, test_run_id=db_execution.test_run_id)
+            if test_run:
+                project_id = test_run.project_id
+        
+        # Create audit trail
+        try:
+            from ..services.audit_service import get_audit_service
+            from ..schemas_audit import AuditTrailCreate
+            from ..models import AuditAction, EntityType
+            audit_service = get_audit_service(db)
+            audit_data = AuditTrailCreate(
+                user_id=current_user.id if current_user else None,
+                action=AuditAction.CREATE.value,
+                entity_type=EntityType.TEST_EXECUTION.value,
+                entity_id=db_execution.id,
+                project_id=project_id,
+                description=f"Test execution created for test run {db_execution.test_run_id}",
+            )
+            audit_service.create_audit_trail(audit_data)
+        except Exception as e:
+            print(f"Failed to create audit trail for test execution creation: {e}")
+        
+        return db_execution
+
+    @app.get("/test-executions", response_model=List[schemas.TestExecution])
+    def read_test_executions(
+        test_run_id: Optional[int] = None,
+        test_case_id: Optional[int] = None,
+        skip: int = 0,
+        limit: int = 100,
+        db: Session = Depends(get_db),
+        current_user: schemas.User = Depends(get_current_active_user)
+    ):
+        if not rbac.has_permission(current_user, "read"):
+            raise HTTPException(status_code=403, detail="Insufficient permissions")
+        
+        return crud_rbac.get_test_executions(db, test_run_id=test_run_id, test_case_id=test_case_id, skip=skip, limit=limit)
+
+    # Test Execution Settings Endpoints
+    @app.get("/test-execution-settings", response_model=schemas.TestExecutionSettings)
+    def read_test_execution_settings(
+        project_id: int = None,
+        db: Session = Depends(get_db),
+        current_user: schemas.User = Depends(get_current_active_user)
+    ):
+        if project_id is not None and not rbac.has_permission(current_user, "read", project_id, db):
+            raise HTTPException(status_code=403, detail="Insufficient permissions")
+        
+        settings = crud.get_test_execution_settings(db, project_id=project_id)
+        if settings is None:
+            # Create default settings if none exist
+            default_settings = schemas.TestExecutionSettingsCreate(
+                project_id=project_id,
+                created_by=current_user.id
+            )
+            settings = crud.create_test_execution_settings(db=db, settings=default_settings)
+        return settings
+
+    @app.put("/test-execution-settings/{settings_id}", response_model=schemas.TestExecutionSettings)
+    def update_test_execution_settings(
+        settings_id: int,
+        settings: schemas.TestExecutionSettingsUpdate,
+        db: Session = Depends(get_db),
+        current_user: schemas.User = Depends(get_current_active_user)
+    ):
+        db_settings = crud.update_test_execution_settings(db, settings_id=settings_id, settings=settings)
+        if db_settings is None:
+            raise HTTPException(status_code=404, detail="Test execution settings not found")
+        
+        # Create audit trail
+        try:
+            from ..services.audit_service import get_audit_service
+            from ..schemas_audit import AuditTrailCreate
+            from ..models import AuditAction, EntityType
+            audit_service = get_audit_service(db)
+            audit_data = AuditTrailCreate(
+                user_id=current_user.id if current_user else None,
+                action=AuditAction.UPDATE.value,
+                entity_type=EntityType.TEST_EXECUTION_SETTINGS.value,
+                entity_id=db_settings.id,
+                project_id=db_settings.project_id,
+                description=f"Test execution settings updated for project {db_settings.project_id}",
+            )
+            audit_service.create_audit_trail(audit_data)
+        except Exception as e:
+            print(f"Failed to create audit trail for test execution settings update: {e}")
+        
+        return db_settings
+
+    # Automation Settings Endpoints
+    @app.get("/automation-settings", response_model=schemas.AutomationSettings)
+    def read_automation_settings(
+        project_id: int = None,
+        db: Session = Depends(get_db),
+        current_user: schemas.User = Depends(get_current_active_user)
+    ):
+        if project_id is not None and not rbac.has_permission(current_user, "read", project_id, db):
+            raise HTTPException(status_code=403, detail="Insufficient permissions")
+        
+        settings = crud.get_automation_settings(db, project_id=project_id)
+        if settings is None:
+            # Create default settings if none exist
+            default_settings = schemas.AutomationSettingsCreate(
+                project_id=project_id,
+                created_by=current_user.id
+            )
+            settings = crud.create_automation_settings(db=db, settings=default_settings)
+        return settings
+
+    @app.put("/automation-settings/{settings_id}", response_model=schemas.AutomationSettings)
+    def update_automation_settings(
+        settings_id: int,
+        settings: schemas.AutomationSettingsUpdate,
+        db: Session = Depends(get_db),
+        current_user: schemas.User = Depends(get_current_active_user)
+    ):
+        db_settings = crud.update_automation_settings(db, settings_id=settings_id, settings=settings)
+        if db_settings is None:
+            raise HTTPException(status_code=404, detail="Automation settings not found")
+        
+        # Create audit trail
+        try:
+            from ..services.audit_service import get_audit_service
+            from ..schemas_audit import AuditTrailCreate
+            from ..models import AuditAction, EntityType
+            audit_service = get_audit_service(db)
+            audit_data = AuditTrailCreate(
+                user_id=current_user.id if current_user else None,
+                action=AuditAction.UPDATE.value,
+                entity_type=EntityType.AUTOMATION_SETTINGS.value,
+                entity_id=db_settings.id,
+                project_id=db_settings.project_id,
+                description=f"Automation settings updated for project {db_settings.project_id}",
+            )
+            audit_service.create_audit_trail(audit_data)
+        except Exception as e:
+            print(f"Failed to create audit trail for automation settings update: {e}")
+        
+        return db_settings

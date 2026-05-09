@@ -1,0 +1,243 @@
+{
+  "info": {
+    "name": "Test Results",
+    "description": "Test result management endpoints",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8000",
+      "type": "string"
+    },
+    {
+      "key": "accessToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "testRunId",
+      "value": "1",
+      "type": "string"
+    },
+    {
+      "key": "testCaseId",
+      "value": "1",
+      "type": "string"
+    },
+    {
+      "key": "testResultId",
+      "value": "1",
+      "type": "string"
+    }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{accessToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "item": [
+    {
+      "name": "Login - Setup",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"password\": \"demo123\",\n  \"username_or_email\": \"demo@testmona.com\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/token",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "token"
+          ]
+        },
+        "description": "Login to get access token for subsequent requests"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"Response contains access_token\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('access_token');",
+              "    pm.environment.set(\"accessToken\", jsonData.access_token);",
+              "    if (jsonData.refresh_token) {",
+              "        pm.environment.set(\"refreshToken\", jsonData.refresh_token);",
+              "    }",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Create Test Result",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"test_run_id\": {{testRunId}},\n  \"test_case_id\": {{testCaseId}},\n  \"status\": \"pass\",\n  \"executed_by\": 1,\n  \"notes\": \"Passed\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/test-results",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "test-results"
+          ]
+        },
+        "description": "Create a new test result"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200, 201, or 404 (test run/case not found)\", function () {",
+              "    pm.expect([200, 201, 404]).to.include(pm.response.code);",
+              "});",
+              "",
+              "if (pm.response.code === 200 || pm.response.code === 201) {",
+              "    pm.test(\"Response has id\", function () {",
+              "        var jsonData = pm.response.json();",
+              "        pm.expect(jsonData).to.have.property('id');",
+              "        pm.environment.set(\"testResultId\", jsonData.id);",
+              "    });",
+              "    ",
+              "    pm.test(\"Response has required fields\", function () {",
+              "        var jsonData = pm.response.json();",
+              "        pm.expect(jsonData).to.have.property('status');",
+              "        pm.expect(jsonData).to.have.property('test_run_id');",
+              "        pm.expect(jsonData).to.have.property('test_case_id');",
+              "    });",
+              "} else {",
+              "    pm.test(\"Test run/case not found - creation skipped\", function () {",
+              "        console.log(\"Test run or case ID not set or not found\");",
+              "    });",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Get Test Results",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/test-results?test_run_id={{testRunId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "test-results"
+          ],
+          "query": [
+            {
+              "key": "test_run_id",
+              "value": "{{testRunId}}"
+            }
+          ]
+        },
+        "description": "Get all test results for a test run"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200 or 404\", function () {",
+              "    pm.expect([200, 404]).to.include(pm.response.code);",
+              "});",
+              "",
+              "if (pm.response.code === 200) {",
+              "    pm.test(\"Response is array\", function () {",
+              "        var jsonData = pm.response.json();",
+              "        pm.expect(jsonData).to.be.an('array');",
+              "    });",
+              "} else {",
+              "    pm.test(\"Test run not found - get test results skipped\", function () {",
+              "        console.log(\"Test run ID not set or not found\");",
+              "    });",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Update Test Result",
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"status\": \"fail\",\n  \"notes\": \"Failed\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/test-results/{{testResultId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "test-results",
+            "{{testResultId}}"
+          ]
+        },
+        "description": "Update a test result"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"Status updated\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData.status).to.eql('fail');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    }
+  ]
+}

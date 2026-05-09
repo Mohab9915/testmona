@@ -1,0 +1,837 @@
+import axios from "axios";
+import { Project, TestSuite, TestCase, TestRun, TestResult, User, TestRunStatistics, CustomFieldDefinition, CustomFieldValue, TestCaseWithCustomFields, JiraIntegration, JiraIssue, Notification, AuditTrail, AuditTrailList, AuditTrailFilters, ActivitySummary, EntityHistory, Requirement, RequirementCreate, RequirementUpdate, Milestone, MilestoneCreate, MilestoneUpdate, MilestoneStats } from "@/types";
+import { useAuthStore } from "@/stores/authStore";
+
+// System Settings API
+export const systemSettingsAPI = {
+  getSetting: async (key: string) => {
+    const response = await api.get(`/system/settings/${key}`);
+    return response.data;
+  },
+  
+  getAllSettings: async () => {
+    const response = await api.get("/system/settings");
+    return response.data;
+  },
+  
+  updateSetting: async (key: string, value: string, description?: string) => {
+    const response = await api.put(`/system/settings/${key}`, {
+      value,
+      description,
+    });
+    return response.data;
+  },
+  
+  createSetting: async (key: string, value: string, description?: string) => {
+    const response = await api.post("/system/settings", {
+      key,
+      value,
+      description,
+    });
+    return response.data;
+  },
+  
+  deleteSetting: async (key: string) => {
+    const response = await api.delete(`/system/settings/${key}`);
+    return response.data;
+  },
+};
+
+const API_BASE_URL = "http://localhost:8000";
+
+const api = axios.create({
+  baseURL: API_BASE_URL,
+  headers: {
+    "Content-Type": "application/json",
+  },
+});
+
+// Add refresh flag to prevent multiple simultaneous refresh attempts
+(api as any)._refreshing = false;
+(api as any)._refreshPromise = null;
+
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem("token");
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
+api.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    const originalRequest = error.config;
+    const requestUrl = String(originalRequest?.url || "");
+    const isAuthEndpoint =
+      requestUrl.includes("/refresh") ||
+      requestUrl.includes("/token") ||
+      requestUrl.includes("/login") ||
+      requestUrl.includes("/logout");
+    
+    // Handle 403 Password Change Required
+    if (error.response?.status === 403 && 
+        error.response?.data?.detail?.includes("Password change required")) {
+      // Prevent duplicate event dispatches using a flag
+      if (!(api as any)._passwordChangeDialogShown) {
+        console.log('Password change required - dispatching event');
+        (api as any)._passwordChangeDialogShown = true;
+        // Dispatch custom event to show password change dialog
+        window.dispatchEvent(new CustomEvent('passwordChangeRequired'));
+      }
+      return Promise.reject(error);
+    }
+    
+    if (error.response?.status === 401 && !originalRequest._retry && !isAuthEndpoint) {
+      // If a refresh is already in progress, wait for it before setting retry flag
+      // This prevents multiple simultaneous refresh attempts
+      if ((api as any)._refreshing && (api as any)._refreshPromise) {
+        try {
+          await (api as any)._refreshPromise;
+          const token = localStorage.getItem("token");
+          if (token) {
+            originalRequest.headers.Authorization = `Bearer ${token}`;
+          }
+          return api(originalRequest);
+        } catch (refreshError) {
+          return Promise.reject(refreshError);
+        }
+      }
+      
+      // Mark request as retried to prevent infinite loops
+      originalRequest._retry = true;
+      
+      try {
+        (api as any)._refreshing = true;
+        const refreshToken = localStorage.getItem("refreshToken");
+        
+        if (refreshToken) {
+          // Create a single refresh promise that all requests can wait for
+          (api as any)._refreshPromise = authAPI.refreshToken(refreshToken);
+          const response = await (api as any)._refreshPromise;
+          
+          localStorage.setItem("token", response.access_token);
+          if (response.refresh_token) {
+            localStorage.setItem("refreshToken", response.refresh_token);
+          }
+          
+          // Sync with authStore to keep state consistent
+          useAuthStore.setState({
+            token: response.access_token,
+            refreshToken: response.refresh_token || refreshToken,
+          });
+          
+          // Retry original request with new token
+          originalRequest.headers.Authorization = `Bearer ${response.access_token}`;
+          return api(originalRequest);
+        }
+      } catch (refreshError) {
+        // Refresh failed, clear tokens and redirect to login
+        if (!axios.isAxiosError(refreshError) || refreshError.response?.status !== 401) {
+          console.error("Token refresh failed:", refreshError);
+        }
+        localStorage.removeItem("token");
+        localStorage.removeItem("refreshToken");
+        
+        // Clear authStore state
+        useAuthStore.setState({
+          token: null,
+          refreshToken: null,
+          isAuthenticated: false,
+          user: null,
+        });
+        
+        // Only redirect if not already on login page
+        if (window.location.pathname !== "/login") {
+          window.location.href = "/login";
+        }
+        return Promise.reject(refreshError);
+      } finally {
+        (api as any)._refreshing = false;
+        (api as any)._refreshPromise = null;
+      }
+    }
+    
+    if (error.response?.status === 401 && isAuthEndpoint) {
+      localStorage.removeItem("token");
+      localStorage.removeItem("refreshToken");
+      useAuthStore.setState({
+        token: null,
+        refreshToken: null,
+        isAuthenticated: false,
+        user: null,
+      });
+      if (window.location.pathname !== "/login") {
+        window.location.href = "/login";
+      }
+    }
+    
+    return Promise.reject(error);
+  }
+);
+
+export const authAPI = {
+  login: async (usernameOrEmail: string, password: string) => {
+    const response = await api.post("/token", {
+      username_or_email: usernameOrEmail,
+      password,
+    });
+    return response.data;
+  },
+
+  signup: async (username: string, email: string, full_name: string, password: string) => {
+    const response = await api.post("/register", {
+      username,
+      email,
+      full_name,
+      password,
+    });
+    return response.data;
+  },
+
+  refreshToken: async (refreshToken: string) => {
+    const response = await api.post("/refresh", {
+      refresh_token: refreshToken,
+    });
+    return response.data;
+  },
+
+  logout: async () => {
+    const response = await api.post("/logout");
+    return response.data;
+  },
+
+  getCurrentUser: async () => {
+    const response = await api.get("/users/me");
+    return response.data;
+  },
+};
+
+
+// Projects API
+export const projectsAPI = {
+  getAll: async (skip = 0, limit = 100) => {
+    const response = await api.get(`/projects?skip=${skip}&limit=${limit}`);
+    return response.data;
+  },
+  getById: async (id: number, signal?: AbortSignal) => {
+    const response = await api.get(`/projects/${id}`, { signal });
+    return response.data;
+  },
+  create: async (project: any) => {
+    const response = await api.post('/projects', project);
+    return response.data;
+  },
+  update: async (id: number, project: any) => {
+    const response = await api.put(`/projects/${id}`, project);
+    return response.data;
+  },
+  delete: async (id: number) => {
+    const response = await api.delete(`/projects/${id}`);
+    return response.data;
+  },
+};
+
+// Test Suites API
+export const testSuitesAPI = {
+  getAll: async (projectId?: number, skip = 0, limit = 100) => {
+    const params = new URLSearchParams({ skip: skip.toString(), limit: limit.toString() });
+    if (projectId) params.append('project_id', projectId.toString());
+    const response = await api.get(`/test-suites?${params}`);
+    return response.data;
+  },
+  getById: async (id: number) => {
+    const response = await api.get(`/test-suites/${id}`);
+    return response.data;
+  },
+  create: async (testSuite: any) => {
+    const response = await api.post('/test-suites', testSuite);
+    return response.data;
+  },
+  update: async (id: number, testSuite: any) => {
+    const response = await api.put(`/test-suites/${id}`, testSuite);
+    return response.data;
+  },
+  delete: async (id: number) => {
+    const response = await api.delete(`/test-suites/${id}`);
+    return response.data;
+  },
+  createRun: async (id: number, testRun: any) => {
+    const response = await api.post(`/test-suites/${id}/test-runs`, testRun);
+    return response.data;
+  },
+};
+
+// Sections API
+export const sectionsAPI = {
+  getAll: async (testSuiteId?: number, parentSectionId?: number, skip = 0, limit = 100) => {
+    const params = new URLSearchParams({ skip: skip.toString(), limit: limit.toString() });
+    if (testSuiteId) params.append('test_suite_id', testSuiteId.toString());
+    if (parentSectionId) params.append('parent_section_id', parentSectionId.toString());
+    const response = await api.get(`/test-case-sections?${params}`);
+    return response.data;
+  },
+  getById: async (id: number) => {
+    const response = await api.get(`/test-case-sections/${id}`);
+    return response.data;
+  },
+  create: async (section: any) => {
+    const response = await api.post('/test-case-sections', section);
+    return response.data;
+  },
+  update: async (id: number, section: any) => {
+    const response = await api.put(`/test-case-sections/${id}`, section);
+    return response.data;
+  },
+  delete: async (id: number) => {
+    const response = await api.delete(`/test-case-sections/${id}`);
+    return response.data;
+  },
+  getProjectSectionHierarchy: async (projectId: number) => {
+    const response = await api.get(`/projects/${projectId}/sections/hierarchy`);
+    return response.data;
+  },
+  getSectionDetails: async (sectionId: number) => {
+    const response = await api.get(`/sections/${sectionId}/details`);
+    return response.data;
+  },
+};
+
+// Requirements API
+export const requirementsAPI = {
+  getAll: async (projectId?: number, skip = 0, limit = 100) => {
+    const params = new URLSearchParams({ skip: skip.toString(), limit: limit.toString() });
+    if (projectId) params.append('project_id', projectId.toString());
+    const response = await api.get(`/requirements?${params}`);
+    return response.data;
+  },
+  getById: async (id: number) => {
+    const response = await api.get(`/requirements/${id}`);
+    return response.data;
+  },
+  create: async (requirement: any) => {
+    const response = await api.post('/requirements', requirement);
+    return response.data;
+  },
+  update: async (id: number, requirement: any) => {
+    const response = await api.put(`/requirements/${id}`, requirement);
+    return response.data;
+  },
+  delete: async (id: number) => {
+    const response = await api.delete(`/requirements/${id}`);
+    return response.data;
+  },
+};
+
+// Test Cases API
+export const testCasesAPI = {
+  getAll: async (projectId?: number, testSuiteId?: number, sectionId?: number, sortBy = 'id', sortOrder = 'asc', skip = 0, limit = 100) => {
+    const params = new URLSearchParams({ skip: skip.toString(), limit: limit.toString(), sort_by: sortBy, sort_order: sortOrder });
+    if (projectId) params.append('project_id', projectId.toString());
+    if (testSuiteId) params.append('test_suite_id', testSuiteId.toString());
+    if (sectionId) params.append('section_id', sectionId.toString());
+    const response = await api.get(`/test-cases?${params}`);
+    return response.data;
+  },
+  getById: async (id: number) => {
+    const response = await api.get(`/test-cases/${id}`);
+    return response.data;
+  },
+  create: async (testCase: any) => {
+    const response = await api.post('/test-cases', testCase);
+    return response.data;
+  },
+  update: async (id: number, testCase: any) => {
+    const response = await api.put(`/test-cases/${id}`, testCase);
+    return response.data;
+  },
+  delete: async (id: number) => {
+    const response = await api.delete(`/test-cases/${id}`);
+    return response.data;
+  },
+  getCount: async (projectId?: number, testSuiteId?: number, sectionId?: number) => {
+    const params = new URLSearchParams();
+    if (projectId) params.append('project_id', projectId.toString());
+    if (testSuiteId) params.append('test_suite_id', testSuiteId.toString());
+    if (sectionId) params.append('section_id', sectionId.toString());
+    const response = await api.get(`/test-cases/count?${params}`);
+    return response.data;
+  },
+  getSteps: async (id: number) => {
+    const response = await api.get(`/test-cases/${id}/steps`);
+    return response.data;
+  },
+  getExecutionHistory: async (id: number, limit: number = 50) => {
+    const response = await api.get(`/test-cases/${id}/execution-history?limit=${limit}`);
+    return response.data;
+  },
+  createWithSteps: async (testCaseId: number, steps: any[]) => {
+    const stepsWithTestCaseId = steps.map(step => ({
+      ...step,
+      test_case_id: testCaseId
+    }));
+    const response = await api.post(`/test-cases/${testCaseId}/steps`, stepsWithTestCaseId);
+    return response.data;
+  },
+};
+
+
+// Test Runs API
+export const testRunsAPI = {
+  getAll: async (projectId?: number, skip = 0, limit = 100) => {
+    const params = new URLSearchParams({ skip: skip.toString(), limit: limit.toString() });
+    if (projectId) params.append('project_id', projectId.toString());
+    const response = await api.get(`/test-runs?${params}`);
+    return response.data;
+  },
+  getById: async (id: number) => {
+    const response = await api.get(`/test-runs/${id}`);
+    return response.data;
+  },
+  create: async (testRun: any) => {
+    const response = await api.post('/test-runs', testRun);
+    return response.data;
+  },
+  update: async (id: number, testRun: any) => {
+    const response = await api.put(`/test-runs/${id}`, testRun);
+    return response.data;
+  },
+  delete: async (id: number) => {
+    const response = await api.delete(`/test-runs/${id}`);
+    return response.data;
+  },
+};
+
+// Test Results API
+export const testResultsAPI = {
+  getAll: async (testRunId?: number, skip = 0, limit = 100) => {
+    const params = new URLSearchParams({ skip: skip.toString(), limit: limit.toString() });
+    if (testRunId) params.append('test_run_id', testRunId.toString());
+    const response = await api.get(`/test-results?${params}`);
+    return response.data;
+  },
+  getById: async (id: number) => {
+    const response = await api.get(`/test-results/${id}`);
+    return response.data;
+  },
+  create: async (testResult: any) => {
+    const response = await api.post('/test-results', testResult);
+    return response.data;
+  },
+  update: async (id: number, testResult: any) => {
+    const response = await api.put(`/test-results/${id}`, testResult);
+    return response.data;
+  },
+  delete: async (id: number) => {
+    const response = await api.delete(`/test-results/${id}`);
+    return response.data;
+  },
+};
+
+// Users API
+export const usersAPI = {
+  getAll: async (skip = 0, limit = 100) => {
+    const response = await api.get(`/users?skip=${skip}&limit=${limit}`);
+    return response.data;
+  },
+  getById: async (id: number) => {
+    const response = await api.get(`/users/${id}`);
+    return response.data;
+  },
+  create: async (user: any) => {
+    const response = await api.post('/users', user);
+    return response.data;
+  },
+  update: async (id: number, user: any) => {
+    const response = await api.put(`/users/${id}`, user);
+    return response.data;
+  },
+  delete: async (id: number) => {
+    const response = await api.delete(`/users/${id}`);
+    return response.data;
+  },
+};
+
+// Defects API
+export const defectsAPI = {
+  getAll: async (projectId?: number, skip = 0, limit = 100) => {
+    const params = new URLSearchParams({ skip: skip.toString(), limit: limit.toString() });
+    if (projectId) params.append('project_id', projectId.toString());
+    const response = await api.get(`/defects?${params}`);
+    return response.data;
+  },
+  getById: async (id: number) => {
+    const response = await api.get(`/defects/${id}`);
+    return response.data;
+  },
+  create: async (defect: any) => {
+    const response = await api.post('/defects', defect);
+    return response.data;
+  },
+  update: async (id: number, defect: any) => {
+    const response = await api.put(`/defects/${id}`, defect);
+    return response.data;
+  },
+  delete: async (id: number) => {
+    const response = await api.delete(`/defects/${id}`);
+    return response.data;
+  },
+};
+
+// Milestones API
+export const milestonesAPI = {
+  getAll: async (projectId?: number, skip = 0, limit = 100) => {
+    const params = new URLSearchParams({ skip: skip.toString(), limit: limit.toString() });
+    if (projectId) params.append('project_id', projectId.toString());
+    const response = await api.get(`/milestones?${params}`);
+    return response.data;
+  },
+  getById: async (id: number) => {
+    const response = await api.get(`/milestones/${id}`);
+    return response.data;
+  },
+  create: async (milestone: any) => {
+    const response = await api.post('/milestones', milestone);
+    return response.data;
+  },
+  update: async (id: number, milestone: any) => {
+    const response = await api.put(`/milestones/${id}`, milestone);
+    return response.data;
+  },
+  delete: async (id: number) => {
+    const response = await api.delete(`/milestones/${id}`);
+    return response.data;
+  },
+};
+
+// Environments API
+export const environmentsAPI = {
+  getAll: async (projectId?: number, skip = 0, limit = 100) => {
+    const params = new URLSearchParams({ skip: skip.toString(), limit: limit.toString() });
+    if (projectId) params.append('project_id', projectId.toString());
+    const response = await api.get(`/environments?${params}`);
+    return response.data;
+  },
+  getById: async (id: number) => {
+    const response = await api.get(`/environments/${id}`);
+    return response.data;
+  },
+  create: async (environment: any) => {
+    const response = await api.post('/environments', environment);
+    return response.data;
+  },
+  update: async (id: number, environment: any) => {
+    const response = await api.put(`/environments/${id}`, environment);
+    return response.data;
+  },
+  delete: async (id: number) => {
+    const response = await api.delete(`/environments/${id}`);
+    return response.data;
+  },
+};
+
+// Analytics API
+export const analyticsAPI = {
+  getDashboardStatistics: async (projectId?: number) => {
+    const params = projectId ? `?project_id=${projectId}` : '';
+    const response = await api.get(`/dashboard/statistics${params}`);
+    return response.data;
+  },
+  getDashboard: async (projectId?: number) => {
+    const response = await api.post(`/analytics/dashboard`, { project_id: projectId });
+    return response.data;
+  },
+  getKPIs: async (projectId?: number) => {
+    const params = projectId ? `?project_id=${projectId}` : '';
+    const response = await api.get(`/analytics/kpis${params}`);
+    return response.data;
+  },
+  getDashboardAnalytics: async (projectId: number, timeRange: string) => {
+    const params = `?project_id=${projectId}&time_range=${timeRange}`;
+    const response = await api.get(`/analytics/dashboard/analytics${params}`);
+    return response.data;
+  },
+  getGranularInsights: async (params: { project_id: number; filter_type: string }) => {
+    const response = await api.get(`/analytics/granular-insights`, { params });
+    return response.data;
+  },
+  getShareableReports: async (projectId: number) => {
+    const response = await api.get(`/analytics/shareable-reports?project_id=${projectId}`);
+    return response.data;
+  },
+  createShareableReport: async (report: any) => {
+    const response = await api.post('/analytics/shareable-reports', report);
+    return response.data;
+  },
+  getRootCauseAnalyses: async (projectId: number) => {
+    const response = await api.get(`/analytics/root-cause-analyses?project_id=${projectId}`);
+    return response.data;
+  },
+  getTraceabilityMatrix: async (projectId: number) => {
+    const response = await api.get(`/analytics/traceability-matrix?project_id=${projectId}`);
+    return response.data;
+  },
+  getCoverageReports: async (projectId: number) => {
+    const response = await api.get(`/analytics/coverage-reports?project_id=${projectId}`);
+    return response.data;
+  },
+  generateCoverageReport: async (projectId: number) => {
+    const response = await api.post(`/analytics/coverage-reports/generate`, { project_id: projectId });
+    return response.data;
+  },
+  getTestExecutionStatus: async (projectId: number) => {
+    const response = await api.get(`/analytics/test-execution-status?project_id=${projectId}`);
+    return response.data;
+  },
+  getTestActivity: async (projectId: number, startDate: string, endDate: string, granularity: string) => {
+    const params = `?project_id=${projectId}&start_date=${startDate}&end_date=${endDate}&granularity=${granularity}`;
+    const response = await api.get(`/analytics/test-activity${params}`);
+    return response.data;
+  },
+};
+
+// Audit API
+export const auditAPI = {
+  getAuditTrails: async (filters?: any) => {
+    const params = new URLSearchParams();
+    if (filters) {
+      Object.entries(filters).forEach(([key, value]) => {
+        if (value !== undefined && value !== null) {
+          params.append(key, value.toString());
+        }
+      });
+    }
+    const response = await api.get(`/audit-trails?${params}`);
+    return response.data;
+  },
+  getAll: async (filters?: any, skip = 0, limit = 100) => {
+    const params = new URLSearchParams({ skip: skip.toString(), limit: limit.toString() });
+    if (filters) {
+      Object.entries(filters).forEach(([key, value]) => {
+        if (value !== undefined && value !== null) {
+          params.append(key, value.toString());
+        }
+      });
+    }
+    const response = await api.get(`/audit-trails?${params}`);
+    return response.data;
+  },
+  getById: async (id: number) => {
+    const response = await api.get(`/audit-trails/${id}`);
+    return response.data;
+  },
+  getProjectActivitySummary: async (projectId: number, days: number) => {
+    const response = await api.get(`/audit/project-activity-summary?project_id=${projectId}&days=${days}`);
+    return response.data;
+  },
+};
+
+// Custom Fields API
+export const customFieldsAPI = {
+  getAll: async (projectId?: number, skip = 0, limit = 100) => {
+    const params = new URLSearchParams({ skip: skip.toString(), limit: limit.toString() });
+    if (projectId) params.append('project_id', projectId.toString());
+    const response = await api.get(`/custom-fields?${params}`);
+    return response.data;
+  },
+  getById: async (id: number) => {
+    const response = await api.get(`/custom-fields/${id}`);
+    return response.data;
+  },
+  create: async (customField: any) => {
+    const response = await api.post('/custom-fields', customField);
+    return response.data;
+  },
+  update: async (id: number, customField: any) => {
+    const response = await api.put(`/custom-fields/${id}`, customField);
+    return response.data;
+  },
+  delete: async (id: number) => {
+    const response = await api.delete(`/custom-fields/${id}`);
+    return response.data;
+  },
+  getDefinitions: async (projectId?: number) => {
+    const params = projectId ? `?project_id=${projectId}` : '';
+    const response = await api.get(`/custom-fields/definitions${params}`);
+    return response.data;
+  },
+  createDefinition: async (customField: any) => {
+    const response = await api.post('/custom-fields/definitions', customField);
+    return response.data;
+  },
+  updateDefinition: async (id: number, customField: any) => {
+    const response = await api.put(`/custom-fields/definitions/${id}`, customField);
+    return response.data;
+  },
+  deleteDefinition: async (id: number) => {
+    const response = await api.delete(`/custom-fields/definitions/${id}`);
+    return response.data;
+  },
+};
+
+// Jira API
+export const jiraAPI = {
+  getIntegrations: async (projectId?: number) => {
+    const params = projectId ? `?project_id=${projectId}` : '';
+    const response = await api.get(`/jira-integrations/${params}`);
+    return response.data;
+  },
+  createIntegration: async (integration: any) => {
+    const response = await api.post('/jira-integrations', integration);
+    return response.data;
+  },
+  deleteIntegration: async (integrationId: number) => {
+    const response = await api.delete(`/jira-integrations/${integrationId}`);
+    return response.data;
+  },
+  testConnection: async (integrationId: number) => {
+    const response = await api.post(`/jira-integrations/${integrationId}/test-connection`);
+    return response.data;
+  },
+  syncIssues: async (integrationId: number) => {
+    const response = await api.post(`/jira-integrations/${integrationId}/sync`);
+    return response.data;
+  },
+};
+
+// User Preferences API
+export const userPreferencesAPI = {
+  get: async () => {
+    const response = await api.get('/user-preferences');
+    return response.data;
+  },
+  update: async (preferences: any) => {
+    const response = await api.put('/user-preferences', preferences);
+    return response.data;
+  },
+  getItemsPerPage: async () => {
+    const response = await api.get('/user/preferences/items-per-page');
+    return response.data;
+  },
+  updateItemsPerPage: async (itemsPerPage: number) => {
+    const response = await api.put('/user/preferences/items-per-page', { items_per_page: itemsPerPage });
+    return response.data;
+  },
+};
+
+// Import/Export API
+export const importExportAPI = {
+  exportTestCases: async (testSuiteId?: number, format = 'csv') => {
+    const params = testSuiteId ? `?test_suite_id=${testSuiteId}&format=${format}` : `?format=${format}`;
+    const response = await api.get(`/import-export/export/test-cases${params}`);
+    return response.data;
+  },
+  importTestCases: async (file: File, testSuiteId?: number, sectionId?: number) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    if (testSuiteId) formData.append('test_suite_id', testSuiteId.toString());
+    if (sectionId) formData.append('section_id', sectionId.toString());
+    
+    const response = await api.post('/import-export/import/test-cases', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return response.data;
+  },
+};
+
+// Test Management API
+export const testManagementAPI = {
+  getStatistics: async (projectId?: number) => {
+    const params = projectId ? `?project_id=${projectId}` : '';
+    const response = await api.get(`/test-management/statistics${params}`);
+    return response.data;
+  },
+  getUserNotificationPreferences: async () => {
+    const response = await api.get('/users/me/notification-preferences');
+    return response.data;
+  },
+  updateUserNotificationPreferences: async (prefs: any) => {
+    const response = await api.put('/users/me/notification-preferences', prefs);
+    return response.data;
+  },
+  getSharedStepTemplates: async (skip = 0, limit = 100) => {
+    const response = await api.get(`/shared-step-templates/?skip=${skip}&limit=${limit}`);
+    return response.data;
+  },
+  getSharedStepTemplate: async (templateId: number) => {
+    const response = await api.get(`/shared-step-templates/${templateId}`);
+    return response.data;
+  },
+  createSharedStepTemplate: async (template: any) => {
+    const response = await api.post('/shared-step-templates', template);
+    return response.data;
+  },
+  updateSharedStepTemplate: async (templateId: number, template: any) => {
+    const response = await api.put(`/shared-step-templates/${templateId}`, template);
+    return response.data;
+  },
+  deleteSharedStepTemplate: async (templateId: number) => {
+    const response = await api.delete(`/shared-step-templates/${templateId}`);
+    return response.data;
+  },
+  getTestExecutionSettings: async () => {
+    const response = await api.get('/test-execution-settings');
+    return response.data;
+  },
+  updateTestExecutionSettings: async (settingsId: number, settings: any) => {
+    const response = await api.put(`/test-execution-settings/${settingsId}`, settings);
+    return response.data;
+  },
+  getNotificationSettings: async () => {
+    const response = await api.get('/notification-settings');
+    return response.data;
+  },
+  updateNotificationSettings: async (settingsId: number, settings: any) => {
+    const response = await api.put(`/notification-settings/${settingsId}`, settings);
+    return response.data;
+  },
+  getAutomationSettings: async () => {
+    const response = await api.get('/automation-settings');
+    return response.data;
+  },
+  updateAutomationSettings: async (settingsId: number, settings: any) => {
+    const response = await api.put(`/automation-settings/${settingsId}`, settings);
+    return response.data;
+  },
+};
+
+// Enums API
+export const enumsAPI = {
+  getPriorities: async () => {
+    const response = await api.get('/enums/priorities');
+    return response.data;
+  },
+  getTestTypes: async () => {
+    const response = await api.get('/enums/test-types');
+    return response.data;
+  },
+};
+
+
+// Test Plans API
+export const testPlansAPI = {
+  getAll: async (projectId?: number, skip = 0, limit = 100) => {
+    const params = new URLSearchParams({ skip: skip.toString(), limit: limit.toString() });
+    if (projectId) params.append('project_id', projectId.toString());
+    const response = await api.get(`/test-plans?${params}`);
+    return response.data;
+  },
+  getById: async (id: number) => {
+    const response = await api.get(`/test-plans/${id}`);
+    return response.data;
+  },
+  create: async (testPlan: any) => {
+    const response = await api.post('/test-plans', testPlan);
+    return response.data;
+  },
+  update: async (id: number, testPlan: any) => {
+    const response = await api.put(`/test-plans/${id}`, testPlan);
+    return response.data;
+  },
+  delete: async (id: number) => {
+    const response = await api.delete(`/test-plans/${id}`);
+    return response.data;
+  },
+};
+
+export { api };

@@ -1,0 +1,2006 @@
+import { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Plus, FolderOpen, Settings, Trash2, TestTube, FileText, PlayCircle, ChevronRight, AlertTriangle, Edit, WifiOff, RefreshCw, Database, Archive, Copy, UserPlus, Clock, CheckCircle2, XCircle, Download, Upload, FileDown, FileUp, Filter, Eye, X } from 'lucide-react';
+import { useProjectStore, type Project } from '@/stores/projectStore';
+import { useToast } from '@/hooks/use-toast';
+import { useTranslation } from '@/hooks/useTranslation';
+import { projectsAPI } from '@/lib/api';
+import { validateProject, getCharacterCount, sanitizeInput } from '@/utils/validation';
+import { useNetworkStatus } from '@/hooks/useNetworkStatus';
+import { useEnhancedApiCall } from '@/hooks/useEnhancedApiCall';
+import { getQueueSize } from '@/utils/requestQueue';
+import { projectImportExportAPI } from '@/api/projectImportExport';
+import { useAuthStore } from '@/stores/authStore';
+import { ProjectImportPreview } from '@/components/ProjectImportPreview';
+
+
+export function Projects() {
+  const navigate = useNavigate();
+  const { toast } = useToast();
+  const { t, isRTL } = useTranslation();
+  const { selectedProject, setSelectedProject, projects: storeProjects, setProjects: setStoreProjects } = useProjectStore();
+  const { user } = useAuthStore();
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [projectToDelete, setProjectToDelete] = useState<Project | null>(null);
+  const [deleteConfirmationName, setDeleteConfirmationName] = useState('');
+  const [projectName, setProjectName] = useState('');
+  const [projectDescription, setProjectDescription] = useState('');
+  const [editingProject, setEditingProject] = useState<Project | null>(null);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [showUnsavedDialog, setShowUnsavedDialog] = useState(false);
+  const [isCreating, setIsCreating] = useState(false);
+  const projectNameInputRef = useRef<HTMLInputElement>(null);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isBackendDown, setIsBackendDown] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [isRetrying, setIsRetrying] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
+  const [partialFailure, setPartialFailure] = useState<{ successCount: number; totalCount: number } | null>(null);
+  
+  // Enhanced error handling hooks
+  const { isOnline, wasOffline, checkBackendConnectivity, isSlowConnection } = useNetworkStatus();
+  const { enhancedApiCall, enhancedBulkApiCall, getQueueStatus, clearRequestQueue, processQueuedRequests, isProcessingQueue } = useEnhancedApiCall();
+  const [queueSize, setQueueSize] = useState(0);
+  
+  // Bulk operations states
+  const [selectedProjects, setSelectedProjects] = useState<Set<number>>(new Set());
+  const [isBulkMode, setIsBulkMode] = useState(false);
+  const [isBulkDeleteDialogOpen, setIsBulkDeleteDialogOpen] = useState(false);
+  const [isBulkArchiveDialogOpen, setIsBulkArchiveDialogOpen] = useState(false);
+  const [bulkConfirmationText, setBulkConfirmationText] = useState('');
+  
+  // Advanced features states
+  const [isStatusDialogOpen, setIsStatusDialogOpen] = useState(false);
+  const [statusProject, setStatusProject] = useState<Project | null>(null);
+  const [newStatus, setNewStatus] = useState('');
+  const [isTransferDialogOpen, setIsTransferDialogOpen] = useState(false);
+  const [transferProject, setTransferProject] = useState<Project | null>(null);
+  const [newOwnerId, setNewOwnerId] = useState('');
+  const [availableUsers, setAvailableUsers] = useState<Array<{id: number, email: string, name: string}>>([]);
+  const [isCloneDialogOpen, setIsCloneDialogOpen] = useState(false);
+  const [cloneProject, setCloneProject] = useState<Project | null>(null);
+  const [cloneName, setCloneName] = useState('');
+  const [cloneDescription, setCloneDescription] = useState('');
+  
+  // Import/Export states
+  const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
+  const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
+  const [showImportPreview, setShowImportPreview] = useState(false);
+  const [exportFormat, setExportFormat] = useState('json');
+  const [includeData, setIncludeData] = useState(true);
+  const [exportFields, setExportFields] = useState('');
+  const [exportStatusFilter, setExportStatusFilter] = useState('all');
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [mergeStrategy, setMergeStrategy] = useState('skip');
+  const [partialImport, setPartialImport] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
+  const [validationResult, setValidationResult] = useState<any>(null);
+  
+  // Check if user has admin/manager role
+  const userRole = user?.role?.toLowerCase();
+  const canImportExport = userRole === 'admin' || userRole === 'manager';
+
+  // Initialize projects on component mount with enhanced error handling
+  useEffect(() => {
+    const initializeProjects = async () => {
+      setIsLoading(true);
+      setError(null);
+      setIsRetrying(false);
+      setRetryCount(0);
+      
+      const result = await enhancedApiCall(
+        () => projectsAPI.getAll(),
+        {
+          maxRetries: 3,
+          retryDelay: 1000,
+          timeout: 30000,
+          onRetry: (attempt, error) => {
+            console.log(`Retrying projects fetch (attempt ${attempt}):`, error);
+            setIsRetrying(true);
+            setRetryCount(attempt);
+          },
+        }
+      );
+
+      if (result.data) {
+        setProjects(result.data);
+        setStoreProjects(result.data);
+        setIsBackendDown(false);
+        setError(null);
+      } else {
+        console.error('Failed to fetch projects:', result.error);
+        setIsBackendDown(true);
+        setProjects([]);
+        setStoreProjects([]);
+        setError(result.error?.message || 'Unable to connect to the backend server. Please check your connection and try again.');
+      }
+      
+      setIsRetrying(false);
+      setIsLoading(false);
+    };
+
+    initializeProjects();
+  }, [enhancedApiCall, setStoreProjects]);
+
+  // Monitor queue size
+  useEffect(() => {
+    const updateQueueSize = () => {
+      setQueueSize(getQueueSize());
+    };
+
+    updateQueueSize();
+    const interval = setInterval(updateQueueSize, 5000);
+
+    return () => clearInterval(interval);
+  }, []);
+
+  // Process queued requests when connection is restored
+  useEffect(() => {
+    if (isOnline && wasOffline && queueSize > 0) {
+      console.log('Connection restored, processing queued requests');
+      processQueuedRequests();
+    }
+  }, [isOnline, wasOffline, queueSize, processQueuedRequests]);
+
+  // Auto-focus on project name input when dialog opens
+  useEffect(() => {
+    if (isDialogOpen && projectNameInputRef.current) {
+      setTimeout(() => projectNameInputRef.current?.focus(), 100);
+    }
+  }, [isDialogOpen]);
+
+  // Track unsaved changes
+  useEffect(() => {
+    setHasUnsavedChanges(projectName.trim() !== '' || projectDescription.trim() !== '');
+  }, [projectName, projectDescription]);
+
+  const handleCreateProject = async () => {
+    if (!isOnline) {
+      toast({
+        title: t('offlineMode'),
+        description: t('currentlyOfflineRequestQueued'),
+        variant: "default",
+      });
+      return;
+    }
+
+    try {
+      setIsCreating(true);
+      setIsRetrying(true);
+      const result = await enhancedApiCall(
+        () => projectsAPI.create({
+          name: projectName,
+          description: projectDescription,
+          status: 'active',
+        }),
+        {
+          maxRetries: 3,
+          retryDelay: 1000,
+          onRetry: (attempt, error) => {
+            console.log(`Retrying project creation (attempt ${attempt}):`, error);
+            setRetryCount(attempt);
+          },
+        }
+      );
+      setIsRetrying(false);
+
+      if (result.data) {
+        const updatedProjects = [...projects, result.data];
+        setProjects(updatedProjects);
+        setStoreProjects(updatedProjects);
+        
+        toast({
+          title: t('success'),
+          description: t('projectCreatedSuccessfully', {name: projectName}),
+        });
+        
+        setProjectName('');
+        setProjectDescription('');
+        setHasUnsavedChanges(false);
+        setIsDialogOpen(false);
+      } else {
+        console.error('Error creating project:', result.error);
+        const errorMessage = result.error?.response?.data?.detail || result.error?.message || t('failedToCreateProject');
+        toast({
+          title: t('error'),
+          description: errorMessage,
+          variant: "destructive",
+        });
+      }
+    } finally {
+      setIsCreating(false);
+    }
+  };
+
+  const handleDialogClose = (open: boolean) => {
+    if (!open && hasUnsavedChanges) {
+      setShowUnsavedDialog(true);
+    } else {
+      setIsDialogOpen(open);
+      if (!open) {
+        setProjectName('');
+        setProjectDescription('');
+        setHasUnsavedChanges(false);
+      }
+    }
+  };
+
+  const handleUnsavedConfirm = (discard: boolean) => {
+    setShowUnsavedDialog(false);
+    if (discard) {
+      setProjectName('');
+      setProjectDescription('');
+      setHasUnsavedChanges(false);
+      setIsDialogOpen(false);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.ctrlKey && e.key === 'Enter') {
+      e.preventDefault();
+      handleCreateProject();
+    }
+  };
+
+  const handleSelectAndNavigate = (project: Project, path: string) => {
+    setSelectedProject(project);
+    navigate(path);
+  };
+
+  const handleViewTestSuites = (project: Project) => {
+    handleSelectAndNavigate(project, `/projects/${project.id}/test-suites`);
+  };
+
+  const handleViewTestCases = (project: Project) => {
+    handleSelectAndNavigate(project, `/projects/${project.id}/test-cases`);
+  };
+
+  const handleViewTestRuns = (project: Project) => {
+    handleSelectAndNavigate(project, `/projects/${project.id}/test-runs`);
+  };
+
+  const handleSelectProject = (project: Project) => {
+    setSelectedProject(project);
+    // Navigate to project overview or test cases
+    navigate(`/projects/${project.id}/test-cases`);
+  };
+
+  const handleOpenDeleteDialog = (project: Project) => {
+    setProjectToDelete(project);
+    setDeleteConfirmationName('');
+    setIsDeleteDialogOpen(true);
+  };
+
+  const handleDeleteProject = async () => {
+    if (!isOnline) {
+      toast({
+        title: t('offlineMode'),
+        description: t('cannotDeleteProjectOffline'),
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    // Verify the project name matches
+    if (deleteConfirmationName !== projectToDelete.name) {
+      toast({
+        title: t('error'),
+        description: t('projectNameDoesntMatch'),
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsRetrying(true);
+    const result = await enhancedApiCall(
+      () => projectsAPI.delete(projectToDelete.id),
+      {
+        maxRetries: 3,
+        retryDelay: 1000,
+        onRetry: (attempt, error) => {
+          console.log(`Retrying project deletion (attempt ${attempt}):`, error);
+          setRetryCount(attempt);
+        },
+      }
+    );
+    setIsRetrying(false);
+
+    if (result.data) {
+      const updatedProjects = projects.filter(p => p.id !== projectToDelete.id);
+      setProjects(updatedProjects);
+      setStoreProjects(updatedProjects);
+      
+      toast({
+        title: t('success'),
+        description: t('projectDeletedSuccessfully', {name: projectToDelete.name}),
+      });
+      
+      setIsDeleteDialogOpen(false);
+      setProjectToDelete(null);
+      setDeleteConfirmationName('');
+    } else {
+      console.error('Error deleting project:', result.error);
+      const errorMessage = result.error?.response?.data?.detail || result.error?.message || t('failedToDeleteProject');
+      toast({
+        title: t('error'),
+        description: errorMessage,
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleOpenEditDialog = (project: Project) => {
+    setEditingProject(project);
+    setProjectName(project.name);
+    setProjectDescription(project.description || '');
+    setIsEditDialogOpen(true);
+  };
+
+  const handleUpdateProject = async () => {
+    if (!isOnline) {
+      toast({
+        title: t('offlineMode'),
+        description: t('cannotUpdateProjectOffline'),
+        variant: "default",
+      });
+      return;
+    }
+
+    setIsRetrying(true);
+    const result = await enhancedApiCall(
+      () => projectsAPI.update(editingProject.id, {
+        name: projectName,
+        description: projectDescription,
+      }),
+      {
+        maxRetries: 3,
+        retryDelay: 1000,
+        onRetry: (attempt, error) => {
+          console.log(`Retrying project update (attempt ${attempt}):`, error);
+          setRetryCount(attempt);
+        },
+      }
+    );
+    setIsRetrying(false);
+
+    if (result.data) {
+      const updatedProjects = projects.map(p => 
+        p.id === editingProject.id ? { ...p, name: projectName, description: projectDescription, updated_at: new Date().toISOString() } : p
+      );
+      setProjects(updatedProjects);
+      setStoreProjects(updatedProjects);
+      
+      toast({
+        title: t('success'),
+        description: t('projectUpdatedSuccessfully'),
+      });
+      
+      setIsEditDialogOpen(false);
+      setEditingProject(null);
+      setProjectName('');
+      setProjectDescription('');
+    } else {
+      console.error('Error updating project:', result.error);
+      const errorMessage = result.error?.response?.data?.detail || result.error?.message || t('failedToUpdateProject');
+      toast({
+        title: t('error'),
+        description: errorMessage,
+        variant: "destructive",
+      });
+    }
+  };
+
+  // Bulk operations handlers
+  const toggleProjectSelection = (projectId: number) => {
+    const newSelection = new Set(selectedProjects);
+    if (newSelection.has(projectId)) {
+      newSelection.delete(projectId);
+    } else {
+      newSelection.add(projectId);
+    }
+    setSelectedProjects(newSelection);
+  };
+
+  const toggleAllProjects = () => {
+    if (selectedProjects.size === projects.length) {
+      setSelectedProjects(new Set());
+    } else {
+      setSelectedProjects(new Set(projects.map(p => p.id)));
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedProjects.size === 0) return;
+    
+    if (!isOnline) {
+      toast({
+        title: "Offline Mode",
+        description: "Cannot delete projects while offline. Please check your connection.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (bulkConfirmationText !== `DELETE ${selectedProjects.size}`) {
+      toast({
+        title: "Error",
+        description: "Confirmation text doesn't match. Please type exact confirmation text.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsRetrying(true);
+    const deleteMethods = Array.from(selectedProjects).map(id => () => projectsAPI.delete(id));
+    const bulkResult = await enhancedBulkApiCall(deleteMethods, {
+      maxRetries: 3,
+      retryDelay: 1000,
+      onPartialSuccess: (successCount, totalCount) => {
+        setPartialFailure({ successCount, totalCount });
+      },
+    });
+    setIsRetrying(false);
+
+    if (bulkResult.successCount > 0) {
+      const successfullyDeletedIds = bulkResult.results
+        .map((result, index) => result.data ? Array.from(selectedProjects)[index] : null)
+        .filter(id => id !== null) as number[];
+      
+      const updatedProjects = projects.filter(p => !successfullyDeletedIds.includes(p.id));
+      setProjects(updatedProjects);
+      setStoreProjects(updatedProjects);
+      
+      if (bulkResult.failureCount > 0) {
+        toast({
+          title: "Partial Success",
+          description: `${bulkResult.successCount} of ${bulkResult.results.length} project(s) deleted successfully. ${bulkResult.failureCount} failed.`,
+          variant: "default",
+        });
+      } else {
+        toast({
+          title: "Success",
+          description: `${bulkResult.successCount} project(s) deleted successfully.`,
+        });
+      }
+      
+      setSelectedProjects(new Set());
+      setIsBulkDeleteDialogOpen(false);
+      setBulkConfirmationText('');
+      setPartialFailure(null);
+    } else {
+      console.error('Error bulk deleting projects:', bulkResult.results[0].error);
+      const errorMessage = bulkResult.results[0].error?.response?.data?.detail || bulkResult.results[0].error?.message || "Failed to delete projects. Please try again.";
+      toast({
+        title: "Error",
+        description: errorMessage,
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleBulkArchive = async () => {
+    if (selectedProjects.size === 0) return;
+    
+    if (!isOnline) {
+      toast({
+        title: "Offline Mode",
+        description: "Cannot archive projects while offline. The request has been queued.",
+        variant: "default",
+      });
+      return;
+    }
+
+    setIsRetrying(true);
+    const archiveMethods = Array.from(selectedProjects).map(id => () => 
+      projectsAPI.update(id, { status: 'archived' })
+    );
+    const bulkResult = await enhancedBulkApiCall(archiveMethods, {
+      maxRetries: 3,
+      retryDelay: 1000,
+      onPartialSuccess: (successCount, totalCount) => {
+        setPartialFailure({ successCount, totalCount });
+      },
+    });
+    setIsRetrying(false);
+
+    if (bulkResult.successCount > 0) {
+      const successfullyArchivedIds = bulkResult.results
+        .map((result, index) => result.data ? Array.from(selectedProjects)[index] : null)
+        .filter(id => id !== null) as number[];
+      
+      const updatedProjects = projects.map(p => 
+        successfullyArchivedIds.includes(p.id) ? { ...p, status: 'archived' } : p
+      );
+      setProjects(updatedProjects);
+      setStoreProjects(updatedProjects);
+      
+      if (bulkResult.failureCount > 0) {
+        toast({
+          title: "Partial Success",
+          description: `${bulkResult.successCount} of ${bulkResult.results.length} project(s) archived successfully. ${bulkResult.failureCount} failed.`,
+          variant: "default",
+        });
+      } else {
+        toast({
+          title: "Success",
+          description: `${bulkResult.successCount} project(s) archived successfully.`,
+        });
+      }
+      
+      setSelectedProjects(new Set());
+      setIsBulkArchiveDialogOpen(false);
+      setPartialFailure(null);
+    } else {
+      console.error('Error bulk archiving projects:', bulkResult.results[0].error);
+      const errorMessage = bulkResult.results[0].error?.response?.data?.detail || bulkResult.results[0].error?.message || "Failed to archive projects. Please try again.";
+      toast({
+        title: "Error",
+        description: errorMessage,
+        variant: "destructive",
+      });
+    }
+  };
+
+  // Advanced features handlers
+  const handleStatusChange = async () => {
+    if (!statusProject) return;
+    
+    if (!isOnline) {
+      toast({
+        title: "Offline Mode",
+        description: "Cannot update project status while offline. The request has been queued.",
+        variant: "default",
+      });
+      return;
+    }
+
+    setIsRetrying(true);
+    const result = await enhancedApiCall(
+      () => projectsAPI.update(statusProject.id, { status: newStatus }),
+      {
+        maxRetries: 3,
+        retryDelay: 1000,
+        onRetry: (attempt, error) => {
+          console.log(`Retrying status change (attempt ${attempt}):`, error);
+          setRetryCount(attempt);
+        },
+      }
+    );
+    setIsRetrying(false);
+
+    if (result.data) {
+      const updatedProjects = projects.map(p => 
+        p.id === statusProject.id ? { ...p, status: newStatus } : p
+      );
+      setProjects(updatedProjects);
+      setStoreProjects(updatedProjects);
+      
+      toast({
+        title: "Success",
+        description: `Project status changed to ${newStatus}.`,
+      });
+      
+      setIsStatusDialogOpen(false);
+      setStatusProject(null);
+      setNewStatus('');
+    } else {
+      console.error('Error updating project status:', result.error);
+      const errorMessage = result.error?.response?.data?.detail || result.error?.message || "Failed to update project status. Please try again.";
+      toast({
+        title: "Error",
+        description: errorMessage,
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleCloneProject = async () => {
+    if (!cloneProject || !cloneName.trim()) return;
+    
+    if (!isOnline) {
+      toast({
+        title: "Offline Mode",
+        description: "Cannot clone project while offline. The request has been queued.",
+        variant: "default",
+      });
+      return;
+    }
+
+    setIsRetrying(true);
+    const result = await enhancedApiCall(
+      () => projectsAPI.create({
+        name: sanitizeInput(cloneName),
+        description: sanitizeInput(cloneDescription),
+        status: 'active',
+        cloned_from: cloneProject.id
+      }),
+      {
+        maxRetries: 3,
+        retryDelay: 1000,
+        onRetry: (attempt, error) => {
+          console.log(`Retrying project clone (attempt ${attempt}):`, error);
+          setRetryCount(attempt);
+        },
+      }
+    );
+    setIsRetrying(false);
+
+    if (result.data) {
+      const updatedProjects = [...projects, result.data];
+      setProjects(updatedProjects);
+      setStoreProjects(updatedProjects);
+      
+      toast({
+        title: "Success",
+        description: `Project "${cloneName}" cloned successfully.`,
+      });
+      
+      setIsCloneDialogOpen(false);
+      setCloneProject(null);
+      setCloneName('');
+      setCloneDescription('');
+    } else {
+      console.error('Error cloning project:', result.error);
+      const errorMessage = result.error?.response?.data?.detail || result.error?.message || "Failed to clone project. Please try again.";
+      toast({
+        title: "Error",
+        description: errorMessage,
+        variant: "destructive",
+      });
+    }
+  };
+
+  // Import/Export handlers
+  const handleExportProjects = async () => {
+    if (!canImportExport) {
+      toast({
+        title: "Access Denied",
+        description: "Only admin and manager roles can export projects",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsExporting(true);
+    try {
+      const result = await projectImportExportAPI.exportProjects(
+        undefined, // Export all projects
+        exportFormat,
+        includeData,
+        exportFields || undefined,
+        exportStatusFilter || undefined
+      );
+
+      if (result) {
+        projectImportExportAPI.downloadExport(
+          result.filename,
+          result.content,
+          result.media_type
+        );
+        
+        toast({
+          title: "Success",
+          description: `Projects exported successfully as ${exportFormat.toUpperCase()}`,
+        });
+        
+        setIsExportDialogOpen(false);
+      }
+    } catch (error: any) {
+      console.error('Error exporting projects:', error);
+      const errorMessage = error.response?.data?.detail || error.message || "Failed to export projects. Please try again.";
+      toast({
+        title: "Error",
+        description: errorMessage,
+        variant: "destructive",
+      });
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const handleImportFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0] || null;
+    
+    if (!file) {
+      setImportFile(null);
+      setValidationResult(null);
+      return;
+    }
+
+    // Client-side file validation
+    const validationErrors = [];
+    
+    // Validate file size (10MB limit)
+    const MAX_FILE_SIZE = 10 * 1024 * 1024;
+    if (file.size > MAX_FILE_SIZE) {
+      validationErrors.push(`File size exceeds 10MB limit (${(file.size / 1024 / 1024).toFixed(2)}MB)`);
+    }
+
+    // Validate file type
+    if (!file.name.endsWith('.json') && !file.name.endsWith('.csv')) {
+      validationErrors.push("Only JSON and CSV files are supported");
+    }
+
+    // Validate file name
+    if (file.name.length > 255) {
+      validationErrors.push("File name is too long (max 255 characters)");
+    }
+
+    // Validate file content (basic check)
+    if (file.size === 0) {
+      validationErrors.push("File is empty");
+    }
+
+    if (validationErrors.length > 0) {
+      toast({
+        title: "File Validation Failed",
+        description: validationErrors.join("; "),
+        variant: "destructive",
+      });
+      setImportFile(null);
+      return;
+    }
+
+    setImportFile(file);
+    setValidationResult(null);
+  };
+
+  const handleValidateImport = async () => {
+    if (!importFile) {
+      toast({
+        title: "No File Selected",
+        description: "Please select a file to import",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      const result = await projectImportExportAPI.validateProjectImport(importFile);
+      setValidationResult(result);
+      
+      if (result.valid) {
+        toast({
+          title: "Validation Successful",
+          description: `All ${result.valid_rows} rows are valid`,
+        });
+        setShowImportPreview(true);
+      } else {
+        toast({
+          title: "Validation Completed",
+          description: `${result.valid_rows} valid, ${result.invalid_rows} invalid rows. Review in preview.`,
+          variant: result.invalid_rows > 0 ? "destructive" : "default",
+        });
+        setShowImportPreview(true);
+      }
+    } catch (error: any) {
+      console.error('Error validating import file:', error);
+      const errorMessage = error.response?.data?.detail || error.message || "Failed to validate file. Please try again.";
+      toast({
+        title: "Error",
+        description: errorMessage,
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleImportProjects = async (strategy: string, partial: boolean) => {
+    if (!canImportExport) {
+      toast({
+        title: "Access Denied",
+        description: "Only admin and manager roles can import projects",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!importFile) {
+      toast({
+        title: "No File Selected",
+        description: "Please select a file to import",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsImporting(true);
+    try {
+      const result = await projectImportExportAPI.importProjects(importFile, strategy, partial);
+      
+      toast({
+        title: "Import Completed",
+        description: result.message,
+      });
+      
+      // Refresh projects list
+      const refreshResult = await enhancedApiCall(() => projectsAPI.getAll());
+      if (refreshResult.data) {
+        setProjects(refreshResult.data);
+        setStoreProjects(refreshResult.data);
+      }
+      
+      setIsImportDialogOpen(false);
+      setShowImportPreview(false);
+      setImportFile(null);
+      setValidationResult(null);
+    } catch (error: any) {
+      console.error('Error importing projects:', error);
+      const errorMessage = error.response?.data?.detail || error.message || "Failed to import projects. Please try again.";
+      toast({
+        title: "Error",
+        description: errorMessage,
+        variant: "destructive",
+      });
+    } finally {
+      setIsImporting(false);
+    }
+  };
+
+  const handleDownloadTemplate = async (format: string) => {
+    try {
+      const result = await projectImportExportAPI.getProjectImportTemplate(format);
+      
+      projectImportExportAPI.downloadExport(
+        result.filename,
+        result.content,
+        result.media_type
+      );
+      
+      toast({
+        title: "Template Downloaded",
+        description: `Import template downloaded as ${format.toUpperCase()}`,
+      });
+    } catch (error: any) {
+      console.error('Error downloading template:', error);
+      const errorMessage = error.response?.data?.detail || error.message || "Failed to download template. Please try again.";
+      toast({
+        title: "Error",
+        description: errorMessage,
+        variant: "destructive",
+      });
+    }
+  };
+
+  return (
+    <div className="space-y-6" dir={isRTL ? 'rtl' : 'ltr'}>
+      {/* Network Status Alert */}
+      {(!isOnline || isBackendDown) && (
+        <Card className={`${!isOnline ? 'border-yellow-200 bg-yellow-50 dark:border-yellow-800 dark:bg-yellow-900/20' : 'border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-900/20'}`}>
+          <CardContent className="pt-6">
+            <div className="flex items-start space-x-4">
+              <div className="flex-shrink-0">
+                {!isOnline ? (
+                  <WifiOff className="h-6 w-6 text-yellow-600 dark:text-yellow-400" />
+                ) : (
+                  <WifiOff className="h-6 w-6 text-red-600 dark:text-red-400" />
+                )}
+              </div>
+              <div className="flex-1 min-w-0">
+                <h3 className={`text-sm font-medium ${!isOnline ? 'text-yellow-800 dark:text-yellow-200' : 'text-red-800 dark:text-red-200'}`}>
+                  {!isOnline ? t('youAreOffline') : t('backendUnavailable')}
+                </h3>
+                <p className={`mt-1 text-sm ${!isOnline ? 'text-yellow-700 dark:text-yellow-300' : 'text-red-700 dark:text-red-300'}`}>
+                  {!isOnline 
+                    ? t('youAreOfflineDesc')
+                    : (error || t('backendConnectionLostDesc'))}
+                </p>
+                {isRetrying && (
+                  <div className="mt-2 flex items-center text-sm text-blue-600 dark:text-blue-400">
+                    <RefreshCw className={`h-4 w-4 ${isRTL ? 'ml-2' : 'mr-2'} animate-spin`} />
+                    {t('retrying')} ({t('attempt')} {retryCount}/3)
+                  </div>
+                )}
+                <div className="mt-3 flex space-x-2">
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    onClick={() => window.location.reload()}
+                    className={`${!isOnline ? 'text-yellow-700 border-yellow-300 hover:bg-yellow-100 dark:text-yellow-300 dark:border-yellow-700 dark:hover:bg-yellow-900/30' : 'text-red-700 border-red-300 hover:bg-red-100 dark:text-red-300 dark:border-red-700 dark:hover:bg-red-900/30'}`}
+                  >
+                    <RefreshCw className={`h-4 w-4 ${isRTL ? 'ml-1' : 'mr-1'}`} />
+                    {t('retryConnection')}
+                  </Button>
+                  {!isOnline && queueSize > 0 && (
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      onClick={processQueuedRequests}
+                      disabled={isProcessingQueue}
+                      className="text-yellow-700 border-yellow-300 hover:bg-yellow-100 dark:text-yellow-300 dark:border-yellow-700 dark:hover:bg-yellow-900/30"
+                    >
+                      <Clock className={`h-4 w-4 ${isRTL ? 'ml-1' : 'mr-1'}`} />
+                      {t('processQueue')} ({queueSize})
+                    </Button>
+                  )}
+                  {queueSize > 0 && (
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      onClick={clearRequestQueue}
+                      className={`${!isOnline ? 'text-yellow-700 border-yellow-300 hover:bg-yellow-100 dark:text-yellow-300 dark:border-yellow-700 dark:hover:bg-yellow-900/30' : 'text-red-700 border-red-300 hover:bg-red-100 dark:text-red-300 dark:border-red-700 dark:hover:bg-red-900/30'}`}
+                    >
+                      {t('clearQueue')}
+                    </Button>
+                  )}
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Partial Failure Alert */}
+      {partialFailure && (
+        <Card className="border-orange-200 bg-orange-50 dark:border-orange-800 dark:bg-orange-900/20">
+          <CardContent className="pt-6">
+            <div className="flex items-start space-x-4">
+              <div className="flex-shrink-0">
+                <AlertTriangle className="h-6 w-6 text-orange-600 dark:text-orange-400" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h3 className="text-sm font-medium text-orange-800 dark:text-orange-200">{t('partialFailure')}</h3>
+                <p className="mt-1 text-sm text-orange-700 dark:text-orange-300">
+                  {t('partialFailureDesc', { successCount: partialFailure.successCount, totalCount: partialFailure.totalCount })}
+                </p>
+                <div className="mt-3">
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    onClick={() => setPartialFailure(null)}
+                    className="text-orange-700 border-orange-300 hover:bg-orange-100 dark:text-orange-300 dark:border-orange-700 dark:hover:bg-orange-900/30"
+                  >
+                    {t('dismiss')}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Slow Connection Warning */}
+      {isOnline && isSlowConnection && (
+        <Card className="border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-900/20">
+          <CardContent className="pt-4 pb-4">
+            <div className="flex items-center space-x-2">
+              <Clock className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+              <p className="text-sm text-blue-700 dark:text-blue-300">
+                {t('slowConnection')}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      <div>
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h1 className="text-3xl font-bold">{t('projectsTitle')}</h1>
+            <p className="text-gray-600 dark:text-gray-400">
+              {isBackendDown ? t('backendUnavailable') : t('projectsDescription')}
+            </p>
+          </div>
+          <div className="flex items-center space-x-2">
+            {projects.length > 0 && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setIsBulkMode(!isBulkMode)}
+                disabled={!isOnline}
+              >
+                {isBulkMode ? t('exitBulkMode') : t('bulkSelect')}
+              </Button>
+            )}
+            {canImportExport && (
+              <>
+                {projects.length > 0 && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setIsExportDialogOpen(true)}
+                    disabled={!isOnline || isBackendDown}
+                  >
+                    <Download className={`h-4 w-4 ${isRTL ? 'ml-2' : 'mr-2'}`} />
+                    {t('export')}
+                  </Button>
+                )}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setIsImportDialogOpen(true)}
+                  disabled={!isOnline || isBackendDown}
+                >
+                  <Upload className={`h-4 w-4 ${isRTL ? 'ml-2' : 'mr-2'}`} />
+                  {t('import')}
+                </Button>
+              </>
+            )}
+            <Dialog open={isDialogOpen} onOpenChange={handleDialogClose}>
+              <DialogTrigger asChild>
+                <Button disabled={!isOnline}>
+                  <Plus className={`h-4 w-4 ${isRTL ? 'ml-2' : 'mr-2'}`} />
+                  {t('addNewProject')}
+                </Button>
+              </DialogTrigger>
+            </Dialog>
+          </div>
+        </div>
+        
+        {/* Bulk Operations Bar */}
+        {isBulkMode && projects.length > 0 && (
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4 dark:bg-blue-900/20 dark:border-blue-800">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-4">
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    checked={selectedProjects.size === projects.length}
+                    onCheckedChange={toggleAllProjects}
+                  />
+                  <span className="text-sm font-medium">
+                    {selectedProjects.size} {t('selectedOf')} {projects.length}
+                  </span>
+                </div>
+                {selectedProjects.size > 0 && (
+                  <div className="flex items-center space-x-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setIsBulkArchiveDialogOpen(true)}
+                      disabled={isBackendDown}
+                    >
+                      <Archive className={`h-4 w-4 ${isRTL ? 'ml-1' : 'mr-1'}`} />
+                      {t('archive')} ({selectedProjects.size})
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onClick={() => setIsBulkDeleteDialogOpen(true)}
+                      disabled={isBackendDown}
+                    >
+                      <Trash2 className={`h-4 w-4 ${isRTL ? 'ml-1' : 'mr-1'}`} />
+                      {t('delete')} ({selectedProjects.size})
+                    </Button>
+                  </div>
+                )}
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setSelectedProjects(new Set())}
+              >
+                {t('clearSelection')}
+              </Button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Projects List */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      {isLoading ? (
+        <div className="col-span-full bg-white p-6 rounded-lg shadow dark:bg-gray-800">
+          <div className="flex items-center justify-center py-12">
+            <div className="text-center">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+              <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">{t('loadingProjects')}</p>
+            </div>
+          </div>
+        </div>
+      ) : projects.length > 0 ? (
+          projects.map((project) => (
+            <Card 
+              key={project.id} 
+              className={`hover:shadow-lg transition-all cursor-pointer ${
+                selectedProject?.id === project.id ? 'ring-2 ring-blue-500 shadow-lg' : ''
+              } ${
+                selectedProjects.has(project.id) ? 'ring-2 ring-green-500 shadow-lg bg-green-50 dark:bg-green-900/20' : ''
+              }`}
+              onClick={() => {
+                if (isBulkMode) {
+                  toggleProjectSelection(project.id);
+                } else {
+                  handleSelectProject(project);
+                }
+              }}
+            >
+              <CardHeader>
+                <div className="flex items-start justify-between">
+                  <div className="flex items-start space-x-3 flex-1">
+                    {isBulkMode && (
+                      <Checkbox
+                        checked={selectedProjects.has(project.id)}
+                        onCheckedChange={() => toggleProjectSelection(project.id)}
+                        onClick={(e) => e.stopPropagation()}
+                      />
+                    )}
+                    <div className="flex-1">
+                      <CardTitle className="text-lg">{project.name}</CardTitle>
+                      <p className="text-sm text-gray-600 mt-1 dark:text-gray-400">{project.description}</p>
+                    </div>
+                  </div>
+                  {selectedProject?.id === project.id && !isBulkMode && (
+                    <div className="ml-2 p-1 bg-blue-100 rounded dark:bg-blue-900/30">
+                      <ChevronRight className="h-5 w-5 text-blue-600" />
+                    </div>
+                  )}
+                </div>
+                <Badge className={`w-fit ${
+                  project.status === 'active' ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300' :
+                  project.status === 'inactive' ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300' :
+                  project.status === 'archived' ? 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300' :
+                  'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300'
+                }`}>
+                  {project.status.charAt(0).toUpperCase() + project.status.slice(1)}
+                </Badge>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  <div className="grid grid-cols-3 gap-4 text-center">
+                    <div>
+                      <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">{project.test_suites_count}</div>
+                    </div>
+                    <div>
+                      <div className="text-2xl font-bold text-green-600 dark:text-green-400">{project.test_cases_count}</div>
+                    </div>
+                    <div>
+                      <div className="text-2xl font-bold text-purple-600 dark:text-purple-400">{project.test_runs_count}</div>
+                    </div>
+                  </div>
+                  
+                  <div className="flex flex-wrap gap-2">
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleViewTestSuites(project);
+                      }}
+                      className="flex-1"
+                    >
+                      <TestTube className={`h-4 w-4 ${isRTL ? 'ml-1' : 'mr-1'}`} />
+                      {t('suites')}
+                    </Button>
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleViewTestCases(project);
+                      }}
+                      className="flex-1"
+                    >
+                      <FileText className={`h-4 w-4 ${isRTL ? 'ml-1' : 'mr-1'}`} />
+                      {t('cases')}
+                    </Button>
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleViewTestRuns(project);
+                      }}
+                      className="flex-1"
+                    >
+                      <PlayCircle className={`h-4 w-4 ${isRTL ? 'ml-1' : 'mr-1'}`} />
+                      {t('runs')}
+                    </Button>
+                  </div>
+                  
+                  <div className="flex justify-between pt-2 border-t">
+                    <div className="flex gap-1">
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setStatusProject(project);
+                          setNewStatus(project.status);
+                          setIsStatusDialogOpen(true);
+                        }}
+                        title="Change status"
+                      >
+                        <Settings className="h-4 w-4" />
+                      </Button>
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleOpenEditDialog(project);
+                        }}
+                        title="Edit project"
+                      >
+                        <Edit className="h-4 w-4" />
+                      </Button>
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setCloneProject(project);
+                          setCloneName(`${project.name} (Copy)`);
+                          setCloneDescription(project.description || '');
+                          setIsCloneDialogOpen(true);
+                        }}
+                        title="Clone project"
+                      >
+                        <Copy className="h-4 w-4" />
+                      </Button>
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleOpenDeleteDialog(project);
+                        }}
+                        className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:text-red-400 dark:hover:text-red-300 dark:hover:bg-red-900/30"
+                        title="Delete project"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                  
+                  <div className="flex flex-col gap-1 pt-2 border-t">
+                    <span className="text-xs text-gray-500 dark:text-gray-400">
+                      {t('created')}: {new Date(project.created_at).toLocaleDateString()}
+                    </span>
+                    {project.updated_at && project.updated_at !== project.created_at && (
+                      <span className="text-xs text-gray-500 dark:text-gray-400">
+                        {t('updated')}: {new Date(project.updated_at).toLocaleDateString()}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ))
+        ) : isBackendDown ? (
+          <div className="col-span-full">
+            <Card className="border-dashed border-gray-300 bg-gray-50 dark:border-gray-700 dark:bg-gray-900/20">
+              <CardContent className="pt-12 pb-12">
+                <div className="text-center">
+                  <WifiOff className="mx-auto h-16 w-16 text-gray-400 mb-4 dark:text-gray-600" />
+                  <h3 className="text-lg font-medium text-gray-900 mb-2 dark:text-gray-100">{t('backendConnectionLost')}</h3>
+                  <p className="text-gray-600 mb-6 max-w-md mx-auto dark:text-gray-400">
+                    {t('backendConnectionLostDesc')}
+                  </p>
+                  <div className="space-y-3">
+                    <div className="flex justify-center space-x-3">
+                      <Button 
+                        onClick={() => window.location.reload()}
+                        className="bg-blue-600 hover:bg-blue-700 dark:bg-blue-700 dark:hover:bg-blue-800"
+                      >
+                        <RefreshCw className={`h-4 w-4 ${isRTL ? 'ml-2' : 'mr-2'}`} />
+                        {t('retryConnection')}
+                      </Button>
+                      <Button 
+                        variant="outline"
+                        onClick={() => setIsBackendDown(false)}
+                      >
+                        {t('checkStatus')}
+                      </Button>
+                    </div>
+                    <div className="text-sm text-gray-500 dark:text-gray-400">
+                      <p>{t('possibleCauses')}</p>
+                      <ul className="mt-1 space-y-1">
+                        <li>• {t('causeBackendNotRunning')}</li>
+                        <li>• {t('causeNetworkIssues')}</li>
+                        <li>• {t('causeServerInactive')}</li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        ) : (
+          <div className="col-span-full">
+            <Card className="border-dashed border-gray-300 bg-gradient-to-br from-blue-50 to-indigo-50 dark:border-gray-700 dark:from-blue-900/20 dark:to-indigo-900/20">
+              <CardContent className="pt-12 pb-12">
+                <div className="text-center max-w-lg mx-auto">
+                  <div className="mx-auto w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mb-4 dark:bg-blue-900/30">
+                    <FolderOpen className="h-8 w-8 text-blue-600" />
+                  </div>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-2 dark:text-gray-100">{t('startFirstProject')}</h3>
+                  <p className="text-gray-600 mb-6 leading-relaxed dark:text-gray-400">
+                    {t('startFirstProjectDesc')}
+                  </p>
+                  <div className="space-y-3">
+                    <Dialog open={isDialogOpen} onOpenChange={handleDialogClose}>
+                      <DialogTrigger asChild>
+                        <Button className="bg-blue-600 hover:bg-blue-700">
+                          <Plus className={`h-4 w-4 ${isRTL ? 'ml-2' : 'mr-2'}`} />
+                          {t('createFirstProject')}
+                        </Button>
+                        </DialogTrigger>
+                    </Dialog>
+                    <div className="text-sm text-gray-500 space-y-1 dark:text-gray-400">
+                      <p>✓ {t('organizeTestSuites')}</p>
+                      <p>✓ {t('trackTestRuns')}</p>
+                      <p>✓ {t('manageDefects')}</p>
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+      </div>
+
+      {/* Create Project Dialog */}
+      <Dialog open={isDialogOpen} onOpenChange={handleDialogClose}>
+        <DialogContent isRTL={isRTL} className="sm:max-w-[425px]" onKeyDown={handleKeyDown}>
+          <DialogHeader>
+            <DialogTitle>{t('createNewProject')}</DialogTitle>
+            <DialogDescription>
+              {t('createNewProjectDesc')}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="name" className="text-right">
+                {t('name')}
+              </Label>
+              <div className="col-span-3 space-y-1">
+                <Input
+                  ref={projectNameInputRef}
+                  id="name"
+                  value={projectName}
+                  onChange={(e) => setProjectName(e.target.value)}
+                  className={projectName.trim() === '' ? 'border-red-300 focus:border-red-500' : ''}
+                  placeholder={t('enterProjectName')}
+                  maxLength={200}
+                />
+                <div className="flex justify-between text-xs text-gray-500">
+                  <span>{t('enterProjectName')}</span>
+                  <span>{projectName.length}/200</span>
+                </div>
+              </div>
+            </div>
+            <div className="grid grid-cols-4 items-start gap-4">
+              <Label htmlFor="description" className="text-right pt-2">
+                {t('description')}
+              </Label>
+              <div className="col-span-3 space-y-1">
+                <Textarea
+                  id="description"
+                  value={projectDescription}
+                  onChange={(e) => setProjectDescription(e.target.value)}
+                  placeholder={t('enterProjectDescription')}
+                  rows={3}
+                  maxLength={1000}
+                />
+                <div className="flex justify-between text-xs text-gray-500">
+                  <span>{t('enterProjectDescription')}</span>
+                  <span>{projectDescription.length}/1000</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <DialogFooter className="flex-col sm:flex-row gap-2">
+            <div className="text-xs text-gray-500 mb-2 sm:mb-0 sm:mr-auto">
+              {t('toSubmit')}
+            </div>
+            <Button
+              variant="outline"
+              onClick={() => handleDialogClose(false)}
+            >
+              {t('cancel')}
+            </Button>
+            <Button
+              type="submit"
+              onClick={handleCreateProject}
+              disabled={!projectName.trim() || isCreating}
+              className="transition-all duration-200"
+            >
+              {isCreating ? t('creating') : t('createProject')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Project Dialog */}
+      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+        <DialogContent isRTL={isRTL} className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>{t('editProject')}</DialogTitle>
+            <DialogDescription>
+              {t('editProjectDesc')}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="edit-name" className="text-right">
+                {t('name')}
+              </Label>
+              <Input
+                id="edit-name"
+                value={projectName}
+                onChange={(e) => setProjectName(e.target.value)}
+                className="col-span-3"
+                placeholder={t('enterProjectName')}
+              />
+            </div>
+            <div className="grid grid-cols-4 items-start gap-4">
+              <Label htmlFor="edit-description" className="text-right pt-2">
+                {t('description')}
+              </Label>
+              <Textarea
+                id="edit-description"
+                value={projectDescription}
+                onChange={(e) => setProjectDescription(e.target.value)}
+                className="col-span-3"
+                placeholder={t('enterProjectDescription')}
+                rows={3}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setIsEditDialogOpen(false);
+                setEditingProject(null);
+                setProjectName('');
+                setProjectDescription('');
+              }}
+            >
+              {t('cancel')}
+            </Button>
+            <Button
+              type="submit"
+              onClick={handleUpdateProject}
+              disabled={!projectName.trim()}
+            >
+              {t('updateProject')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Status Change Dialog */}
+      <Dialog open={isStatusDialogOpen} onOpenChange={setIsStatusDialogOpen}>
+        <DialogContent isRTL={isRTL} className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>{t('changeProjectStatus')}</DialogTitle>
+            <DialogDescription>
+              {t('changeProjectStatusDesc')}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="status" className="text-right">
+                {t('status')}
+              </Label>
+              <Select value={newStatus} onValueChange={setNewStatus}>
+                <SelectTrigger className="col-span-3">
+                  <SelectValue placeholder={t('selectStatus')} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="active">{t('active')}</SelectItem>
+                  <SelectItem value="inactive">{t('inactive')}</SelectItem>
+                  <SelectItem value="archived">{t('archived')}</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setIsStatusDialogOpen(false);
+                setStatusProject(null);
+                setNewStatus('');
+              }}
+            >
+              {t('cancel')}
+            </Button>
+            <Button
+              type="submit"
+              onClick={handleStatusChange}
+              disabled={!newStatus}
+            >
+              {t('changeStatus')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Clone Project Dialog */}
+      <Dialog open={isCloneDialogOpen} onOpenChange={setIsCloneDialogOpen}>
+        <DialogContent isRTL={isRTL} className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>{t('cloneProject')}</DialogTitle>
+            <DialogDescription>
+              {t('cloneProjectDesc')}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="clone-name" className="text-right">
+                {t('name')}
+              </Label>
+              <Input
+                id="clone-name"
+                value={cloneName}
+                onChange={(e) => setCloneName(e.target.value)}
+                className="col-span-3"
+                placeholder={t('enterClonedProjectName')}
+              />
+            </div>
+            <div className="grid grid-cols-4 items-start gap-4">
+              <Label htmlFor="clone-description" className="text-right pt-2">
+                {t('description')}
+              </Label>
+              <Textarea
+                id="clone-description"
+                value={cloneDescription}
+                onChange={(e) => setCloneDescription(e.target.value)}
+                className="col-span-3"
+                placeholder={t('enterClonedProjectDescription')}
+                rows={3}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setIsCloneDialogOpen(false);
+                setCloneProject(null);
+                setCloneName('');
+                setCloneDescription('');
+              }}
+            >
+              {t('cancel')}
+            </Button>
+            <Button
+              type="submit"
+              onClick={handleCloneProject}
+              disabled={!cloneName.trim()}
+            >
+              {t('cloneProject')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Bulk Delete Confirmation Dialog */}
+      <AlertDialog open={isBulkDeleteDialogOpen} onOpenChange={setIsBulkDeleteDialogOpen}>
+        <AlertDialogContent isRTL={isRTL}>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2 text-red-600 dark:text-red-400">
+              <AlertTriangle className="h-5 w-5" />
+              {t('bulkDeleteProjects')}
+            </AlertDialogTitle>
+            <div className="space-y-4">
+              <div className="text-sm">
+                <p className="font-semibold text-gray-900 dark:text-gray-100 mb-2">
+                  {t('bulkDeleteWarning', { count: selectedProjects.size })}
+                </p>
+                <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md p-3 mb-3">
+                  <p className="font-semibold text-red-800 dark:text-red-200 mb-2">
+                    {t('bulkDeleteWarningText')}
+                  </p>
+                  <ul className="text-xs text-red-700 dark:text-red-300 space-y-1 ml-4 list-disc">
+                    <li>{t('bulkDeleteItem1')}</li>
+                    <li>{t('bulkDeleteItem2')}</li>
+                    <li>{t('bulkDeleteItem3')}</li>
+                    <li>{t('bulkDeleteItem4')}</li>
+                    <li>{t('bulkDeleteItem5')}</li>
+                    <li>{t('bulkDeleteItem6')}</li>
+                    <li>{t('bulkDeleteItem7')}</li>
+                  </ul>
+                </div>
+                <p className="text-red-600 dark:text-red-400 font-semibold mb-2">
+                  {t('cannotUndo')}
+                </p>
+                <div className="mt-4">
+                  <Label htmlFor="bulk-confirm-text" className="text-sm font-medium">
+                    {t('toConfirmType')} <span className="font-bold">DELETE {selectedProjects.size}</span>
+                  </Label>
+                  <Input
+                    id="bulk-confirm-text"
+                    value={bulkConfirmationText}
+                    onChange={(e) => setBulkConfirmationText(e.target.value)}
+                    placeholder={t('typeConfirmationText')}
+                    className="mt-2"
+                    autoComplete="off"
+                  />
+                </div>
+              </div>
+            </div>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => {
+              setIsBulkDeleteDialogOpen(false);
+              setBulkConfirmationText('');
+            }}>
+              {t('cancel')}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleBulkDelete}
+              disabled={bulkConfirmationText !== `DELETE ${selectedProjects.size}`}
+              className="bg-red-600 hover:bg-red-700 focus:ring-red-600"
+            >
+              {t('deleteCountProjects', { count: selectedProjects.size })}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Bulk Archive Confirmation Dialog */}
+      <AlertDialog open={isBulkArchiveDialogOpen} onOpenChange={setIsBulkArchiveDialogOpen}>
+        <AlertDialogContent isRTL={isRTL}>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2 text-yellow-600 dark:text-yellow-400">
+              <Archive className="h-5 w-5" />
+              {t('bulkArchiveProjects')}
+            </AlertDialogTitle>
+            <div className="space-y-4">
+              <div className="text-sm">
+                <p className="font-semibold text-gray-900 dark:text-gray-100 mb-2">
+                  {t('bulkArchiveWarning', { count: selectedProjects.size })}
+                </p>
+                <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-md p-3 mb-3">
+                  <p className="font-semibold text-yellow-800 dark:text-yellow-200 mb-2">
+                    {t('bulkArchiveActionText')}
+                  </p>
+                  <ul className="text-xs text-yellow-700 dark:text-yellow-300 space-y-1 ml-4 list-disc">
+                    <li>{t('bulkArchiveItem1')}</li>
+                    <li>{t('bulkArchiveItem2')}</li>
+                    <li>{t('bulkArchiveItem3')}</li>
+                    <li>{t('bulkArchiveItem4')}</li>
+                  </ul>
+                </div>
+                <p className="text-yellow-600 dark:text-yellow-400 font-semibold mb-2">
+                  {t('archivedCanRestore')}
+                </p>
+              </div>
+            </div>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setIsBulkArchiveDialogOpen(false)}>
+              {t('cancel')}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleBulkArchive}
+              className="bg-yellow-600 hover:bg-yellow-700 focus:ring-yellow-600"
+            >
+              {t('archiveCountProjects', { count: selectedProjects.size })}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <AlertDialogContent isRTL={isRTL}>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2 text-red-600 dark:text-red-400">
+              <AlertTriangle className="h-5 w-5" />
+              {t('deleteProject')}
+            </AlertDialogTitle>
+            <div className="space-y-4">
+              <div className="text-sm">
+                <p className="font-semibold text-gray-900 dark:text-gray-100 mb-2">
+                  {t('deleteProjectWarning')}
+                </p>
+                <p className="font-bold text-lg text-red-600 dark:text-red-400 mb-3">
+                  "{projectToDelete?.name}"
+                </p>
+                <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md p-3 mb-3">
+                  <p className="font-semibold text-red-800 dark:text-red-200 mb-2">
+                    {t('deleteProjectWarningText')}
+                  </p>
+                  <ul className="text-xs text-red-700 dark:text-red-300 space-y-1 ml-4 list-disc">
+                    <li>{t('deleteProjectItem1')}</li>
+                    <li>{t('deleteProjectItem2')}</li>
+                    <li>{t('deleteProjectItem3')}</li>
+                    <li>{t('deleteProjectItem4')}</li>
+                    <li>{t('deleteProjectItem5')}</li>
+                    <li>{t('deleteProjectItem6')}</li>
+                    <li>{t('deleteProjectItem7')}</li>
+                    <li>{t('deleteProjectItem8')}</li>
+                  </ul>
+                </div>
+                <p className="text-red-600 dark:text-red-400 font-semibold mb-2">
+                  {t('cannotUndo')}
+                </p>
+                <div className="mt-4">
+                  <Label htmlFor="confirm-name" className="text-sm font-medium">
+                    {t('toConfirmTypeName')} <span className="font-bold">{projectToDelete?.name}</span>
+                  </Label>
+                  <Input
+                    id="confirm-name"
+                    value={deleteConfirmationName}
+                    onChange={(e) => setDeleteConfirmationName(e.target.value)}
+                    placeholder={t('typeProjectName')}
+                    className="mt-2"
+                    autoComplete="off"
+                  />
+                </div>
+              </div>
+            </div>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => {
+              setIsDeleteDialogOpen(false);
+              setProjectToDelete(null);
+              setDeleteConfirmationName('');
+            }}>
+              {t('cancel')}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteProject}
+              disabled={deleteConfirmationName !== projectToDelete?.name}
+              className="bg-red-600 hover:bg-red-700 focus:ring-red-600"
+            >
+              {t('deleteProject')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Export Dialog */}
+      <Dialog open={isExportDialogOpen} onOpenChange={setIsExportDialogOpen}>
+        <DialogContent isRTL={isRTL} className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Download className="h-5 w-5" />
+              {t('exportProjects')}
+            </DialogTitle>
+            <DialogDescription>
+              {t('exportProjectsDesc')}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="export-format">{t('exportFormat')}</Label>
+              <Select value={exportFormat} onValueChange={setExportFormat}>
+                <SelectTrigger id="export-format">
+                  <SelectValue placeholder={t('selectFormat')} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="json">{t('jsonFullData')}</SelectItem>
+                  <SelectItem value="csv">{t('csvBasicInfo')}</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                {exportFormat === 'json' 
+                  ? t('jsonExportDesc')
+                  : t('csvExportDesc')}
+              </p>
+            </div>
+            
+            {exportFormat === 'json' && (
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="include-data"
+                  checked={includeData}
+                  onCheckedChange={(checked) => checked !== "indeterminate" && setIncludeData(checked)}
+                />
+                <Label htmlFor="include-data" className="text-sm">
+                  {t('includeRelatedData')}
+                </Label>
+              </div>
+            )}
+            
+            {exportFormat === 'json' && includeData && (
+              <div className="bg-yellow-50 border border-yellow-200 rounded-md p-3 dark:bg-yellow-900/20 dark:border-yellow-800">
+                <p className="text-xs text-yellow-800 dark:text-yellow-200">
+                  <strong>{t('exportWarning')}</strong>
+                </p>
+              </div>
+            )}
+            
+            <div className="space-y-2">
+              <Label htmlFor="export-fields">{t('fieldSelection')}</Label>
+              <Input
+                id="export-fields"
+                value={exportFields}
+                onChange={(e) => setExportFields(e.target.value)}
+                placeholder={t('fieldSelectionPlaceholder')}
+                className="text-sm"
+              />
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                {t('fieldSelectionDesc')}
+              </p>
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="export-status-filter">{t('statusFilter')}</Label>
+              <Select value={exportStatusFilter} onValueChange={setExportStatusFilter}>
+                <SelectTrigger id="export-status-filter">
+                  <SelectValue placeholder={t('allStatuses')} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">{t('allStatuses')}</SelectItem>
+                  <SelectItem value="active">{t('active')}</SelectItem>
+                  <SelectItem value="inactive">{t('inactive')}</SelectItem>
+                  <SelectItem value="archived">{t('archived')}</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                {t('statusFilterDesc')}
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsExportDialogOpen(false)}>
+              {t('cancel')}
+            </Button>
+            <Button onClick={handleExportProjects} disabled={isExporting}>
+              {isExporting ? (
+                <>
+                  <RefreshCw className={`h-4 w-4 ${isRTL ? 'ml-2' : 'mr-2'} animate-spin`} />
+                  {t('exporting')}
+                </>
+              ) : (
+                <>
+                  <FileDown className={`h-4 w-4 ${isRTL ? 'ml-2' : 'mr-2'}`} />
+                  {t('export')}
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Import Dialog */}
+      <Dialog open={isImportDialogOpen} onOpenChange={setIsImportDialogOpen}>
+        <DialogContent isRTL={isRTL} className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Upload className="h-5 w-5" />
+              {t('importProjects')}
+            </DialogTitle>
+            <DialogDescription>
+              {t('importProjectsDesc')}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="import-file">{t('selectFile')}</Label>
+              <Input
+                id="import-file"
+                type="file"
+                accept=".json,.csv"
+                onChange={handleImportFileChange}
+                className="cursor-pointer"
+              />
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                {t('supportedFormats')}
+              </p>
+            </div>
+            
+            {importFile && (
+              <div className="bg-blue-50 border border-blue-200 rounded-md p-3 dark:bg-blue-900/20 dark:border-blue-800">
+                <div className="flex items-center gap-2">
+                  <FileUp className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-blue-800 dark:text-blue-200 truncate">{importFile.name}</p>
+                    <p className="text-xs text-blue-600 dark:text-blue-300">
+                      {(importFile.size / 1024).toFixed(2)} KB • {importFile.type || t('unknownType')}
+                    </p>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setImportFile(null);
+                      setValidationResult(null);
+                    }}
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            )}
+            
+            {validationResult && !showImportPreview && (
+              <div className={`rounded-md p-3 ${
+                validationResult.valid ? 'bg-green-50 border border-green-200 dark:bg-green-900/20 dark:border-green-800' : 'bg-yellow-50 border border-yellow-200 dark:bg-yellow-900/20 dark:border-yellow-800'
+              }`}>
+                <div className="flex items-start gap-2">
+                  {validationResult.valid ? (
+                    <CheckCircle2 className="h-5 w-5 text-green-600 mt-0.5 dark:text-green-400" />
+                  ) : (
+                    <AlertTriangle className="h-5 w-5 text-yellow-600 mt-0.5 dark:text-yellow-400" />
+                  )}
+                  <div className="flex-1">
+                    <p className={`text-sm font-semibold ${
+                      validationResult.valid ? 'text-green-800 dark:text-green-200' : 'text-yellow-800 dark:text-yellow-200'
+                    }`}>
+                      {validationResult.valid ? t('validationSuccessful') : t('validationCompletedWithIssues')}
+                    </p>
+                    <p className="text-xs text-gray-600 mt-1 dark:text-gray-400">
+                      {validationResult.total_rows} {t('totalRows')} • {validationResult.valid_rows} {t('valid')} • {validationResult.invalid_rows} {t('invalid')}
+                    </p>
+                    {validationResult.conflicts && validationResult.conflicts.length > 0 && (
+                      <p className="text-xs text-yellow-600 mt-1 dark:text-yellow-400">
+                        {validationResult.conflicts.length} {t('conflictsDetected')}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => {
+              setIsImportDialogOpen(false);
+              setShowImportPreview(false);
+              setImportFile(null);
+              setValidationResult(null);
+            }}>
+              {t('cancel')}
+            </Button>
+            {!validationResult ? (
+              <Button onClick={handleValidateImport} disabled={!importFile}>
+                <Upload className={`h-4 w-4 ${isRTL ? 'ml-2' : 'mr-2'}`} />
+                {t('validatePreview')}
+              </Button>
+            ) : (
+              <Button onClick={() => setShowImportPreview(true)}>
+                <Eye className={`h-4 w-4 ${isRTL ? 'ml-2' : 'mr-2'}`} />
+                {t('reviewImport')}
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Import Preview Dialog */}
+      {showImportPreview && validationResult && importFile && (
+        <Dialog open={showImportPreview} onOpenChange={setShowImportPreview}>
+          <DialogContent isRTL={isRTL} className="max-w-7xl max-h-[90vh] overflow-y-auto">
+            <ProjectImportPreview
+              file={importFile}
+              validationResult={validationResult}
+              onConfirm={handleImportProjects}
+              onCancel={() => {
+                setShowImportPreview(false);
+                setIsImportDialogOpen(false);
+                setImportFile(null);
+                setValidationResult(null);
+              }}
+            />
+          </DialogContent>
+        </Dialog>
+      )}
+    </div>
+  );
+}

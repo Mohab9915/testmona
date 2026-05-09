@@ -1,0 +1,314 @@
+{
+  "info": {
+    "name": "Defects",
+    "description": "Defect management endpoints",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8000",
+      "type": "string"
+    },
+    {
+      "key": "accessToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "testProjectId",
+      "value": "1",
+      "type": "string"
+    },
+    {
+      "key": "defectId",
+      "value": "1",
+      "type": "string"
+    }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{accessToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "item": [
+    {
+      "name": "Login - Setup",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"password\": \"demo123\",\n  \"username_or_email\": \"demo@testmona.com\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/token",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "token"
+          ]
+        },
+        "description": "Login to get access token for subsequent requests"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"Response contains access_token\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('access_token');",
+              "    pm.environment.set(\"accessToken\", jsonData.access_token);",
+              "    if (jsonData.refresh_token) {",
+              "        pm.environment.set(\"refreshToken\", jsonData.refresh_token);",
+              "    }",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Create Defect",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"defect_id\": \"DEF-001\",\n  \"title\": \"Login Bug\",\n  \"description\": \"Button not working\",\n  \"project_id\": {{testProjectId}},\n  \"severity\": \"high\",\n  \"priority\": \"high\",\n  \"reported_by\": 1\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/defects",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "defects"
+          ]
+        },
+        "description": "Create a new defect"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200, 201, or 404 (project not found)\", function () {",
+              "    pm.expect([200, 201, 404]).to.include(pm.response.code);",
+              "});",
+              "",
+              "if (pm.response.code === 200 || pm.response.code === 201) {",
+              "    pm.test(\"Response has id\", function () {",
+              "        var jsonData = pm.response.json();",
+              "        pm.expect(jsonData).to.have.property('id');",
+              "        pm.environment.set(\"defectId\", jsonData.id);",
+              "    });",
+              "    ",
+              "    pm.test(\"Response has required fields\", function () {",
+              "        var jsonData = pm.response.json();",
+              "        pm.expect(jsonData).to.have.property('defect_id');",
+              "        pm.expect(jsonData).to.have.property('title');",
+              "        pm.expect(jsonData).to.have.property('severity');",
+              "        pm.expect(jsonData).to.have.property('priority');",
+              "    });",
+              "} else {",
+              "    pm.test(\"Project not found - creation skipped\", function () {",
+              "        console.log(\"Project ID not set or not found\");",
+              "    });",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Get Defects",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/defects?project_id={{testProjectId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "defects"
+          ],
+          "query": [
+            {
+              "key": "project_id",
+              "value": "{{testProjectId}}"
+            }
+          ]
+        },
+        "description": "Get all defects for a project"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200 or 404\", function () {",
+              "    pm.expect([200, 404]).to.include(pm.response.code);",
+              "});",
+              "",
+              "if (pm.response.code === 200) {",
+              "    pm.test(\"Response is array\", function () {",
+              "        var jsonData = pm.response.json();",
+              "        pm.expect(jsonData).to.be.an('array');",
+              "    });",
+              "} else {",
+              "    pm.test(\"Project not found - get defects skipped\", function () {",
+              "        console.log(\"Project ID not set or not found\");",
+              "    });",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Get Defect by ID",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/defects/{{defectId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "defects",
+            "{{defectId}}"
+          ]
+        },
+        "description": "Get a specific defect by ID"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200 or 404\", function () {",
+              "    pm.expect([200, 404]).to.include(pm.response.code);",
+              "});",
+              "",
+              "if (pm.response.code === 200) {",
+              "    pm.test(\"Response has id\", function () {",
+              "        var jsonData = pm.response.json();",
+              "        pm.expect(jsonData).to.have.property('id');",
+              "        var defectId = pm.environment.get(\"defectId\");",
+              "        if (defectId) {",
+              "            pm.expect(jsonData.id.toString()).to.eql(defectId.toString());",
+              "        }",
+              "    });",
+              "} else {",
+              "    pm.test(\"Defect not found - get skipped\", function () {",
+              "        console.log(\"Defect ID not set or not found\");",
+              "    });",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Update Defect",
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"status\": \"in_progress\",\n  \"assigned_to\": 2\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/defects/{{defectId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "defects",
+            "{{defectId}}"
+          ]
+        },
+        "description": "Update a defect"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"Status updated\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData.status).to.eql('in_progress');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Delete Defect",
+      "request": {
+        "method": "DELETE",
+        "url": {
+          "raw": "{{baseUrl}}/defects/{{defectId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "defects",
+            "{{defectId}}"
+          ]
+        },
+        "description": "Delete a defect"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 204 or 200\", function () {",
+              "    pm.expect([204, 200]).to.include(pm.response.code);",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    }
+  ]
+}

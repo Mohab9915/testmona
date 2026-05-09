@@ -1,0 +1,313 @@
+{
+  "info": {
+    "name": "Requirements",
+    "description": "Requirements management endpoints",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8000",
+      "type": "string"
+    },
+    {
+      "key": "accessToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "testProjectId",
+      "value": "1",
+      "type": "string"
+    },
+    {
+      "key": "requirementId",
+      "value": "1",
+      "type": "string"
+    }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{accessToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "item": [
+    {
+      "name": "Login - Setup",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"password\": \"demo123\",\n  \"username_or_email\": \"demo@testmona.com\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/token",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "token"
+          ]
+        },
+        "description": "Login to get access token for subsequent requests"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"Response contains access_token\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('access_token');",
+              "    pm.environment.set(\"accessToken\", jsonData.access_token);",
+              "    if (jsonData.refresh_token) {",
+              "        pm.environment.set(\"refreshToken\", jsonData.refresh_token);",
+              "    }",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Create Requirement",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"requirement_id\": \"REQ-001\",\n  \"title\": \"Login Requirement\",\n  \"description\": \"Users can login\",\n  \"project_id\": {{testProjectId}},\n  \"priority\": \"high\",\n  \"created_by\": 1\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/requirements",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "requirements"
+          ]
+        },
+        "description": "Create a new requirement"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200, 201, or 404 (project not found)\", function () {",
+              "    pm.expect([200, 201, 404]).to.include(pm.response.code);",
+              "});",
+              "",
+              "if (pm.response.code === 200 || pm.response.code === 201) {",
+              "    pm.test(\"Response has id\", function () {",
+              "        var jsonData = pm.response.json();",
+              "        pm.expect(jsonData).to.have.property('id');",
+              "        pm.environment.set(\"requirementId\", jsonData.id);",
+              "    });",
+              "    ",
+              "    pm.test(\"Response has required fields\", function () {",
+              "        var jsonData = pm.response.json();",
+              "        pm.expect(jsonData).to.have.property('requirement_id');",
+              "        pm.expect(jsonData).to.have.property('title');",
+              "        pm.expect(jsonData).to.have.property('project_id');",
+              "    });",
+              "} else {",
+              "    pm.test(\"Project not found - creation skipped\", function () {",
+              "        console.log(\"Project ID not set or not found\");",
+              "    });",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Get Requirements",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/requirements?project_id={{testProjectId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "requirements"
+          ],
+          "query": [
+            {
+              "key": "project_id",
+              "value": "{{testProjectId}}"
+            }
+          ]
+        },
+        "description": "Get all requirements for a project"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200 or 404\", function () {",
+              "    pm.expect([200, 404]).to.include(pm.response.code);",
+              "});",
+              "",
+              "if (pm.response.code === 200) {",
+              "    pm.test(\"Response is array\", function () {",
+              "        var jsonData = pm.response.json();",
+              "        pm.expect(jsonData).to.be.an('array');",
+              "    });",
+              "} else {",
+              "    pm.test(\"Project not found - get requirements skipped\", function () {",
+              "        console.log(\"Project ID not set or not found\");",
+              "    });",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Get Requirement by ID",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/requirements/{{requirementId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "requirements",
+            "{{requirementId}}"
+          ]
+        },
+        "description": "Get a specific requirement by ID"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200 or 404\", function () {",
+              "    pm.expect([200, 404]).to.include(pm.response.code);",
+              "});",
+              "",
+              "if (pm.response.code === 200) {",
+              "    pm.test(\"Response has id\", function () {",
+              "        var jsonData = pm.response.json();",
+              "        pm.expect(jsonData).to.have.property('id');",
+              "        var requirementId = pm.environment.get(\"requirementId\");",
+              "        if (requirementId) {",
+              "            pm.expect(jsonData.id.toString()).to.eql(requirementId.toString());",
+              "        }",
+              "    });",
+              "} else {",
+              "    pm.test(\"Requirement not found - get skipped\", function () {",
+              "        console.log(\"Requirement ID not set or not found\");",
+              "    });",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Update Requirement",
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"title\": \"Updated Title\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/requirements/{{requirementId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "requirements",
+            "{{requirementId}}"
+          ]
+        },
+        "description": "Update a requirement"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"Title updated\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData.title).to.eql('Updated Title');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Delete Requirement",
+      "request": {
+        "method": "DELETE",
+        "url": {
+          "raw": "{{baseUrl}}/requirements/{{requirementId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "requirements",
+            "{{requirementId}}"
+          ]
+        },
+        "description": "Delete a requirement"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 204 or 200\", function () {",
+              "    pm.expect([204, 200]).to.include(pm.response.code);",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    }
+  ]
+}

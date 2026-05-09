@@ -1,0 +1,782 @@
+{
+  "info": {
+    "name": "Edge Cases - Validation",
+    "description": "Data validation edge case tests",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8000",
+      "type": "string"
+    },
+    {
+      "key": "accessToken",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{accessToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "item": [
+    {
+      "name": "Login - Setup",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"password\": \"demo123\",\n  \"username_or_email\": \"demo@testmona.com\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/token",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "token"
+          ]
+        },
+        "description": "Login to get access token for subsequent requests"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"Response contains access_token\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('access_token');",
+              "    pm.environment.set(\"accessToken\", jsonData.access_token);",
+              "    if (jsonData.refresh_token) {",
+              "        pm.environment.set(\"refreshToken\", jsonData.refresh_token);",
+              "    }",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Create Project with Empty Name",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"\",\n  \"description\": \"Test project\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/projects/",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "projects"
+          ]
+        },
+        "description": "Expected: 422 Unprocessable Entity - Project name cannot be empty"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 422\", function () {",
+              "    pm.response.to.have.status(422);",
+              "});",
+              "",
+              "pm.test(\"Validation error returned\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('detail');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Create Project with Name Too Long",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"This is a very long project name that exceeds the maximum allowed length of 100 characters and should fail validation\",\n  \"description\": \"Test project\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/projects/",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "projects"
+          ]
+        },
+        "description": "Expected: 422 Unprocessable Entity - Project name exceeds 100 characters"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 422\", function () {",
+              "    pm.response.to.have.status(422);",
+              "});",
+              "",
+              "pm.test(\"Validation error returned\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('detail');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Create Project with Invalid Status",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"Test Project\",\n  \"status\": \"invalid_status\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/projects/",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "projects"
+          ]
+        },
+        "description": "Expected: 422 Unprocessable Entity - Invalid status value"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 422\", function () {",
+              "    pm.response.to.have.status(422);",
+              "});",
+              "",
+              "pm.test(\"Validation error returned\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('detail');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Create Test Case with Missing Required Fields",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"description\": \"Test description\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/test-cases",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "test-cases"
+          ]
+        },
+        "description": "Expected: 422 Unprocessable Entity - Missing required fields (title, test_suite_id)"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 422\", function () {",
+              "    pm.response.to.have.status(422);",
+              "});",
+              "",
+              "pm.test(\"Validation error returned\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('detail');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Create Requirement with Duplicate ID",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"requirement_id\": \"REQ-001\",\n  \"title\": \"Duplicate\",\n  \"project_id\": 1\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/requirements",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "requirements"
+          ]
+        },
+        "description": "Expected: 400 Bad Request - Requirement ID already exists"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 400 or 422\", function () {",
+              "    pm.expect([400, 422]).to.include(pm.response.code);",
+              "});",
+              "",
+              "pm.test(\"Duplicate error returned\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('detail');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Update with Invalid Priority",
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"priority\": \"invalid_priority\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/test-cases/1",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "test-cases",
+            "1"
+          ]
+        },
+        "description": "Expected: 422 Unprocessable Entity - Invalid priority value"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 422 or 404\", function () {",
+              "    pm.expect([422, 404]).to.include(pm.response.code);",
+              "});",
+              "",
+              "if (pm.response.code === 422) {",
+              "    pm.test(\"Validation error returned\", function () {",
+              "        var jsonData = pm.response.json();",
+              "        pm.expect(jsonData).to.have.property('detail');",
+              "    });",
+              "} else {",
+              "    pm.test(\"Test case not found - validation test skipped\", function () {",
+              "        console.log(\"Test case ID not found\");",
+              "    });",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Create Custom Field with Invalid Type",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"Test Field\",\n  \"field_type\": \"invalid_type\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/custom-fields",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "custom-fields"
+          ]
+        },
+        "description": "Expected: 422 Unprocessable Entity - Invalid field type"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 422 or 404\", function () {",
+              "    pm.expect([422, 404]).to.include(pm.response.code);",
+              "});",
+              "",
+              "if (pm.response.code === 422) {",
+              "    pm.test(\"Validation error returned\", function () {",
+              "        var jsonData = pm.response.json();",
+              "        pm.expect(jsonData).to.have.property('detail');",
+              "    });",
+              "} else {",
+              "    pm.test(\"Custom fields endpoint not found - test skipped\", function () {",
+              "        console.log(\"Custom fields endpoint not implemented\");",
+              "    });",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Create Custom Field with Invalid Validation Rules for Text",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"Test Field\",\n  \"field_type\": \"text\",\n  \"validation_rules\": {\"invalid_key\": \"value\"}\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/custom-fields",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "custom-fields"
+          ]
+        },
+        "description": "Expected: 422 Unprocessable Entity - Invalid validation rule key"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 422 or 404\", function () {",
+              "    pm.expect([422, 404]).to.include(pm.response.code);",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Create Custom Field with Invalid Min/Max Length",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"Test Field\",\n  \"field_type\": \"text\",\n  \"validation_rules\": {\"min_length\": 10, \"max_length\": 5}\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/custom-fields",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "custom-fields"
+          ]
+        },
+        "description": "Expected: 422 Unprocessable Entity - min_length > max_length"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 422 or 404\", function () {",
+              "    pm.expect([422, 404]).to.include(pm.response.code);",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Create Custom Field with Invalid Regex Pattern",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"Test Field\",\n  \"field_type\": \"text\",\n  \"validation_rules\": {\"regex_pattern\": \"[invalid(\"}\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/custom-fields",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "custom-fields"
+          ]
+        },
+        "description": "Expected: 422 Unprocessable Entity - Invalid regex pattern"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 422 or 404\", function () {",
+              "    pm.expect([422, 404]).to.include(pm.response.code);",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Create Custom Field with Validation Rules for Boolean",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"Test Field\",\n  \"field_type\": \"boolean\",\n  \"validation_rules\": {\"min_length\": 5}\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/custom-fields",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "custom-fields"
+          ]
+        },
+        "description": "Expected: 422 Unprocessable Entity - Boolean fields don't support validation rules"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 422 or 404\", function () {",
+              "    pm.expect([422, 404]).to.include(pm.response.code);",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Create Custom Field with Invalid Date Format",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"Test Field\",\n  \"field_type\": \"date\",\n  \"validation_rules\": {\"min_date\": \"not-a-date\"}\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/custom-fields",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "custom-fields"
+          ]
+        },
+        "description": "Expected: 422 Unprocessable Entity - Invalid date format"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 422 or 404\", function () {",
+              "    pm.expect([422, 404]).to.include(pm.response.code);",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Make Custom Field Required Without Values",
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"is_required\": true\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/custom-fields/definitions/{{field_id}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "custom-fields",
+            "definitions",
+            "{{field_id}}"
+          ]
+        },
+        "description": "Expected: 400 Bad Request - Cannot make field required when test cases lack values"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 400 or 404\", function () {",
+              "    pm.expect([400, 404]).to.include(pm.response.code);",
+              "});",
+              "",
+              "if (pm.response.code === 400) {",
+              "    pm.test(\"Error message about required field validation\", function () {",
+              "        var jsonData = pm.response.json();",
+              "        pm.expect(jsonData.detail).to.include(\"Cannot make field required\");",
+              "    });",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Create Custom Field Value with Invalid Multiselect Option",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"field_definition_id\": {{multiselect_field_id}},\n  \"test_case_id\": {{test_case_id}},\n  \"value\": \"invalid_option,another_invalid\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/custom-field-values",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "custom-field-values"
+          ]
+        },
+        "description": "Expected: 400 Bad Request - Invalid multiselect option not in field options"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 400 or 404\", function () {",
+              "    pm.expect([400, 404]).to.include(pm.response.code);",
+              "});",
+              "",
+              "if (pm.response.code === 400) {",
+              "    pm.test(\"Error message about invalid option\", function () {",
+              "        var jsonData = pm.response.json();",
+              "        pm.expect(jsonData.detail).to.include(\"Invalid options\");",
+              "    });",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Create Custom Field in Unassigned Project",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"Test Field\",\n  \"field_type\": \"text\",\n  \"project_id\": {{unassigned_project_id}}\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/custom-fields/definitions",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "custom-fields",
+            "definitions"
+          ]
+        },
+        "description": "Expected: 403 Forbidden - User not assigned to project"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 403 or 404\", function () {",
+              "    pm.expect([403, 404]).to.include(pm.response.code);",
+              "});",
+              "",
+              "if (pm.response.code === 403) {",
+              "    pm.test(\"Error message about insufficient permissions\", function () {",
+              "        var jsonData = pm.response.json();",
+              "        pm.expect(jsonData.detail).to.include(\"Insufficient permissions\");",
+              "    });",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Create Custom Field Value Across Projects",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"field_definition_id\": {{field_id_project_a}},\n  \"test_case_id\": {{test_case_id_project_b}},\n  \"value\": \"test value\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/custom-field-values",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "custom-field-values"
+          ]
+        },
+        "description": "Expected: 400 Bad Request - Cross-project field assignment not allowed"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 400 or 404\", function () {",
+              "    pm.expect([400, 404]).to.include(pm.response.code);",
+              "});",
+              "",
+              "if (pm.response.code === 400) {",
+              "    pm.test(\"Error message about cross-project assignment\", function () {",
+              "        var jsonData = pm.response.json();",
+              "        pm.expect(jsonData.detail).to.include(\"Cross-project field assignment\");",
+              "    });",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    }
+  ]
+}

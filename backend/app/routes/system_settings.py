@@ -1,0 +1,661 @@
+"""
+System settings routes for managing system-wide configuration.
+"""
+
+from fastapi import Depends, HTTPException
+from sqlalchemy.orm import Session
+from typing import List
+import json
+
+from .. import crud, schemas, auth, rbac
+from ..database import get_db
+from ..auth import get_current_active_user, check_password_change_required
+
+
+def register_system_settings_routes(app):
+    """Register system settings routes with the FastAPI app."""
+    
+    # Public endpoint for settings that need to be accessible without authentication
+    # SECURITY NOTE: Only add settings here that are safe to expose to unauthenticated users
+    # This endpoint should NOT expose sensitive configuration, secrets, or internal system details
+    @app.get("/system/settings/public/{key}")
+    def get_public_system_setting(key: str, db: Session = Depends(get_db)):
+        """Get a system setting that is publicly accessible (no auth required).
+        
+        SECURITY: Only settings that are safe for public consumption should be accessible here.
+        Currently allowed: signup_enabled (to show/hide signup button on login page)
+        
+        Do NOT add settings that could:
+        - Reveal system configuration details
+        - Expose internal infrastructure information
+        - Help attackers enumerate the system
+        - Contain sensitive data
+        
+        SECURITY CONSIDERATIONS:
+        - This is a GET endpoint and must be idempotent (no database writes)
+        - Returns default values for missing settings instead of creating them
+        - Whitelist approach prevents unauthorized setting access
+        - Input validation prevents injection attacks
+        - 404 responses prevent setting enumeration
+        """
+        # Only allow specific public settings - whitelist approach for security
+        public_settings = ['signup_enabled']
+        
+        # Validate key format to prevent path traversal or injection
+        if not key or not isinstance(key, str) or not key.replace('_', '').replace('-', '').isalnum():
+            raise HTTPException(status_code=400, detail="Invalid setting key format")
+        
+        if key not in public_settings:
+            # Return 404 instead of 403 to avoid setting enumeration
+            raise HTTPException(status_code=404, detail="Setting not found")
+        
+        setting = crud.get_system_setting(db, key=key)
+        if setting is None:
+            # Return default value without writing to database (GET must be idempotent)
+            # The setting should be created during database initialization/seeding
+            if key == 'signup_enabled':
+                return {
+                    "key": "signup_enabled",
+                    "value": "true",
+                    "description": "Whether public registration is enabled"
+                }
+            raise HTTPException(status_code=404, detail="Setting not found")
+        
+        # Return only the necessary fields (exclude internal metadata)
+        return {
+            "key": setting.key,
+            "value": setting.value,
+            "description": setting.description
+        }
+    
+    @app.get("/system/settings", response_model=List[schemas.SystemSettings])
+    def get_system_settings(skip: int = 0, limit: int = 100, db: Session = Depends(get_db), current_user: schemas.User = Depends(get_current_active_user)):
+        # Only admins can view system settings
+        from ..models import Role
+        if isinstance(current_user.role, str):
+            is_admin = current_user.role.lower() == Role.ADMIN.value
+        else:
+            is_admin = current_user.role == Role.ADMIN
+        
+        if not is_admin and not current_user.is_superuser:
+            raise HTTPException(status_code=403, detail="Not authorized to view system settings")
+        
+        return crud.get_system_settings(db, skip=skip, limit=limit)
+
+    # Audit Trail Configuration Endpoints (must be defined before generic {key} endpoint)
+    @app.get("/system/settings/audit-trail-config", response_model=schemas.AuditTrailConfig)
+    def get_audit_trail_config(
+        db: Session = Depends(get_db),
+        current_user: schemas.User = Depends(get_current_active_user)
+    ):
+        """Get audit trail configuration (admin only)"""
+        # Only admins can view audit trail configuration
+        from ..models import Role
+        if isinstance(current_user.role, str):
+            is_admin = current_user.role.lower() == Role.ADMIN.value
+        else:
+            is_admin = current_user.role == Role.ADMIN
+        
+        if not is_admin and not current_user.is_superuser:
+            raise HTTPException(status_code=403, detail="Not authorized to view audit trail configuration")
+        
+        # Get the audit trail config from system settings
+        setting = crud.get_system_setting(db, key="audit_trail_config")
+        if setting is None:
+            # Return default configuration
+            return schemas.AuditTrailConfig(enabled=True, entity_settings={})
+        
+        try:
+            config_data = json.loads(setting.value) if setting.value else {}
+            return schemas.AuditTrailConfig(**config_data)
+        except (json.JSONDecodeError, TypeError) as e:
+            # If the value is invalid, return default
+            return schemas.AuditTrailConfig(enabled=True, entity_settings={})
+
+    @app.get("/system/settings/{key}", response_model=schemas.SystemSettings)
+    def get_system_setting(key: str, db: Session = Depends(get_db), current_user: schemas.User = Depends(get_current_active_user)):
+        setting = crud.get_system_setting(db, key=key)
+        if setting is None:
+            raise HTTPException(status_code=404, detail="Setting not found")
+        return setting
+
+    @app.post("/system/settings", response_model=schemas.SystemSettings)
+    def create_system_setting(
+        setting: schemas.SystemSettingsCreate,
+        db: Session = Depends(get_db),
+        current_user: schemas.User = Depends(get_current_active_user)
+    ):
+        # Only admins can create system settings
+        from ..models import Role
+        if isinstance(current_user.role, str):
+            is_admin = current_user.role.lower() == Role.ADMIN.value
+        else:
+            is_admin = current_user.role == Role.ADMIN
+        
+        if not is_admin and not current_user.is_superuser:
+            raise HTTPException(status_code=403, detail="Not authorized to create system settings")
+        
+        db_setting = crud.create_system_setting(db=db, setting=setting)
+        if db_setting is None:
+            raise HTTPException(status_code=409, detail="Setting with this key already exists")
+        
+        # Create audit trail
+        try:
+            from ..services.audit_service import get_audit_service
+            from ..schemas_audit import AuditTrailCreate
+            from ..models import AuditAction, EntityType
+            audit_service = get_audit_service(db)
+            audit_data = AuditTrailCreate(
+                user_id=current_user.id if current_user else None,
+                action=AuditAction.CREATE.value,
+                entity_type=EntityType.SYSTEM_SETTING.value,
+                entity_id=db_setting.id,
+                project_id=None,
+                description=f"System setting created: {db_setting.key}",
+            )
+            audit_service.create_audit_trail(audit_data)
+        except Exception as e:
+            print(f"Failed to create audit trail for system setting creation: {e}")
+        
+        return db_setting
+
+    @app.put("/system/settings/audit-trail-config", response_model=schemas.AuditTrailConfig)
+    def update_audit_trail_config(
+        config_update: schemas.AuditTrailConfigUpdate,
+        db: Session = Depends(get_db),
+        current_user: schemas.User = Depends(get_current_active_user)
+    ):
+        """Update audit trail configuration (admin only)"""
+        # Check if user needs to change password
+        check_password_change_required(current_user)
+        
+        # Only admins can update audit trail configuration
+        from ..models import Role
+        if isinstance(current_user.role, str):
+            is_admin = current_user.role.lower() == Role.ADMIN.value
+        else:
+            is_admin = current_user.role == Role.ADMIN
+        
+        if not is_admin and not current_user.is_superuser:
+            raise HTTPException(status_code=403, detail="Not authorized to update audit trail configuration")
+        
+        # Get current configuration
+        setting = crud.get_system_setting(db, key="audit_trail_config")
+        current_config = {}
+        if setting and setting.value:
+            try:
+                current_config = json.loads(setting.value)
+            except (json.JSONDecodeError, TypeError):
+                current_config = {}
+        
+        # Update configuration with new values
+        if config_update.enabled is not None:
+            current_config["enabled"] = config_update.enabled
+        if config_update.entity_settings is not None:
+            if "entity_settings" not in current_config:
+                current_config["entity_settings"] = {}
+            current_config["entity_settings"].update(config_update.entity_settings)
+        
+        # Save the updated configuration
+        config_json = json.dumps(current_config)
+        if setting:
+            db_setting = crud.update_system_setting(
+                db=db,
+                key="audit_trail_config",
+                setting=schemas.SystemSettingsUpdate(value=config_json)
+            )
+        else:
+            db_setting = crud.create_system_setting(
+                db=db,
+                setting=schemas.SystemSettingsCreate(
+                    key="audit_trail_config",
+                    value=config_json,
+                    description="Audit trail configuration for enabling/disabling audit logs per entity type"
+                )
+            )
+        
+        # Create audit trail for this configuration change
+        try:
+            from ..services.audit_service import get_audit_service
+            from ..schemas_audit import AuditTrailCreate
+            from ..models import AuditAction, EntityType
+            audit_service = get_audit_service(db)
+            audit_data = AuditTrailCreate(
+                user_id=current_user.id if current_user else None,
+                action=AuditAction.UPDATE.value,
+                entity_type=EntityType.SYSTEM_SETTING.value,
+                entity_id=db_setting.id,
+                project_id=None,
+                description=f"Audit trail configuration updated",
+            )
+            audit_service.create_audit_trail(audit_data)
+        except Exception as e:
+            print(f"Failed to create audit trail for audit config update: {e}")
+        
+        return schemas.AuditTrailConfig(**current_config)
+
+    @app.post("/system/settings/audit-trail-config/reset", response_model=schemas.AuditTrailConfig)
+    def reset_audit_trail_config(
+        db: Session = Depends(get_db),
+        current_user: schemas.User = Depends(get_current_active_user)
+    ):
+        """Reset audit trail configuration to defaults (admin only)"""
+        # Check if user needs to change password
+        check_password_change_required(current_user)
+        
+        # Only admins can reset audit trail configuration
+        from ..models import Role
+        if isinstance(current_user.role, str):
+            is_admin = current_user.role.lower() == Role.ADMIN.value
+        else:
+            is_admin = current_user.role == Role.ADMIN
+        
+        if not is_admin and not current_user.is_superuser:
+            raise HTTPException(status_code=403, detail="Not authorized to reset audit trail configuration")
+        
+        # Reset to default configuration
+        default_config = {"enabled": True, "entity_settings": {}}
+        config_json = json.dumps(default_config)
+        
+        setting = crud.get_system_setting(db, key="audit_trail_config")
+        if setting:
+            db_setting = crud.update_system_setting(
+                db=db,
+                key="audit_trail_config",
+                setting=schemas.SystemSettingsUpdate(value=config_json)
+            )
+        else:
+            db_setting = crud.create_system_setting(
+                db=db,
+                setting=schemas.SystemSettingsCreate(
+                    key="audit_trail_config",
+                    value=config_json,
+                    description="Audit trail configuration for enabling/disabling audit logs per entity type"
+                )
+            )
+        
+        # Create audit trail for this reset
+        try:
+            from ..services.audit_service import get_audit_service
+            from ..schemas_audit import AuditTrailCreate
+            from ..models import AuditAction, EntityType
+            audit_service = get_audit_service(db)
+            audit_data = AuditTrailCreate(
+                user_id=current_user.id if current_user else None,
+                action=AuditAction.UPDATE.value,
+                entity_type=EntityType.SYSTEM_SETTING.value,
+                entity_id=db_setting.id,
+                project_id=None,
+                description=f"Audit trail configuration reset to defaults",
+            )
+            audit_service.create_audit_trail(audit_data)
+        except Exception as e:
+            print(f"Failed to create audit trail for audit config reset: {e}")
+        
+        return schemas.AuditTrailConfig(**default_config)
+
+    @app.delete("/system/settings/audit-trails/all")
+    def delete_all_audit_trails(
+        db: Session = Depends(get_db),
+        current_user: schemas.User = Depends(get_current_active_user)
+    ):
+        """Delete all audit trail records (admin only)"""
+        # Check if user needs to change password
+        check_password_change_required(current_user)
+        
+        # Only admins can delete all audit trails
+        from ..models import Role
+        if isinstance(current_user.role, str):
+            is_admin = current_user.role.lower() == Role.ADMIN.value
+        else:
+            is_admin = current_user.role == Role.ADMIN
+        
+        if not is_admin and not current_user.is_superuser:
+            raise HTTPException(status_code=403, detail="Not authorized to delete audit trails")
+        
+        try:
+            from ..models import AuditTrail
+            # Count before deletion for audit trail
+            count = db.query(AuditTrail).count()
+            
+            # Delete all audit trails
+            db.query(AuditTrail).delete()
+            db.commit()
+            
+            # Create audit trail for this deletion
+            try:
+                from ..services.audit_service import get_audit_service
+                from ..schemas_audit import AuditTrailCreate
+                from ..models import AuditAction, EntityType
+                audit_service = get_audit_service(db)
+                audit_data = AuditTrailCreate(
+                    user_id=current_user.id if current_user else None,
+                    action=AuditAction.DELETE.value,
+                    entity_type=EntityType.SYSTEM_SETTING.value,
+                    entity_id=None,
+                    project_id=None,
+                    description=f"All audit trails deleted ({count} records)",
+                )
+                audit_service.create_audit_trail(audit_data)
+            except Exception as e:
+                print(f"Failed to create audit trail for audit deletion: {e}")
+            
+            return {"message": f"Successfully deleted {count} audit trail records"}
+        except Exception as e:
+            db.rollback()
+            raise HTTPException(status_code=500, detail=f"Failed to delete audit trails: {str(e)}")
+
+    @app.put("/system/settings/{key}")
+    def update_system_setting(
+        key: str,
+        setting: schemas.SystemSettingsUpdate,
+        db: Session = Depends(get_db),
+        current_user: schemas.User = Depends(get_current_active_user)
+    ):
+        # Check if user needs to change password
+        check_password_change_required(current_user)
+        
+        # Only admins can update system settings
+        from ..models import Role
+        if isinstance(current_user.role, str):
+            is_admin = current_user.role.lower() == Role.ADMIN.value
+        else:
+            is_admin = current_user.role == Role.ADMIN
+        
+        if not is_admin and not current_user.is_superuser:
+            raise HTTPException(status_code=403, detail="Not authorized to update system settings")
+        
+        # Get old value before update
+        old_setting = crud.get_system_setting(db, key)
+        old_value = old_setting.value if old_setting else None
+        
+        db_setting = crud.update_system_setting(db=db, key=key, setting=setting)
+        if db_setting is None:
+            raise HTTPException(status_code=404, detail="Setting not found")
+        
+        # Create audit trail for signup_enabled changes
+        if key == "signup_enabled":
+            try:
+                from ..services.audit_service import get_audit_service
+                from ..schemas_audit import AuditTrailCreate
+                audit_service = get_audit_service(db)
+                new_value = db_setting.value
+                audit_data = AuditTrailCreate(
+                    user_id=current_user.id,
+                    action="update",
+                    entity_type="system_settings",
+                    entity_id=db_setting.id,
+                    description=f"Signup setting changed from {old_value} to {new_value} by {current_user.username}",
+                    ip_address="127.0.0.1",
+                    user_agent="Web Client"
+                )
+                audit_service.create_audit_trail(audit_data)
+            except Exception as audit_error:
+                print(f"Failed to create audit trail for signup change: {audit_error}")
+        
+        return db_setting
+
+    @app.delete("/system/settings/{key}")
+    def delete_system_setting(
+        key: str,
+        db: Session = Depends(get_db),
+        current_user: schemas.User = Depends(get_current_active_user)
+    ):
+        # Only admins can delete system settings
+        from ..models import Role
+        if isinstance(current_user.role, str):
+            is_admin = current_user.role.lower() == Role.ADMIN.value
+        else:
+            is_admin = current_user.role == Role.ADMIN
+        
+        if not is_admin and not current_user.is_superuser:
+            raise HTTPException(status_code=403, detail="Not authorized to delete system settings")
+        
+        # Store data for audit trail before deletion
+        db_setting = crud.get_system_setting(db, key=key)
+        if db_setting is None:
+            raise HTTPException(status_code=404, detail="Setting not found")
+        
+        setting_id = db_setting.id
+        setting_key = db_setting.key
+        
+        db_setting = crud.delete_system_setting(db=db, key=key)
+        
+        # Create audit trail
+        try:
+            from ..services.audit_service import get_audit_service
+            from ..schemas_audit import AuditTrailCreate
+            from ..models import AuditAction, EntityType
+            audit_service = get_audit_service(db)
+            audit_data = AuditTrailCreate(
+                user_id=current_user.id if current_user else None,
+                action=AuditAction.DELETE.value,
+                entity_type=EntityType.SYSTEM_SETTING.value,
+                entity_id=setting_id,
+                project_id=None,
+                description=f"System setting deleted: {setting_key}",
+            )
+            audit_service.create_audit_trail(audit_data)
+        except Exception as e:
+            print(f"Failed to create audit trail for system setting deletion: {e}")
+        
+        return {"message": "System setting deleted successfully"}
+
+    @app.get("/system/settings/signup-history")
+    def get_signup_history(
+        skip: int = 0,
+        limit: int = 50,
+        db: Session = Depends(get_db),
+        current_user: schemas.User = Depends(get_current_active_user)
+    ):
+        """Get audit trail history for signup_enabled changes"""
+        # Only admins can view signup history
+        from ..models import Role
+        if isinstance(current_user.role, str):
+            is_admin = current_user.role.lower() == Role.ADMIN.value
+        else:
+            is_admin = current_user.role == Role.ADMIN
+        
+        if not is_admin and not current_user.is_superuser:
+            raise HTTPException(status_code=403, detail="Not authorized to view signup history")
+        
+        # Validate limit
+        if limit > 100:
+            limit = 100
+        
+        try:
+            from ..services.audit_service import get_audit_service
+            from ..models import AuditTrail
+            
+            audit_service = get_audit_service(db)
+            
+            # Get audit trails for system_settings entity type with signup_enabled in description
+            query = db.query(AuditTrail).filter(
+                AuditTrail.entity_type == "system_settings",
+                AuditTrail.description.like("%signup%")
+            ).order_by(AuditTrail.created_at.desc())
+            
+            total = query.count()
+            audit_trails = query.offset(skip).limit(limit).all()
+            
+            history = []
+            for trail in audit_trails:
+                from ..models import User
+                user = db.query(User).filter(User.id == trail.user_id).first()
+                history.append({
+                    "id": trail.id,
+                    "description": trail.description,
+                    "created_at": trail.created_at.isoformat() if trail.created_at else None,
+                    "user": user.username if user else "Unknown",
+                    "action": trail.action.value if hasattr(trail.action, 'value') else str(trail.action)
+                })
+            
+            return {
+                "history": history,
+                "total": total,
+                "skip": skip,
+                "limit": limit
+            }
+        except Exception as e:
+            print(f"Failed to get signup history: {e}")
+            return {"history": [], "total": 0, "skip": skip, "limit": limit}
+
+    # Global Parameters Endpoints
+    @app.post("/global-parameters/", response_model=schemas.GlobalParameter)
+    def create_global_parameter(
+        parameter: schemas.GlobalParameterCreate,
+        db: Session = Depends(get_db),
+        current_user: schemas.User = Depends(get_current_active_user)
+    ):
+        # For global parameters (project_id is None), require admin permission
+        if parameter.project_id is None:
+            if not current_user.is_superuser:
+                raise HTTPException(status_code=403, detail="Only admins can create global parameters")
+        else:
+            if not rbac.has_permission(current_user, "write", parameter.project_id, db):
+                raise HTTPException(status_code=403, detail="Insufficient permissions")
+        
+        db_parameter = crud.create_global_parameter(db=db, parameter=parameter.model_dump())
+        
+        # Create audit trail
+        try:
+            from ..services.audit_service import get_audit_service
+            from ..schemas_audit import AuditTrailCreate
+            from ..models import AuditAction, EntityType
+            audit_service = get_audit_service(db)
+            audit_data = AuditTrailCreate(
+                user_id=current_user.id if current_user else None,
+                action=AuditAction.CREATE.value,
+                entity_type=EntityType.GLOBAL_PARAMETER.value,
+                entity_id=db_parameter.id,
+                project_id=db_parameter.project_id,
+                description=f"Global parameter created: {db_parameter.name or 'Untitled'}",
+            )
+            audit_service.create_audit_trail(audit_data)
+        except Exception as e:
+            print(f"Failed to create audit trail for global parameter creation: {e}")
+        
+        return db_parameter
+
+    @app.get("/global-parameters")
+    def read_global_parameters(
+        project_id: int = None,
+        skip: int = 0,
+        limit: int = 100,
+        db: Session = Depends(get_db),
+        current_user: schemas.User = Depends(get_current_active_user)
+    ):
+        if not rbac.has_permission(current_user, "read"):
+            raise HTTPException(status_code=403, detail="Insufficient permissions")
+        
+        try:
+            return crud.get_global_parameters(db, project_id=project_id, skip=skip, limit=limit)
+        except Exception as e:
+            print(f"Error in read_global_parameters: {e}")
+            return []
+
+    @app.get("/global-parameters/{param_id}", response_model=schemas.GlobalParameter)
+    def read_global_parameter(
+        param_id: int,
+        db: Session = Depends(get_db),
+        current_user: schemas.User = Depends(get_current_active_user)
+    ):
+        parameter = crud.get_global_parameter(db, param_id=param_id)
+        if parameter is None:
+            raise HTTPException(status_code=404, detail="Global parameter not found")
+        
+        # For global parameters (project_id is None), require admin permission
+        if parameter.project_id is None:
+            if not current_user.is_superuser:
+                raise HTTPException(status_code=403, detail="Only admins can access global parameters")
+        else:
+            if not rbac.has_permission(current_user, "read", parameter.project_id, db):
+                raise HTTPException(status_code=403, detail="Insufficient permissions")
+        
+        return parameter
+
+    @app.put("/global-parameters/{param_id}", response_model=schemas.GlobalParameter)
+    def update_global_parameter(
+        param_id: int,
+        parameter: schemas.GlobalParameterUpdate,
+        db: Session = Depends(get_db),
+        current_user: schemas.User = Depends(get_current_active_user)
+    ):
+        db_parameter = crud.get_global_parameter(db, param_id=param_id)
+        if db_parameter is None:
+            raise HTTPException(status_code=404, detail="Global parameter not found")
+        
+        # For global parameters (project_id is None), require admin permission
+        if db_parameter.project_id is None:
+            if not current_user.is_superuser:
+                raise HTTPException(status_code=403, detail="Only admins can modify global parameters")
+        else:
+            if not rbac.has_permission(current_user, "write", db_parameter.project_id, db):
+                raise HTTPException(status_code=403, detail="Insufficient permissions")
+        
+        db_parameter = crud.update_global_parameter(db, param_id=param_id, parameter=parameter.model_dump(exclude_unset=True))
+        
+        # Create audit trail
+        try:
+            from ..services.audit_service import get_audit_service
+            from ..schemas_audit import AuditTrailCreate
+            from ..models import AuditAction, EntityType
+            audit_service = get_audit_service(db)
+            audit_data = AuditTrailCreate(
+                user_id=current_user.id if current_user else None,
+                action=AuditAction.UPDATE.value,
+                entity_type=EntityType.GLOBAL_PARAMETER.value,
+                entity_id=db_parameter.id,
+                project_id=db_parameter.project_id,
+                description=f"Global parameter updated: {db_parameter.name or 'Untitled'}",
+            )
+            audit_service.create_audit_trail(audit_data)
+        except Exception as e:
+            print(f"Failed to create audit trail for global parameter update: {e}")
+        
+        return db_parameter
+
+    @app.delete("/global-parameters/{param_id}")
+    def delete_global_parameter(
+        param_id: int,
+        db: Session = Depends(get_db),
+        current_user: schemas.User = Depends(get_current_active_user)
+    ):
+        db_parameter = crud.get_global_parameter(db, param_id=param_id)
+        if db_parameter is None:
+            raise HTTPException(status_code=404, detail="Global parameter not found")
+        
+        # For global parameters (project_id is None), require admin permission
+        if db_parameter.project_id is None:
+            if not current_user.is_superuser:
+                raise HTTPException(status_code=403, detail="Only admins can delete global parameters")
+        else:
+            if not rbac.has_permission(current_user, "delete", db_parameter.project_id, db):
+                raise HTTPException(status_code=403, detail="Insufficient permissions")
+        
+        # Store data for audit trail before deletion
+        param_id_val = db_parameter.id
+        param_name = db_parameter.name
+        project_id = db_parameter.project_id
+        
+        crud.delete_global_parameter(db, param_id=param_id)
+        
+        # Create audit trail
+        try:
+            from ..services.audit_service import get_audit_service
+            from ..schemas_audit import AuditTrailCreate
+            from ..models import AuditAction, EntityType
+            audit_service = get_audit_service(db)
+            audit_data = AuditTrailCreate(
+                user_id=current_user.id if current_user else None,
+                action=AuditAction.DELETE.value,
+                entity_type=EntityType.GLOBAL_PARAMETER.value,
+                entity_id=param_id_val,
+                project_id=project_id,
+                description=f"Global parameter deleted: {param_name or 'Untitled'}",
+            )
+            audit_service.create_audit_trail(audit_data)
+        except Exception as e:
+            print(f"Failed to create audit trail for global parameter deletion: {e}")
+        
+        return {"message": "Global parameter deleted successfully"}

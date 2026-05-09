@@ -1,0 +1,6396 @@
+{
+  "info": {
+    "name": "Test Management System API",
+    "description": "Comprehensive API collection for Test Management System",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8000",
+      "type": "string"
+    },
+    {
+      "key": "accessToken",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{accessToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "item": [
+    {
+      "name": "Authentication",
+      "item": [
+        {
+          "name": "Register User",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"username\":\"testuser\",\"email\":\"test@example.com\",\"password\":\"password123\",\"full_name\":\"Test User\",\"role\":\"tester\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/register",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "register"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Login",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"password\": \"demo123\",\n  \"username_or_email\": \"demo@testmona.com\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/token",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "token"
+              ]
+            },
+            "description": "Default credentials: demo@testmona.com / demo123"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "pm.collectionVariables.set(\"accessToken\", jsonData.access_token);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Refresh Token",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"refresh_token\":\"{{refreshToken}}\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/refresh",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "refresh"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"refresh_token\":\"{{refreshToken}}\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/logout",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "logout"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Current User",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/users/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                "me"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Users",
+      "item": [
+        {
+          "name": "Get All Users",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/users?skip=0&limit=100",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users"
+              ],
+              "query": [
+                {
+                  "key": "skip",
+                  "value": "0"
+                },
+                {
+                  "key": "limit",
+                  "value": "100"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get User by ID",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/users/1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                "1"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Statistics",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/users/me/statistics",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                "me",
+                "statistics"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Check Username",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/users/check-username/newuser",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                "check-username",
+                "newuser"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Check Email",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/users/check-email/new@example.com",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                "check-email",
+                "new@example.com"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Notification Preferences",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/users/me/notification-preferences",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                "me",
+                "notification-preferences"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Update Notification Preferences",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"do_not_disturb\":false,\"notification_sound_enabled\":true}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/users/me/notification-preferences",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                "me",
+                "notification-preferences"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Projects",
+      "item": [
+        {
+          "name": "Create Project",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\":\"Test Project\",\"description\":\"A test project\",\"status\":\"active\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/projects/",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "projects"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get All Projects",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/projects/?skip=0&limit=100",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "projects"
+              ],
+              "query": [
+                {
+                  "key": "skip",
+                  "value": "0"
+                },
+                {
+                  "key": "limit",
+                  "value": "100"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Project by ID",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/projects/1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "projects",
+                "1"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Update Project",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\":\"Updated Project\",\"description\":\"Updated description\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/projects/1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "projects",
+                "1"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Delete Project",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{baseUrl}}/projects/1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "projects",
+                "1"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get My Projects",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/my-projects/",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "my-projects"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Test Suites",
+      "item": [
+        {
+          "name": "Create Test Suite",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\":\"Login Test Suite\",\"description\":\"Login tests\",\"project_id\":1}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/test-suites",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "test-suites"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Test Suites",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/test-suites?project_id=1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "test-suites"
+              ],
+              "query": [
+                {
+                  "key": "project_id",
+                  "value": "1"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Test Suite by ID",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/test-suites/1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "test-suites",
+                "1"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Update Test Suite",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\":\"Updated Suite\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/test-suites/1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "test-suites",
+                "1"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Delete Test Suite",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{baseUrl}}/test-suites/1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "test-suites",
+                "1"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Create Test Run from Suite",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Automated suite run\",\n  \"description\": \"Creates a run and not_tested results for every suite test case\",\n  \"priority\": \"medium\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/test-suites/{{testSuiteId}}/test-runs",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "test-suites",
+                "{{testSuiteId}}",
+                "test-runs"
+              ]
+            },
+            "description": "Atomically create a test run from a suite and seed results for all suite test cases."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Test Cases",
+      "item": [
+        {
+          "name": "Create Test Case",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"title\":\"Test User Login\",\"description\":\"Verify login\",\"test_suite_id\":1,\"priority\":\"high\",\"status\":\"active\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/test-cases",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "test-cases"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Test Cases",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/test-cases?test_suite_id=1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "test-cases"
+              ],
+              "query": [
+                {
+                  "key": "test_suite_id",
+                  "value": "1"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Test Case by ID",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/test-cases/1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "test-cases",
+                "1"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Update Test Case",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"title\":\"Updated Title\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/test-cases/1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "test-cases",
+                "1"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Delete Test Case",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{baseUrl}}/test-cases/1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "test-cases",
+                "1"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Test Steps",
+      "item": [
+        {
+          "name": "Create Test Step",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"test_case_id\":1,\"step_number\":1,\"action\":\"Navigate to login\",\"expected_result\":\"Login page shown\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/test-steps",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "test-steps"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Test Steps",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/test-steps?test_case_id=1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "test-steps"
+              ],
+              "query": [
+                {
+                  "key": "test_case_id",
+                  "value": "1"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Update Test Step",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"action\":\"Updated action\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/test-steps/1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "test-steps",
+                "1"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Delete Test Step",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{baseUrl}}/test-steps/1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "test-steps",
+                "1"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Test Runs",
+      "item": [
+        {
+          "name": "Create Test Run",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\":\"Test Run 1\",\"test_suite_id\":1,\"executed_by\":1,\"status\":\"in_progress\",\"project_id\":1}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/test-runs",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "test-runs"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Test Runs",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/test-runs?test_suite_id=1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "test-runs"
+              ],
+              "query": [
+                {
+                  "key": "test_suite_id",
+                  "value": "1"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Test Run by ID",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/test-runs/1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "test-runs",
+                "1"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Update Test Run",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"status\":\"completed\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/test-runs/1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "test-runs",
+                "1"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Delete Test Run",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{baseUrl}}/test-runs/1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "test-runs",
+                "1"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Test Results",
+      "item": [
+        {
+          "name": "Create Test Result",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"test_run_id\":1,\"test_case_id\":1,\"status\":\"pass\",\"executed_by\":1,\"notes\":\"Passed\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/test-results",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "test-results"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Test Results",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/test-results?test_run_id=1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "test-results"
+              ],
+              "query": [
+                {
+                  "key": "test_run_id",
+                  "value": "1"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Update Test Result",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"status\":\"fail\",\"notes\":\"Failed\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/test-results/1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "test-results",
+                "1"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Requirements",
+      "item": [
+        {
+          "name": "Create Requirement",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"requirement_id\":\"REQ-001\",\"title\":\"Login Requirement\",\"description\":\"Users can login\",\"project_id\":1,\"priority\":\"high\",\"created_by\":1}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/requirements",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "requirements"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Requirements",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/requirements?project_id=1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "requirements"
+              ],
+              "query": [
+                {
+                  "key": "project_id",
+                  "value": "1"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Requirement by ID",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/requirements/1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "requirements",
+                "1"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Update Requirement",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"title\":\"Updated Title\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/requirements/1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "requirements",
+                "1"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Delete Requirement",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{baseUrl}}/requirements/1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "requirements",
+                "1"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Defects",
+      "item": [
+        {
+          "name": "Create Defect",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"defect_id\": \"DEF-001\",\n  \"title\": \"Login Bug\",\n  \"description\": \"Button not working\",\n  \"project_id\": 1,\n  \"severity\": \"high\",\n  \"priority\": \"high\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/defects",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "defects"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Defects",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/defects?project_id=1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "defects"
+              ],
+              "query": [
+                {
+                  "key": "project_id",
+                  "value": "1"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Defect by ID",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/defects/1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "defects",
+                "1"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Update Defect",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"status\":\"in_progress\",\"assigned_to\":2}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/defects/1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "defects",
+                "1"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Delete Defect",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{baseUrl}}/defects/1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "defects",
+                "1"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Test Plans",
+      "item": [
+        {
+          "name": "Create Test Plan",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\":\"Q1 Plan\",\"description\":\"Q1 test plan\",\"project_id\":1}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/test-plans",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "test-plans"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Test Plans",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/test-plans?project_id=1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "test-plans"
+              ],
+              "query": [
+                {
+                  "key": "project_id",
+                  "value": "1"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Update Test Plan",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\":\"Updated Plan\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/test-plans/1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "test-plans",
+                "1"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Delete Test Plan",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{baseUrl}}/test-plans/1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "test-plans",
+                "1"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Milestones",
+      "item": [
+        {
+          "name": "Create Milestone",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\":\"Milestone 1\",\"description\":\"First milestone\",\"project_id\":1,\"due_date\":\"2024-01-31\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/milestones",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "milestones"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Milestones",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/milestones?project_id=1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "milestones"
+              ],
+              "query": [
+                {
+                  "key": "project_id",
+                  "value": "1"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Update Milestone",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"status\":\"completed\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/milestones/1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "milestones",
+                "1"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Delete Milestone",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{baseUrl}}/milestones/1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "milestones",
+                "1"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Analytics",
+      "item": [
+        {
+          "name": "Dashboard Analytics",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"project_id\":1}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/analytics/dashboard",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "analytics",
+                "dashboard"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Test Coverage",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/analytics/coverage?project_id=1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "analytics",
+                "coverage"
+              ],
+              "query": [
+                {
+                  "key": "project_id",
+                  "value": "1"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Execution Trends",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/analytics/trends?project_id=1&days=30",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "analytics",
+                "trends"
+              ],
+              "query": [
+                {
+                  "key": "project_id",
+                  "value": "1"
+                },
+                {
+                  "key": "days",
+                  "value": "30"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "System Settings",
+      "item": [
+        {
+          "name": "Get System Settings",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/system-settings",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "system-settings"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Update Setting",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"key\":\"signup_enabled\",\"value\":\"true\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/system-settings/signup_enabled",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "system-settings",
+                "signup_enabled"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Notifications",
+      "item": [
+        {
+          "name": "Get Notifications",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/notifications?skip=0&limit=50",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "notifications"
+              ],
+              "query": [
+                {
+                  "key": "skip",
+                  "value": "0"
+                },
+                {
+                  "key": "limit",
+                  "value": "50"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Mark as Read",
+          "request": {
+            "method": "PUT",
+            "url": {
+              "raw": "{{baseUrl}}/notifications/1/read",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "notifications",
+                "1",
+                "read"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Mark All as Read",
+          "request": {
+            "method": "PUT",
+            "url": {
+              "raw": "{{baseUrl}}/notifications/read-all",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "notifications",
+                "read-all"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Custom Fields",
+      "item": [
+        {
+          "name": "Create Custom Field",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\":\"Environment\",\"field_type\":\"dropdown\",\"options\":[\"Prod\",\"Staging\",\"Dev\"]}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/custom-fields",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "custom-fields"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Custom Fields",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/custom-fields",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "custom-fields"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Update Custom Field",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\":\"Updated Name\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/custom-fields/1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "custom-fields",
+                "1"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Delete Custom Field",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{baseUrl}}/custom-fields/1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "custom-fields",
+                "1"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Import/Export",
+      "item": [
+        {
+          "name": "Export Data",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"project_id\":1,\"export_type\":\"test_cases\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/import-export/export",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "import-export",
+                "export"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Import Data",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "multipart/form-data"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": []
+                },
+                {
+                  "key": "project_id",
+                  "value": "1",
+                  "type": "text"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/import-export/import",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "import-export",
+                "import"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Audit Trails",
+      "item": [
+        {
+          "name": "Get Audit Trails",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/audit-trails?skip=0&limit=100",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "audit-trails"
+              ],
+              "query": [
+                {
+                  "key": "skip",
+                  "value": "0"
+                },
+                {
+                  "key": "limit",
+                  "value": "100"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Audit Trail by ID",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/audit-trails/1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "audit-trails",
+                "1"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Versioning",
+      "item": [
+        {
+          "name": "Create Version",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"test_case_id\":1,\"version_name\":\"v1.0\",\"description\":\"Initial version\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/versions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "versions"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Versions",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/versions?test_case_id=1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "versions"
+              ],
+              "query": [
+                {
+                  "key": "test_case_id",
+                  "value": "1"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Compare Versions",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"version_id_1\":1,\"version_id_2\":2}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/versions/compare",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "versions",
+                "compare"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Defect Management",
+      "item": [
+        {
+          "name": "Get Project Defects",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/projects/1/defects-management",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "projects",
+                "1",
+                "defects-management"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Create Defect with Attachment",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "multipart/form-data"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "title",
+                  "value": "Bug with screenshot",
+                  "type": "text"
+                },
+                {
+                  "key": "description",
+                  "value": "Bug description",
+                  "type": "text"
+                },
+                {
+                  "key": "project_id",
+                  "value": "1",
+                  "type": "text"
+                },
+                {
+                  "key": "severity",
+                  "value": "high",
+                  "type": "text"
+                },
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": []
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/projects/1/defects-management",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "projects",
+                "1",
+                "defects-management"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Edge Cases - Authentication",
+      "item": [
+        {
+          "name": "Login with Invalid Credentials",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"password\": \"wrongpassword\",\n  \"username_or_email\": \"demo@testmona.com\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/token",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "token"
+              ]
+            },
+            "description": "Expected: 401 Unauthorized - Incorrect username or password"
+          }
+        },
+        {
+          "name": "Login with Missing Fields",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username_or_email\": \"demo@testmona.com\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/token",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "token"
+              ]
+            },
+            "description": "Expected: 422 Unprocessable Entity - Missing password field"
+          }
+        },
+        {
+          "name": "Login with Empty Credentials",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"password\": \"\",\n  \"username_or_email\": \"\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/token",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "token"
+              ]
+            },
+            "description": "Expected: 422 Unprocessable Entity - Empty credentials"
+          }
+        },
+        {
+          "name": "Access Protected Endpoint Without Token",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/users/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                "me"
+              ]
+            },
+            "description": "Expected: 401 Unauthorized - Missing or invalid token"
+          }
+        },
+        {
+          "name": "Access with Invalid Token",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "invalid_token_12345"
+                }
+              ]
+            },
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/users/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                "me"
+              ]
+            },
+            "description": "Expected: 401 Unauthorized - Invalid token"
+          }
+        },
+        {
+          "name": "Refresh with Invalid Token",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"refresh_token\":\"invalid_refresh_token\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/refresh",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "refresh"
+              ]
+            },
+            "description": "Expected: 401 Unauthorized - Invalid or expired refresh token"
+          }
+        },
+        {
+          "name": "Refresh with Missing Token",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/refresh",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "refresh"
+              ]
+            },
+            "description": "Expected: 422 Unprocessable Entity - Missing refresh_token field"
+          }
+        },
+        {
+          "name": "Register with Duplicate Username",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"username\":\"demo@testmona.com\",\"email\":\"new@example.com\",\"password\":\"password123\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/register",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "register"
+              ]
+            },
+            "description": "Expected: 400 Bad Request - Username already registered"
+          }
+        },
+        {
+          "name": "Register with Duplicate Email",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"username\":\"newuser\",\"email\":\"demo@testmona.com\",\"password\":\"password123\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/register",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "register"
+              ]
+            },
+            "description": "Expected: 400 Bad Request - Email already registered"
+          }
+        },
+        {
+          "name": "Register with Weak Password",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"username\":\"newuser\",\"email\":\"new@example.com\",\"password\":\"123\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/register",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "register"
+              ]
+            },
+            "description": "Expected: 422 Unprocessable Entity - Password too short"
+          }
+        },
+        {
+          "name": "Register with Invalid Email",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"username\":\"newuser\",\"email\":\"invalid-email\",\"password\":\"password123\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/register",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "register"
+              ]
+            },
+            "description": "Expected: 422 Unprocessable Entity - Invalid email format"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Edge Cases - Validation",
+      "item": [
+        {
+          "name": "Create Project with Empty Name",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\":\"\",\"description\":\"Test project\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/projects/",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "projects"
+              ]
+            },
+            "description": "Expected: 422 Unprocessable Entity - Project name cannot be empty"
+          }
+        },
+        {
+          "name": "Create Project with Name Too Long",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\":\"This is a very long project name that exceeds the maximum allowed length of 100 characters and should fail validation\",\"description\":\"Test project\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/projects/",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "projects"
+              ]
+            },
+            "description": "Expected: 422 Unprocessable Entity - Project name exceeds 100 characters"
+          }
+        },
+        {
+          "name": "Create Project with Invalid Status",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\":\"Test Project\",\"status\":\"invalid_status\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/projects/",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "projects"
+              ]
+            },
+            "description": "Expected: 422 Unprocessable Entity - Invalid status value"
+          }
+        },
+        {
+          "name": "Create Test Case with Missing Required Fields",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"description\":\"Test description\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/test-cases",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "test-cases"
+              ]
+            },
+            "description": "Expected: 422 Unprocessable Entity - Missing required fields (title, test_suite_id)"
+          }
+        },
+        {
+          "name": "Create Requirement with Duplicate ID",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"requirement_id\":\"REQ-001\",\"title\":\"Duplicate\",\"project_id\":1}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/requirements",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "requirements"
+              ]
+            },
+            "description": "Expected: 400 Bad Request - Requirement ID already exists"
+          }
+        },
+        {
+          "name": "Update with Invalid Priority",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"priority\":\"invalid_priority\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/test-cases/1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "test-cases",
+                "1"
+              ]
+            },
+            "description": "Expected: 422 Unprocessable Entity - Invalid priority value"
+          }
+        },
+        {
+          "name": "Change Password with Wrong Old Password",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"old_password\":\"wrongpassword\",\"new_password\":\"newpassword123\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/users/me/change-password",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                "me",
+                "change-password"
+              ]
+            },
+            "description": "Expected: 400 Bad Request - Incorrect old password"
+          }
+        },
+        {
+          "name": "Change Password with Same Password",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"old_password\":\"demo123\",\"new_password\":\"demo123\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/users/me/change-password",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                "me",
+                "change-password"
+              ]
+            },
+            "description": "Expected: 400 Bad Request - New password must be different from old password"
+          }
+        },
+        {
+          "name": "Change Password with Short New Password",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"old_password\":\"demo123\",\"new_password\":\"123\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/users/me/change-password",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                "me",
+                "change-password"
+              ]
+            },
+            "description": "Expected: 400 Bad Request - New password must be at least 8 characters"
+          }
+        },
+        {
+          "name": "Create Custom Field with Invalid Type",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\":\"Test Field\",\"field_type\":\"invalid_type\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/custom-fields",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "custom-fields"
+              ]
+            },
+            "description": "Expected: 422 Unprocessable Entity - Invalid field type"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Edge Cases - Not Found",
+      "item": [
+        {
+          "name": "Get Non-Existent User",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/users/99999",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                "99999"
+              ]
+            },
+            "description": "Expected: 404 Not Found - User does not exist"
+          }
+        },
+        {
+          "name": "Get Non-Existent Project",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/projects/99999",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "projects",
+                "99999"
+              ]
+            },
+            "description": "Expected: 404 Not Found - Project does not exist"
+          }
+        },
+        {
+          "name": "Get Non-Existent Test Suite",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/test-suites/99999",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "test-suites",
+                "99999"
+              ]
+            },
+            "description": "Expected: 404 Not Found - Test suite does not exist"
+          }
+        },
+        {
+          "name": "Get Non-Existent Test Case",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/test-cases/99999",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "test-cases",
+                "99999"
+              ]
+            },
+            "description": "Expected: 404 Not Found - Test case does not exist"
+          }
+        },
+        {
+          "name": "Get Non-Existent Defect",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/defects/99999",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "defects",
+                "99999"
+              ]
+            },
+            "description": "Expected: 404 Not Found - Defect does not exist"
+          }
+        },
+        {
+          "name": "Get Non-Existent Requirement",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/requirements/99999",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "requirements",
+                "99999"
+              ]
+            },
+            "description": "Expected: 404 Not Found - Requirement does not exist"
+          }
+        },
+        {
+          "name": "Update Non-Existent Resource",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\":\"Updated\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/projects/99999",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "projects",
+                "99999"
+              ]
+            },
+            "description": "Expected: 404 Not Found - Resource does not exist"
+          }
+        },
+        {
+          "name": "Delete Non-Existent Resource",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{baseUrl}}/projects/99999",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "projects",
+                "99999"
+              ]
+            },
+            "description": "Expected: 404 Not Found - Resource does not exist"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Edge Cases - Permissions",
+      "item": [
+        {
+          "name": "Access Project Without Read Permission",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/projects/2",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "projects",
+                "2"
+              ]
+            },
+            "description": "Expected: 403 Forbidden - Insufficient permissions"
+          }
+        },
+        {
+          "name": "Update Project Without Write Permission",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\":\"Unauthorized Update\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/projects/2",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "projects",
+                "2"
+              ]
+            },
+            "description": "Expected: 403 Forbidden - Insufficient permissions"
+          }
+        },
+        {
+          "name": "Delete Project Without Delete Permission",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{baseUrl}}/projects/2",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "projects",
+                "2"
+              ]
+            },
+            "description": "Expected: 403 Forbidden - Insufficient permissions"
+          }
+        },
+        {
+          "name": "Create Project Without Manage Permission",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\":\"Unauthorized Project\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/projects/",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "projects"
+              ]
+            },
+            "description": "Expected: 403 Forbidden - Insufficient permissions"
+          }
+        },
+        {
+          "name": "View Another User Without Admin",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/users/2",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                "2"
+              ]
+            },
+            "description": "Expected: 403 Forbidden - Not authorized to view this user"
+          }
+        },
+        {
+          "name": "Delete User Without Superuser",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{baseUrl}}/users/2",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                "2"
+              ]
+            },
+            "description": "Expected: 403 Forbidden - Only superusers can delete users"
+          }
+        },
+        {
+          "name": "Get Invitations Without Superuser",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/invitations",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "invitations"
+              ]
+            },
+            "description": "Expected: 403 Forbidden - Only superusers can view invitations"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Edge Cases - Pagination",
+      "item": [
+        {
+          "name": "Negative Skip Value",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/users?skip=-10&limit=100",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users"
+              ],
+              "query": [
+                {
+                  "key": "skip",
+                  "value": "-10"
+                },
+                {
+                  "key": "limit",
+                  "value": "100"
+                }
+              ]
+            },
+            "description": "Expected: 422 Unprocessable Entity - Negative skip value"
+          }
+        },
+        {
+          "name": "Negative Limit Value",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/users?skip=0&limit=-10",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users"
+              ],
+              "query": [
+                {
+                  "key": "skip",
+                  "value": "0"
+                },
+                {
+                  "key": "limit",
+                  "value": "-10"
+                }
+              ]
+            },
+            "description": "Expected: 422 Unprocessable Entity - Negative limit value"
+          }
+        },
+        {
+          "name": "Extremely Large Limit Value",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/users?skip=0&limit=999999",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users"
+              ],
+              "query": [
+                {
+                  "key": "skip",
+                  "value": "0"
+                },
+                {
+                  "key": "limit",
+                  "value": "999999"
+                }
+              ]
+            },
+            "description": "Expected: 422 Unprocessable Entity or truncated results - Limit too large"
+          }
+        },
+        {
+          "name": "Zero Limit Value",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/users?skip=0&limit=0",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users"
+              ],
+              "query": [
+                {
+                  "key": "skip",
+                  "value": "0"
+                },
+                {
+                  "key": "limit",
+                  "value": "0"
+                }
+              ]
+            },
+            "description": "Expected: Empty array or 422 - Zero limit value"
+          }
+        },
+        {
+          "name": "Non-Numeric Skip Value",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/users?skip=abc&limit=100",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users"
+              ],
+              "query": [
+                {
+                  "key": "skip",
+                  "value": "abc"
+                },
+                {
+                  "key": "limit",
+                  "value": "100"
+                }
+              ]
+            },
+            "description": "Expected: 422 Unprocessable Entity - Invalid skip value type"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Edge Cases - Data Integrity",
+      "item": [
+        {
+          "name": "Create Duplicate Project Name",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\":\"Test Project\",\"description\":\"Duplicate name test\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/projects/",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "projects"
+              ]
+            },
+            "description": "Expected: 400 Bad Request - Project with this name already exists"
+          }
+        },
+        {
+          "name": "Delete Project with Existing Test Suites",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{baseUrl}}/projects/1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "projects",
+                "1"
+              ]
+            },
+            "description": "Expected: 400 Bad Request or cascade delete - Cannot delete project with dependencies"
+          }
+        },
+        {
+          "name": "Delete Test Suite with Existing Test Cases",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{baseUrl}}/test-suites/1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "test-suites",
+                "1"
+              ]
+            },
+            "description": "Expected: 400 Bad Request or cascade delete - Cannot delete test suite with test cases"
+          }
+        },
+        {
+          "name": "Create Test Result for Non-Existent Test Run",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"test_run_id\":99999,\"test_case_id\":1,\"status\":\"pass\",\"executed_by\":1}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/test-results",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "test-results"
+              ]
+            },
+            "description": "Expected: 404 Not Found or 400 - Test run does not exist"
+          }
+        },
+        {
+          "name": "Create Test Result for Non-Existent Test Case",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"test_run_id\":1,\"test_case_id\":99999,\"status\":\"pass\",\"executed_by\":1}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/test-results",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "test-results"
+              ]
+            },
+            "description": "Expected: 404 Not Found or 400 - Test case does not exist"
+          }
+        },
+        {
+          "name": "Assign User to Non-Existent Project",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"user_id\":1,\"project_id\":99999,\"role\":\"tester\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/project-assignments/",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "project-assignments"
+              ]
+            },
+            "description": "Expected: 404 Not Found - Project does not exist"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Edge Cases - File Upload",
+      "item": [
+        {
+          "name": "Upload Avatar with Invalid File Type",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "multipart/form-data"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": []
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/users/me/avatar",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                "me",
+                "avatar"
+              ]
+            },
+            "description": "Expected: 400 Bad Request - Invalid file type (only images allowed)"
+          }
+        },
+        {
+          "name": "Upload Avatar Oversized File",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "multipart/form-data"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": []
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/users/me/avatar",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                "me",
+                "avatar"
+              ]
+            },
+            "description": "Expected: 400 Bad Request - File too large (max 5MB)"
+          }
+        },
+        {
+          "name": "Upload Avatar Missing File",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "multipart/form-data"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": []
+            },
+            "url": {
+              "raw": "{{baseUrl}}/users/me/avatar",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                "me",
+                "avatar"
+              ]
+            },
+            "description": "Expected: 422 Unprocessable Entity - Missing file field"
+          }
+        },
+        {
+          "name": "Import with Invalid File Format",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "multipart/form-data"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": []
+                },
+                {
+                  "key": "project_id",
+                  "value": "1",
+                  "type": "text"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/import-export/import",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "import-export",
+                "import"
+              ]
+            },
+            "description": "Expected: 400 Bad Request - Invalid file format"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Edge Cases - Special Characters",
+      "item": [
+        {
+          "name": "Create Project with XSS Attempt",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\":\"<script>alert('xss')</script>\",\"description\":\"Test\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/projects/",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "projects"
+              ]
+            },
+            "description": "Expected: 422 or sanitized input - XSS attempt should be blocked"
+          }
+        },
+        {
+          "name": "Create Project with SQL Injection Attempt",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\":\"'; DROP TABLE projects; --\",\"description\":\"Test\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/projects/",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "projects"
+              ]
+            },
+            "description": "Expected: 422 or sanitized input - SQL injection should be blocked"
+          }
+        },
+        {
+          "name": "Create Project with Unicode Characters",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\":\"\u6d4b\u8bd5\u9879\u76ee\",\"description\":\"Unicode test\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/projects/",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "projects"
+              ]
+            },
+            "description": "Expected: 201 Created - Unicode characters should be supported"
+          }
+        },
+        {
+          "name": "Create Project with Emoji",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\":\"Test Project \ud83d\ude80\",\"description\":\"Emoji test \ud83c\udf89\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/projects/",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "projects"
+              ]
+            },
+            "description": "Expected: 201 Created - Emoji should be supported"
+          }
+        },
+        {
+          "name": "Create Project with Null Bytes",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\":\"Test\\x00Project\",\"description\":\"Test\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/projects/",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "projects"
+              ]
+            },
+            "description": "Expected: 422 - Null bytes should be rejected"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Edge Cases - Rate Limiting",
+      "item": [
+        {
+          "name": "Multiple Rapid Requests",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/users/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                "me"
+              ]
+            },
+            "description": "Expected: 429 Too Many Requests - After exceeding rate limit (1000 req/60s)"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Edge Cases - Notification Preferences",
+      "item": [
+        {
+          "name": "Set Mute Duration Too Short",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"mute_duration_hours\":0}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/users/me/notification-preferences",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                "me",
+                "notification-preferences"
+              ]
+            },
+            "description": "Expected: 400 Bad Request - mute_duration_hours must be at least 1"
+          }
+        },
+        {
+          "name": "Set Mute Duration Too Long",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"mute_duration_hours\":200}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/users/me/notification-preferences",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                "me",
+                "notification-preferences"
+              ]
+            },
+            "description": "Expected: 400 Bad Request - mute_duration_hours cannot exceed 168 hours"
+          }
+        },
+        {
+          "name": "Set Negative Mute Duration",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"mute_duration_hours\":-5}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/users/me/notification-preferences",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                "me",
+                "notification-preferences"
+              ]
+            },
+            "description": "Expected: 400 Bad Request - Negative value not allowed"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Edge Cases - Account Deletion",
+      "item": [
+        {
+          "name": "Delete Account with Wrong Password",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"password\":\"wrongpassword\",\"confirm_text\":\"DELETE MY ACCOUNT\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/users/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                "me"
+              ]
+            },
+            "description": "Expected: 400 Bad Request - Incorrect password"
+          }
+        },
+        {
+          "name": "Delete Account with Wrong Confirmation",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"password\":\"demo123\",\"confirm_text\":\"WRONG TEXT\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/users/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                "me"
+              ]
+            },
+            "description": "Expected: 400 Bad Request - Confirmation text must be 'DELETE MY ACCOUNT'"
+          }
+        },
+        {
+          "name": "Delete Account Missing Password",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"confirm_text\":\"DELETE MY ACCOUNT\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/users/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                "me"
+              ]
+            },
+            "description": "Expected: 400 Bad Request - Password is required"
+          }
+        },
+        {
+          "name": "Delete Account Missing Confirmation",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"password\":\"demo123\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/users/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                "me"
+              ]
+            },
+            "description": "Expected: 400 Bad Request - Confirmation text is required"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Edge Cases - Project Deletion Verification",
+      "item": [
+        {
+          "name": "Delete Project with Wrong Name",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"project_name\":\"Wrong Name\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/projects/1/delete",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "projects",
+                "1",
+                "delete"
+              ]
+            },
+            "description": "Expected: 400 Bad Request - Project name mismatch"
+          }
+        },
+        {
+          "name": "Delete Project Missing Name",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/projects/1/delete",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "projects",
+                "1",
+                "delete"
+              ]
+            },
+            "description": "Expected: 400 Bad Request - project_name field is required"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Edge Cases - Date/Time",
+      "item": [
+        {
+          "name": "Create Milestone with Invalid Date Format",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\":\"Milestone\",\"project_id\":1,\"due_date\":\"invalid-date\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/milestones",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "milestones"
+              ]
+            },
+            "description": "Expected: 422 Unprocessable Entity - Invalid date format"
+          }
+        },
+        {
+          "name": "Create Milestone with Past Date",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\":\"Milestone\",\"project_id\":1,\"due_date\":\"2020-01-01\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/milestones",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "milestones"
+              ]
+            },
+            "description": "Expected: 422 or accepted - Past date validation"
+          }
+        },
+        {
+          "name": "Create Milestone with Far Future Date",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\":\"Milestone\",\"project_id\":1,\"due_date\":\"2100-01-01\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/milestones",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "milestones"
+              ]
+            },
+            "description": "Expected: 422 or accepted - Far future date validation"
+          }
+        },
+        {
+          "name": "Create Test Plan with End Before Start",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\":\"Test Plan\",\"project_id\":1,\"start_date\":\"2024-03-31\",\"end_date\":\"2024-01-01\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/test-plans",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "test-plans"
+              ]
+            },
+            "description": "Expected: 422 Unprocessable Entity - End date before start date"
+          }
+        },
+        {
+          "name": "Create Test Plan with Invalid Date Range",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\":\"Test Plan\",\"project_id\":1,\"start_date\":\"2024-13-01\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/test-plans",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "test-plans"
+              ]
+            },
+            "description": "Expected: 422 Unprocessable Entity - Invalid month"
+          }
+        },
+        {
+          "name": "Create Test Plan with Leap Day",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\":\"Test Plan\",\"project_id\":1,\"start_date\":\"2024-02-29\",\"end_date\":\"2024-03-01\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/test-plans",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "test-plans"
+              ]
+            },
+            "description": "Expected: 201 Created - Leap day should be accepted"
+          }
+        },
+        {
+          "name": "Create Test Plan with Non-Leap Year Feb 29",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\":\"Test Plan\",\"project_id\":1,\"start_date\":\"2023-02-29\",\"end_date\":\"2023-03-01\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/test-plans",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "test-plans"
+              ]
+            },
+            "description": "Expected: 422 Unprocessable Entity - Invalid date (2023 not a leap year)"
+          }
+        },
+        {
+          "name": "Create Milestone with UTC Timezone",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\":\"Milestone\",\"project_id\":1,\"due_date\":\"2024-12-31T23:59:59Z\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/milestones",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "milestones"
+              ]
+            },
+            "description": "Expected: 201 Created - UTC timezone should be accepted"
+          }
+        },
+        {
+          "name": "Create Milestone with UTC Offset",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\":\"Milestone\",\"project_id\":1,\"due_date\":\"2024-12-31T23:59:59+05:30\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/milestones",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "milestones"
+              ]
+            },
+            "description": "Expected: 201 Created - UTC offset should be accepted"
+          }
+        },
+        {
+          "name": "Create Milestone with Invalid Timezone",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\":\"Milestone\",\"project_id\":1,\"due_date\":\"2024-12-31T23:59:59INVALID\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/milestones",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "milestones"
+              ]
+            },
+            "description": "Expected: 422 Unprocessable Entity - Invalid timezone"
+          }
+        },
+        {
+          "name": "Create Test Run with DST Transition Date",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\":\"Test Run\",\"test_suite_id\":1,\"executed_by\":1,\"scheduled_date\":\"2024-03-10T02:30:00\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/test-runs",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "test-runs"
+              ]
+            },
+            "description": "Expected: 201 Created or 422 - DST transition handling"
+          }
+        },
+        {
+          "name": "Create Milestone with Timezone Abbreviation",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\":\"Milestone\",\"project_id\":1,\"due_date\":\"2024-12-31T23:59:59EST\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/milestones",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "milestones"
+              ]
+            },
+            "description": "Expected: 422 or 201 - Timezone abbreviation handling"
+          }
+        },
+        {
+          "name": "Create Test Plan with Different Timezones",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\":\"Test Plan\",\"project_id\":1,\"start_date\":\"2024-01-01T00:00:00+00:00\",\"end_date\":\"2024-12-31T23:59:59-12:00\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/test-plans",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "test-plans"
+              ]
+            },
+            "description": "Expected: 422 or 201 - Mixed timezone handling"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Edge Cases - Search and Filtering",
+      "item": [
+        {
+          "name": "Search with Empty Query",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/defects?project_id=1&search=",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "defects"
+              ],
+              "query": [
+                {
+                  "key": "project_id",
+                  "value": "1"
+                },
+                {
+                  "key": "search",
+                  "value": ""
+                }
+              ]
+            },
+            "description": "Expected: All results or 422 - Empty search query"
+          }
+        },
+        {
+          "name": "Search with Special Characters",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/defects?project_id=1&search=%3Cscript%3E",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "defects"
+              ],
+              "query": [
+                {
+                  "key": "project_id",
+                  "value": "1"
+                },
+                {
+                  "key": "search",
+                  "value": "<script>"
+                }
+              ]
+            },
+            "description": "Expected: Sanitized or 422 - XSS in search query"
+          }
+        },
+        {
+          "name": "Filter with Invalid Status",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/defects?project_id=1&status=invalid_status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "defects"
+              ],
+              "query": [
+                {
+                  "key": "project_id",
+                  "value": "1"
+                },
+                {
+                  "key": "status",
+                  "value": "invalid_status"
+                }
+              ]
+            },
+            "description": "Expected: 422 or empty results - Invalid status filter"
+          }
+        },
+        {
+          "name": "Filter with Multiple Same Parameters",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/defects?project_id=1&status=open&status=closed",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "defects"
+              ],
+              "query": [
+                {
+                  "key": "project_id",
+                  "value": "1"
+                },
+                {
+                  "key": "status",
+                  "value": "open"
+                },
+                {
+                  "key": "status",
+                  "value": "closed"
+                }
+              ]
+            },
+            "description": "Expected: 422 or last value wins - Duplicate query parameters"
+          }
+        },
+        {
+          "name": "Search with Very Long Query",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/defects?project_id=1&search=verylongsearchquerythatexceedsmaximumallowedlengthandshouldfailvalidation",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "defects"
+              ],
+              "query": [
+                {
+                  "key": "project_id",
+                  "value": "1"
+                },
+                {
+                  "key": "search",
+                  "value": "verylongsearchquerythatexceedsmaximumallowedlengthandshouldfailvalidation"
+                }
+              ]
+            },
+            "description": "Expected: 422 or truncated - Search query too long"
+          }
+        },
+        {
+          "name": "Filter with Invalid ID",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/defects?project_id=abc",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "defects"
+              ],
+              "query": [
+                {
+                  "key": "project_id",
+                  "value": "abc"
+                }
+              ]
+            },
+            "description": "Expected: 422 Unprocessable Entity - Invalid ID format"
+          }
+        },
+        {
+          "name": "Filter with Negative ID",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/defects?project_id=-1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "defects"
+              ],
+              "query": [
+                {
+                  "key": "project_id",
+                  "value": "-1"
+                }
+              ]
+            },
+            "description": "Expected: 422 or empty results - Negative ID"
+          }
+        },
+        {
+          "name": "Filter with Zero ID",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/defects?project_id=0",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "defects"
+              ],
+              "query": [
+                {
+                  "key": "project_id",
+                  "value": "0"
+                }
+              ]
+            },
+            "description": "Expected: 422 or empty results - Zero ID"
+          }
+        },
+        {
+          "name": "Search with SQL Injection Pattern",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/defects?project_id=1&search=' OR '1'='1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "defects"
+              ],
+              "query": [
+                {
+                  "key": "project_id",
+                  "value": "1"
+                },
+                {
+                  "key": "search",
+                  "value": "' OR '1'='1"
+                }
+              ]
+            },
+            "description": "Expected: Sanitized or 422 - SQL injection pattern"
+          }
+        },
+        {
+          "name": "Filter with Boolean String",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/defects?project_id=true",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "defects"
+              ],
+              "query": [
+                {
+                  "key": "project_id",
+                  "value": "true"
+                }
+              ]
+            },
+            "description": "Expected: 422 or empty results - Boolean string for ID"
+          }
+        },
+        {
+          "name": "Search with Unicode Characters",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/defects?project_id=1&search=%F0%9F%98%80",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "defects"
+              ],
+              "query": [
+                {
+                  "key": "project_id",
+                  "value": "1"
+                },
+                {
+                  "key": "search",
+                  "value": "\ud83d\ude00"
+                }
+              ]
+            },
+            "description": "Expected: Sanitized or 422 - Unicode emoji in search"
+          }
+        },
+        {
+          "name": "Filter with Null Value",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/defects?project_id=null",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "defects"
+              ],
+              "query": [
+                {
+                  "key": "project_id",
+                  "value": "null"
+                }
+              ]
+            },
+            "description": "Expected: 422 or empty results - Null string for ID"
+          }
+        },
+        {
+          "name": "Search with Wildcard Pattern",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/defects?project_id=1&search=*test*",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "defects"
+              ],
+              "query": [
+                {
+                  "key": "project_id",
+                  "value": "1"
+                },
+                {
+                  "key": "search",
+                  "value": "*test*"
+                }
+              ]
+            },
+            "description": "Expected: Literal match or 422 - Wildcard handling"
+          }
+        },
+        {
+          "name": "Filter with Array Parameter",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/defects?project_id[]=1&project_id[]=2",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "defects"
+              ],
+              "query": [
+                {
+                  "key": "project_id[]",
+                  "value": "1"
+                },
+                {
+                  "key": "project_id[]",
+                  "value": "2"
+                }
+              ]
+            },
+            "description": "Expected: 422 or first value - Array parameter handling"
+          }
+        },
+        {
+          "name": "Search with Regex Pattern",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/defects?project_id=1&search=[a-z]+",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "defects"
+              ],
+              "query": [
+                {
+                  "key": "project_id",
+                  "value": "1"
+                },
+                {
+                  "key": "search",
+                  "value": "[a-z]+"
+                }
+              ]
+            },
+            "description": "Expected: Literal match or 422 - Regex pattern handling"
+          }
+        },
+        {
+          "name": "Filter with Extremely Large Page Size",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/defects?project_id=1&page_size=999999",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "defects"
+              ],
+              "query": [
+                {
+                  "key": "project_id",
+                  "value": "1"
+                },
+                {
+                  "key": "page_size",
+                  "value": "999999"
+                }
+              ]
+            },
+            "description": "Expected: 422 or capped - Excessive page size"
+          }
+        },
+        {
+          "name": "Filter with Negative Page Number",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/defects?project_id=1&page=-1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "defects"
+              ],
+              "query": [
+                {
+                  "key": "project_id",
+                  "value": "1"
+                },
+                {
+                  "key": "page",
+                  "value": "-1"
+                }
+              ]
+            },
+            "description": "Expected: 422 or first page - Negative page number"
+          }
+        },
+        {
+          "name": "Search with Newline Character",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/defects?project_id=1&search=test%0A",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "defects"
+              ],
+              "query": [
+                {
+                  "key": "project_id",
+                  "value": "1"
+                },
+                {
+                  "key": "search",
+                  "value": "test\n"
+                }
+              ]
+            },
+            "description": "Expected: Sanitized or 422 - Newline in search"
+          }
+        },
+        {
+          "name": "Filter with Invalid Sort Direction",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/defects?project_id=1&sort=invalid",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "defects"
+              ],
+              "query": [
+                {
+                  "key": "project_id",
+                  "value": "1"
+                },
+                {
+                  "key": "sort",
+                  "value": "invalid"
+                }
+              ]
+            },
+            "description": "Expected: 422 or default sort - Invalid sort direction"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Edge Cases - State Transitions",
+      "item": [
+        {
+          "name": "Update Defect Invalid Transition",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"status\":\"open\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/defects/1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "defects",
+                "1"
+              ]
+            },
+            "description": "Expected: 400 or accepted - Invalid state transition (closed to open)"
+          }
+        },
+        {
+          "name": "Complete Test Run with Pending Results",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"status\":\"completed\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/test-runs/1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "test-runs",
+                "1"
+              ]
+            },
+            "description": "Expected: 400 or cascade - Completing run with pending test cases"
+          }
+        },
+        {
+          "name": "Update Milestone Invalid Status",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"status\":\"invalid_status\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/milestones/1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "milestones",
+                "1"
+              ]
+            },
+            "description": "Expected: 422 Unprocessable Entity - Invalid status value"
+          }
+        },
+        {
+          "name": "Deactivate User with Active Projects",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"is_active\":false}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/users/2",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                "2"
+              ]
+            },
+            "description": "Expected: 400 or cascade - Deactivating user with active assignments"
+          }
+        },
+        {
+          "name": "Close Project with Active Test Runs",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"status\":\"archived\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/projects/1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "projects",
+                "1"
+              ]
+            },
+            "description": "Expected: 400 or cascade - Closing project with active runs"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Edge Cases - Reference Integrity",
+      "item": [
+        {
+          "name": "Create Test Case for Non-Existent Suite",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"title\":\"Test\",\"test_suite_id\":99999}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/test-cases",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "test-cases"
+              ]
+            },
+            "description": "Expected: 404 Not Found or 400 - Test suite does not exist"
+          }
+        },
+        {
+          "name": "Create Test Step for Non-Existent Case",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"test_case_id\":99999,\"step_number\":1,\"action\":\"Test\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/test-steps",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "test-steps"
+              ]
+            },
+            "description": "Expected: 404 Not Found or 400 - Test case does not exist"
+          }
+        },
+        {
+          "name": "Create Test Run for Non-Existent Suite",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\":\"Run\",\"test_suite_id\":99999,\"executed_by\":1}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/test-runs",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "test-runs"
+              ]
+            },
+            "description": "Expected: 404 Not Found or 400 - Test suite does not exist"
+          }
+        },
+        {
+          "name": "Create Requirement for Non-Existent Project",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"requirement_id\":\"REQ-001\",\"title\":\"Test\",\"project_id\":99999}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/requirements",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "requirements"
+              ]
+            },
+            "description": "Expected: 404 Not Found or 400 - Project does not exist"
+          }
+        },
+        {
+          "name": "Create Defect for Non-Existent Project",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Bug\",\n  \"project_id\": 99999\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/defects",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "defects"
+              ]
+            },
+            "description": "Expected: 404 Not Found or 400 - Project does not exist"
+          }
+        },
+        {
+          "name": "Assign Non-Existent User to Project",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"user_id\":99999,\"project_id\":1,\"role\":\"tester\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/project-assignments/",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "project-assignments"
+              ]
+            },
+            "description": "Expected: 404 Not Found or 400 - User does not exist"
+          }
+        },
+        {
+          "name": "Link Requirement to Non-Existent Test Case",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"requirement_id\":1,\"test_case_id\":99999}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/requirement-links",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "requirement-links"
+              ]
+            },
+            "description": "Expected: 404 Not Found or 400 - Test case does not exist"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Edge Cases - Bulk Operations",
+      "item": [
+        {
+          "name": "Create Multiple Test Cases with Duplicate Titles",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "[{\"title\":\"Test\",\"test_suite_id\":1},{\"title\":\"Test\",\"test_suite_id\":1}]"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/test-cases/bulk",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "test-cases",
+                "bulk"
+              ]
+            },
+            "description": "Expected: 400 or partial success - Duplicate titles in bulk"
+          }
+        },
+        {
+          "name": "Create Empty Bulk Array",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "[]"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/test-cases/bulk",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "test-cases",
+                "bulk"
+              ]
+            },
+            "description": "Expected: 422 or empty - Empty bulk array"
+          }
+        },
+        {
+          "name": "Create Bulk with Invalid Item",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "[{\"title\":\"Valid\",\"test_suite_id\":1},{\"invalid\":\"item\"}]"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/test-cases/bulk",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "test-cases",
+                "bulk"
+              ]
+            },
+            "description": "Expected: 422 or partial success - Invalid item in bulk"
+          }
+        },
+        {
+          "name": "Create Bulk Exceeding Limit",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "[{\"title\":\"Test\",\"test_suite_id\":1},{\"title\":\"Test2\",\"test_suite_id\":1},{\"title\":\"Test3\",\"test_suite_id\":1},{\"title\":\"Test4\",\"test_suite_id\":1},{\"title\":\"Test5\",\"test_suite_id\":1},{\"title\":\"Test6\",\"test_suite_id\":1},{\"title\":\"Test7\",\"test_suite_id\":1},{\"title\":\"Test8\",\"test_suite_id\":1},{\"title\":\"Test9\",\"test_suite_id\":1},{\"title\":\"Test10\",\"test_suite_id\":1},{\"title\":\"Test11\",\"test_suite_id\":1}]"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/test-cases/bulk",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "test-cases",
+                "bulk"
+              ]
+            },
+            "description": "Expected: 422 or partial success - Bulk limit exceeded"
+          }
+        },
+        {
+          "name": "Update Bulk with Mixed Valid/Invalid",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "[{\"id\":1,\"title\":\"Updated\"},{\"id\":99999,\"title\":\"Invalid\"}]"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/test-cases/bulk",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "test-cases",
+                "bulk"
+              ]
+            },
+            "description": "Expected: 207 Multi-Status or partial success - Mixed results"
+          }
+        },
+        {
+          "name": "Bulk Delete with Non-Existent IDs",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "[{\"id\":1},{\"id\":99999},{\"id\":99998}]"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/test-cases/bulk",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "test-cases",
+                "bulk"
+              ]
+            },
+            "description": "Expected: 207 Multi-Status or partial success - Some IDs not found"
+          }
+        },
+        {
+          "name": "Bulk Create with Circular References",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "[{\"title\":\"Test1\",\"parent_id\":2},{\"title\":\"Test2\",\"parent_id\":1}]"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/test-cases/bulk",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "test-cases",
+                "bulk"
+              ]
+            },
+            "description": "Expected: 422 or partial success - Circular reference handling"
+          }
+        },
+        {
+          "name": "Bulk Update with Version Conflicts",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "[{\"id\":1,\"title\":\"Updated\",\"version\":1},{\"id\":2,\"title\":\"Updated2\",\"version\":5}]"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/test-cases/bulk",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "test-cases",
+                "bulk"
+              ]
+            },
+            "description": "Expected: 409 Conflict or partial success - Version conflicts"
+          }
+        },
+        {
+          "name": "Bulk Create with Duplicate Names",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "[{\"title\":\"Duplicate\",\"test_suite_id\":1},{\"title\":\"Duplicate\",\"test_suite_id\":1}]"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/test-cases/bulk",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "test-cases",
+                "bulk"
+              ]
+            },
+            "description": "Expected: 409 Conflict or partial success - Duplicate names"
+          }
+        },
+        {
+          "name": "Bulk Operation with Invalid JSON Structure",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "not an array"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/test-cases/bulk",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "test-cases",
+                "bulk"
+              ]
+            },
+            "description": "Expected: 422 Unprocessable Entity - Not an array"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Edge Cases - Concurrency",
+      "item": [
+        {
+          "name": "Simultaneous Update Conflict",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "If-Match",
+                "value": "old_version"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\":\"Updated\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/projects/1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "projects",
+                "1"
+              ]
+            },
+            "description": "Expected: 409 Conflict or 200 - Optimistic concurrency control"
+          }
+        },
+        {
+          "name": "Update with Stale Version",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\":\"Updated\",\"version\":1}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/projects/1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "projects",
+                "1"
+              ]
+            },
+            "description": "Expected: 409 Conflict - Stale version"
+          }
+        },
+        {
+          "name": "Delete While Being Modified",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{baseUrl}}/test-cases/1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "test-cases",
+                "1"
+              ]
+            },
+            "description": "Expected: 409 Conflict or 200 - Concurrent modification"
+          }
+        },
+        {
+          "name": "Concurrent Create with Same Name",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\":\"Duplicate Project\",\"description\":\"Test\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/projects",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "projects"
+              ]
+            },
+            "description": "Expected: 409 Conflict - Duplicate name race condition"
+          }
+        },
+        {
+          "name": "Concurrent Update Same Field",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"status\":\"in_progress\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/defects/1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "defects",
+                "1"
+              ]
+            },
+            "description": "Expected: 409 Conflict or 200 - Last write wins"
+          }
+        },
+        {
+          "name": "Update with Missing If-Match Header",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\":\"Updated\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/projects/1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "projects",
+                "1"
+              ]
+            },
+            "description": "Expected: 428 Precondition Required or 200 - Missing ETag header"
+          }
+        },
+        {
+          "name": "Concurrent Assignment Changes",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"user_id\":2,\"project_id\":1,\"role\":\"admin\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/project-assignments/",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "project-assignments"
+              ]
+            },
+            "description": "Expected: 409 Conflict or 200 - Concurrent role change"
+          }
+        },
+        {
+          "name": "Bulk Create with Duplicate IDs",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "[{\"id\":1,\"title\":\"Test\"},{\"id\":1,\"title\":\"Test2\"}]"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/test-cases/bulk",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "test-cases",
+                "bulk"
+              ]
+            },
+            "description": "Expected: 409 Conflict or partial success - Duplicate IDs in bulk"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Edge Cases - Performance",
+      "item": [
+        {
+          "name": "Request with Many Nested Objects",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"title\":\"Test\",\"steps\":[{\"action\":\"Test\"},{\"action\":\"Test\"},{\"action\":\"Test\"},{\"action\":\"Test\"},{\"action\":\"Test\"},{\"action\":\"Test\"},{\"action\":\"Test\"},{\"action\":\"Test\"},{\"action\":\"Test\"},{\"action\":\"Test\"},{\"action\":\"Test\"},{\"action\":\"Test\"},{\"action\":\"Test\"},{\"action\":\"Test\"},{\"action\":\"Test\"},{\"action\":\"Test\"},{\"action\":\"Test\"},{\"action\":\"Test\"},{\"action\":\"Test\"},{\"action\":\"Test\"},{\"action\":\"Test\"}]}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/test-cases",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "test-cases"
+              ]
+            },
+            "description": "Expected: 422 or accepted - Deep nesting validation"
+          }
+        },
+        {
+          "name": "Request with Malformed JSON",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"title\":\"Test\" invalid json}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/test-cases",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "test-cases"
+              ]
+            },
+            "description": "Expected: 422 Unprocessable Entity - Malformed JSON"
+          }
+        },
+        {
+          "name": "Request with Extra Fields",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"title\":\"Test\",\"extra_field\":\"value\",\"another_extra\":123}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/test-cases",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "test-cases"
+              ]
+            },
+            "description": "Expected: 422 or ignored - Extra fields handling"
+          }
+        },
+        {
+          "name": "Request with Wrong Content Type",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "text/plain"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"title\":\"Test\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/test-cases",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "test-cases"
+              ]
+            },
+            "description": "Expected: 415 Unsupported Media Type - Wrong content type"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Edge Cases - Database Constraints",
+      "item": [
+        {
+          "name": "Create with Circular Reference",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"title\":\"Test\",\"parent_id\":1}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/test-case-sections",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "test-case-sections"
+              ]
+            },
+            "description": "Expected: 400 or 422 - Circular reference prevention"
+          }
+        },
+        {
+          "name": "Create Self-Referencing",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"title\":\"Test\",\"parent_id\":1}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/test-case-sections",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "test-case-sections"
+              ]
+            },
+            "description": "Expected: 400 or 422 - Self-referencing prevention"
+          }
+        },
+        {
+          "name": "Update to Violate Unique Constraint",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\":\"Existing Project Name\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/projects/2",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "projects",
+                "2"
+              ]
+            },
+            "description": "Expected: 400 Bad Request - Unique constraint violation"
+          }
+        },
+        {
+          "name": "Delete Referenced by Foreign Key",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{baseUrl}}/users/1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                "1"
+              ]
+            },
+            "description": "Expected: 400 or cascade - Foreign key constraint"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Edge Cases - Input Sanitization",
+      "item": [
+        {
+          "name": "Create with HTML Tags",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"title\":\"<b>Bold</b> <i>Italic</i>\",\"description\":\"<script>alert('xss')</script>\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/test-cases",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "test-cases"
+              ]
+            },
+            "description": "Expected: 201 with sanitized input or 422 - HTML handling"
+          }
+        },
+        {
+          "name": "Create with Control Characters",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"title\":\"Test\\t\\n\\r\\x00\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/test-cases",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "test-cases"
+              ]
+            },
+            "description": "Expected: 422 or sanitized - Control character handling"
+          }
+        },
+        {
+          "name": "Create with Path Traversal in Name",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"title\":\"../../../etc/passwd\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/test-cases",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "test-cases"
+              ]
+            },
+            "description": "Expected: 422 or sanitized - Path traversal prevention"
+          }
+        },
+        {
+          "name": "Create with Command Injection",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"title\":\"Test; rm -rf /\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/test-cases",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "test-cases"
+              ]
+            },
+            "description": "Expected: 422 or sanitized - Command injection prevention"
+          }
+        },
+        {
+          "name": "Create with LDAP Injection",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"title\":\"*)(uid=*))(|\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/test-cases",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "test-cases"
+              ]
+            },
+            "description": "Expected: 422 or sanitized - LDAP injection prevention"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Edge Cases - Business Logic",
+      "item": [
+        {
+          "name": "Create Test Result with Invalid Status",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"test_run_id\":1,\"test_case_id\":1,\"status\":\"invalid_status\",\"executed_by\":1}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/test-results",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "test-results"
+              ]
+            },
+            "description": "Expected: 422 Unprocessable Entity - Invalid status value"
+          }
+        },
+        {
+          "name": "Create Test Result with Negative Execution Time",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"test_run_id\":1,\"test_case_id\":1,\"status\":\"pass\",\"executed_by\":1,\"execution_time\":-100}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/test-results",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "test-results"
+              ]
+            },
+            "description": "Expected: 422 Unprocessable Entity - Negative execution time"
+          }
+        },
+        {
+          "name": "Create Test Result with Excessive Execution Time",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"test_run_id\":1,\"test_case_id\":1,\"status\":\"pass\",\"executed_by\":1,\"execution_time\":999999}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/test-results",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "test-results"
+              ]
+            },
+            "description": "Expected: 422 or accepted - Excessive execution time"
+          }
+        },
+        {
+          "name": "Create Defect with Invalid Severity",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Bug\",\n  \"project_id\": 1,\n  \"severity\": \"invalid_severity\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/defects",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "defects"
+              ]
+            },
+            "description": "Expected: 422 Unprocessable Entity - Invalid severity value"
+          }
+        },
+        {
+          "name": "Create Defect with Invalid Priority",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Bug\",\n  \"project_id\": 1,\n  \"priority\": \"invalid_priority\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/defects",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "defects"
+              ]
+            },
+            "description": "Expected: 422 Unprocessable Entity - Invalid priority value"
+          }
+        },
+        {
+          "name": "Assign User with Invalid Role",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"user_id\":1,\"project_id\":1,\"role\":\"invalid_role\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/project-assignments/",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "project-assignments"
+              ]
+            },
+            "description": "Expected: 422 Unprocessable Entity - Invalid role value"
+          }
+        },
+        {
+          "name": "Create Custom Field with Invalid Type",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\":\"Test\",\"field_type\":\"invalid_type\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/custom-fields",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "custom-fields"
+              ]
+            },
+            "description": "Expected: 422 Unprocessable Entity - Invalid field type"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Edge Cases - Network and Headers",
+      "item": [
+        {
+          "name": "Request with Invalid Accept Header",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/xml"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/users/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                "me"
+              ]
+            },
+            "description": "Expected: 406 Not Acceptable or default JSON - Invalid accept header"
+          }
+        },
+        {
+          "name": "Request with Invalid Content-Length",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Length",
+                "value": "999999999"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"title\":\"Test\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/test-cases",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "test-cases"
+              ]
+            },
+            "description": "Expected: 400 or 413 - Invalid content length"
+          }
+        },
+        {
+          "name": "Request with Missing Content-Type",
+          "request": {
+            "method": "POST",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"title\":\"Test\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/test-cases",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "test-cases"
+              ]
+            },
+            "description": "Expected: 415 Unsupported Media Type or default - Missing content type"
+          }
+        },
+        {
+          "name": "Request with Multiple Content-Type Headers",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "text/plain"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"title\":\"Test\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/test-cases",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "test-cases"
+              ]
+            },
+            "description": "Expected: 400 or first wins - Multiple content type headers"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Edge Cases - Invitation System",
+      "item": [
+        {
+          "name": "Accept Expired Invitation",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"token\":\"expired_token\",\"username\":\"newuser\",\"password\":\"password123\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/invitations/expired_token/accept",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "invitations",
+                "expired_token",
+                "accept"
+              ]
+            },
+            "description": "Expected: 400 Bad Request - Invitation has expired"
+          }
+        },
+        {
+          "name": "Accept Already Used Invitation",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"token\":\"used_token\",\"username\":\"newuser\",\"password\":\"password123\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/invitations/used_token/accept",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "invitations",
+                "used_token",
+                "accept"
+              ]
+            },
+            "description": "Expected: 404 Not Found - Invitation already used"
+          }
+        },
+        {
+          "name": "Accept Invitation with Mismatched Token",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"token\":\"different_token\",\"username\":\"newuser\",\"password\":\"password123\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/invitations/some_token/accept",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "invitations",
+                "some_token",
+                "accept"
+              ]
+            },
+            "description": "Expected: 400 Bad Request - Token mismatch"
+          }
+        },
+        {
+          "name": "Accept Invitation for Existing User",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"token\":\"valid_token\",\"username\":\"demo@testmona.com\",\"password\":\"password123\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/invitations/valid_token/accept",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "invitations",
+                "valid_token",
+                "accept"
+              ]
+            },
+            "description": "Expected: 400 Bad Request - User already exists"
+          }
+        },
+        {
+          "name": "Create Invitation with Invalid Expiration",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"email\":\"test@example.com\",\"role\":\"tester\",\"expires_in_days\":-1}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/invitations",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "invitations"
+              ]
+            },
+            "description": "Expected: 422 Unprocessable Entity - Negative expiration"
+          }
+        },
+        {
+          "name": "Create Invitation with Very Long Expiration",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"email\":\"test@example.com\",\"role\":\"tester\",\"expires_in_days\":3650}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/invitations",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "invitations"
+              ]
+            },
+            "description": "Expected: 422 or accepted - Very long expiration period"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Edge Cases - Versioning",
+      "item": [
+        {
+          "name": "Create Version with Empty Name",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"test_case_id\":1,\"version_name\":\"\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/versions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "versions"
+              ]
+            },
+            "description": "Expected: 422 Unprocessable Entity - Empty version name"
+          }
+        },
+        {
+          "name": "Create Version for Non-Existent Test Case",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"test_case_id\":99999,\"version_name\":\"v1.0\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/versions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "versions"
+              ]
+            },
+            "description": "Expected: 404 Not Found - Test case does not exist"
+          }
+        },
+        {
+          "name": "Compare Same Version",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"version_id_1\":1,\"version_id_2\":1}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/versions/compare",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "versions",
+                "compare"
+              ]
+            },
+            "description": "Expected: 400 or empty - Comparing same version"
+          }
+        },
+        {
+          "name": "Compare Non-Existent Versions",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"version_id_1\":99999,\"version_id_2\":99998}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/versions/compare",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "versions",
+                "compare"
+              ]
+            },
+            "description": "Expected: 404 Not Found - Versions do not exist"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Edge Cases - Test Execution",
+      "item": [
+        {
+          "name": "Create Test Run with Invalid Status",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\":\"Run\",\"test_suite_id\":1,\"status\":\"invalid_status\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/test-runs",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "test-runs"
+              ]
+            },
+            "description": "Expected: 422 Unprocessable Entity - Invalid status value"
+          }
+        },
+        {
+          "name": "Create Test Run for Empty Suite",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\":\"Run\",\"test_suite_id\":1,\"status\":\"in_progress\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/test-runs",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "test-runs"
+              ]
+            },
+            "description": "Expected: 201 or 400 - Test run for empty suite"
+          }
+        },
+        {
+          "name": "Update Test Result After Run Completed",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"status\":\"pass\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/test-results/1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "test-results",
+                "1"
+              ]
+            },
+            "description": "Expected: 400 or accepted - Updating result after run completion"
+          }
+        },
+        {
+          "name": "Create Duplicate Test Result",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"test_run_id\":1,\"test_case_id\":1,\"status\":\"pass\",\"executed_by\":1}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/test-results",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "test-results"
+              ]
+            },
+            "description": "Expected: 400 or accepted - Duplicate test result"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Edge Cases - Custom Fields",
+      "item": [
+        {
+          "name": "Create Custom Field with Empty Name",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\":\"\",\"field_type\":\"text\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/custom-fields",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "custom-fields"
+              ]
+            },
+            "description": "Expected: 422 Unprocessable Entity - Empty field name"
+          }
+        },
+        {
+          "name": "Create Custom Field with Duplicate Name",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\":\"Environment\",\"field_type\":\"text\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/custom-fields",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "custom-fields"
+              ]
+            },
+            "description": "Expected: 400 Bad Request - Field name already exists"
+          }
+        },
+        {
+          "name": "Create Dropdown Field Without Options",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\":\"Test\",\"field_type\":\"dropdown\",\"options\":[]}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/custom-fields",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "custom-fields"
+              ]
+            },
+            "description": "Expected: 422 Unprocessable Entity - Dropdown requires options"
+          }
+        },
+        {
+          "name": "Create Dropdown Field with Empty Option",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\":\"Test\",\"field_type\":\"dropdown\",\"options\":[\"\"]}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/custom-fields",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "custom-fields"
+              ]
+            },
+            "description": "Expected: 422 Unprocessable Entity - Empty option not allowed"
+          }
+        },
+        {
+          "name": "Create Field with Invalid Default Value",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\":\"Test\",\"field_type\":\"dropdown\",\"options\":[\"A\",\"B\"],\"default_value\":\"C\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/custom-fields",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "custom-fields"
+              ]
+            },
+            "description": "Expected: 422 Unprocessable Entity - Default not in options"
+          }
+        }
+      ]
+    }
+  ]
+}

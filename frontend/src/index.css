@@ -1,0 +1,967 @@
+/* Import Vazir Matn font for Persian */
+@import url('https://fonts.googleapis.com/css2?family=Vazirmatn:wght@100;200;300;400;500;600;700;800;900&display=swap');
+
+/* Import Noto Sans Arabic font for Arabic */
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Arabic:wght@100;200;300;400;500;600;700;800;900&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+    --primary: 221.2 83.2% 53.3%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 210 40% 96%;
+    --secondary-foreground: 222.2 84% 4.9%;
+    --muted: 210 40% 96%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --accent: 210 40% 96%;
+    --accent-foreground: 222.2 84% 4.9%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 221.2 83.2% 53.3%;
+    --radius: 0.5rem;
+  }
+
+  .dark {
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;
+    --card: 222.2 84% 4.9%;
+    --card-foreground: 210 40% 98%;
+    --popover: 222.2 84% 4.9%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 217.2 91.2% 59.8%;
+    --primary-foreground: 222.2 84% 4.9%;
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+    --accent: 217.2 32.6% 17.5%;
+    --accent-foreground: 210 40% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 224.3 76.3% 94.1%;
+    --radius: 0.5rem;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  }
+  
+  /* RTL and Persian font support */
+  [dir="rtl"][lang="fa"],
+  [dir="rtl"][lang="fa"] * {
+    font-family: 'Vazirmatn', 'Inter', system-ui, -apple-system, sans-serif !important;
+  }
+  
+  /* RTL and Arabic font support */
+  [dir="rtl"][lang="ar"],
+  [dir="rtl"][lang="ar"] * {
+    font-family: 'Noto Sans Arabic', 'Inter', system-ui, -apple-system, sans-serif !important;
+  }
+  
+  [dir="rtl"] .font-mono {
+    font-family: 'Vazirmatn', 'Courier New', monospace;
+  }
+  
+  [dir="rtl"][lang="ar"] .font-mono {
+    font-family: 'Noto Sans Arabic', 'Courier New', monospace;
+  }
+  
+  /* Keep code editors in LTR with appropriate fonts */
+  [dir="rtl"] .monaco-editor,
+  [dir="rtl"] .cm-editor,
+  [dir="rtl"] .CodeMirror,
+  [dir="rtl"] .editor-container,
+  [dir="rtl"] code,
+  [dir="rtl"] pre {
+    font-family: 'Courier New', 'Consolas', 'Monaco', monospace !important;
+    direction: ltr !important;
+    text-align: left !important;
+  }
+  
+  /* RTL specific styles */
+  [dir="rtl"] {
+    text-align: right;
+  }
+  
+  [dir="rtl"] .text-left {
+    text-align: right !important;
+  }
+  
+  [dir="rtl"] .text-right {
+    text-align: left !important;
+  }
+  
+  /* Margin and padding RTL fixes */
+  [dir="rtl"] .mr-1 { margin-right: 0; margin-left: 0.25rem; }
+  [dir="rtl"] .mr-2 { margin-right: 0; margin-left: 0.5rem; }
+  [dir="rtl"] .mr-3 { margin-right: 0; margin-left: 0.75rem; }
+  [dir="rtl"] .mr-4 { margin-right: 0; margin-left: 1rem; }
+  [dir="rtl"] .mr-6 { margin-right: 0; margin-left: 1.5rem; }
+  [dir="rtl"] .mr-8 { margin-right: 0; margin-left: 2rem; }
+  
+  [dir="rtl"] .ml-1 { margin-left: 0; margin-right: 0.25rem; }
+  [dir="rtl"] .ml-2 { margin-left: 0; margin-right: 0.5rem; }
+  [dir="rtl"] .ml-3 { margin-left: 0; margin-right: 0.75rem; }
+  [dir="rtl"] .ml-4 { margin-left: 0; margin-right: 1rem; }
+  [dir="rtl"] .ml-6 { margin-left: 0; margin-right: 1.5rem; }
+  [dir="rtl"] .ml-8 { margin-left: 0; margin-right: 2rem; }
+  
+  [dir="rtl"] .ml-auto { margin-left: auto; margin-right: 0; }
+  [dir="rtl"] .mr-auto { margin-right: auto; margin-left: 0; }
+  
+  /* Padding RTL fixes */
+  [dir="rtl"] .pl-1 { padding-left: 0; padding-right: 0.25rem; }
+  [dir="rtl"] .pl-2 { padding-left: 0; padding-right: 0.5rem; }
+  [dir="rtl"] .pl-3 { padding-left: 0; padding-right: 0.75rem; }
+  [dir="rtl"] .pl-4 { padding-left: 0; padding-right: 1rem; }
+  [dir="rtl"] .pl-6 { padding-left: 0; padding-right: 1.5rem; }
+  [dir="rtl"] .pl-8 { padding-left: 0; padding-right: 2rem; }
+  [dir="rtl"] .pl-10 { padding-left: 0; padding-right: 2.5rem; }
+  
+  [dir="rtl"] .pr-1 { padding-right: 0; padding-left: 0.25rem; }
+  [dir="rtl"] .pr-2 { padding-right: 0; padding-left: 0.5rem; }
+  [dir="rtl"] .pr-3 { padding-right: 0; padding-left: 0.75rem; }
+  [dir="rtl"] .pr-4 { padding-right: 0; padding-left: 1rem; }
+  [dir="rtl"] .pr-6 { padding-right: 0; padding-left: 1.5rem; }
+  [dir="rtl"] .pr-8 { padding-right: 0; padding-left: 2rem; }
+  [dir="rtl"] .pr-10 { padding-right: 0; padding-left: 2.5rem; }
+  
+  /* Flexbox RTL fixes */
+  [dir="rtl"] .flex-row-reverse {
+    flex-direction: row;
+  }
+  
+  [dir="rtl"] .justify-start {
+    justify-content: flex-end;
+  }
+  
+  [dir="rtl"] .justify-end {
+    justify-content: flex-start;
+  }
+  
+  [dir="rtl"] .flex-row {
+    flex-direction: row-reverse;
+  }
+  
+  /* Table RTL fixes */
+  [dir="rtl"] table {
+    direction: rtl;
+  }
+  
+  [dir="rtl"] th:first-child,
+  [dir="rtl"] td:first-child {
+    text-align: right;
+  }
+  
+  [dir="rtl"] th:last-child,
+  [dir="rtl"] td:last-child {
+    text-align: left;
+  }
+  
+  /* Input and form RTL fixes */
+  [dir="rtl"] input,
+  [dir="rtl"] textarea,
+  [dir="rtl"] select {
+    text-align: right;
+  }
+  
+  [dir="rtl"] input[type="number"],
+  [dir="rtl"] input[type="tel"] {
+    text-align: left;
+  }
+  
+  /* Editor RTL fixes */
+  [dir="rtl"] .monaco-editor,
+  [dir="rtl"] .cm-editor,
+  [dir="rtl"] .CodeMirror,
+  [dir="rtl"] .editor-container {
+    direction: ltr;
+    text-align: left;
+  }
+  
+  [dir="rtl"] .editor-toolbar {
+    direction: rtl;
+  }
+
+  /* Markdown editor: keep code blocks LTR and proper alignment in RTL */
+  [data-markdown-editor] .markdown-code-block,
+  [data-markdown-editor] .markdown-inline-code,
+  [data-markdown-editor] .markdown-preview pre,
+  [data-markdown-editor] .markdown-preview code {
+    direction: ltr !important;
+    text-align: left !important;
+    font-family: 'Courier New', Consolas, Monaco, monospace !important;
+  }
+
+  [data-markdown-editor][dir="rtl"] .markdown-preview {
+    text-align: right;
+  }
+
+  [data-markdown-editor][dir="rtl"] .markdown-preview ul,
+  [data-markdown-editor][dir="rtl"] .markdown-preview ol {
+    padding-inline-start: 1.5em;
+  }
+
+  [data-markdown-editor] .markdown-preview table {
+    border-collapse: collapse;
+    width: 100%;
+  }
+
+  [data-markdown-editor][dir="rtl"] .markdown-preview th,
+  [data-markdown-editor][dir="rtl"] .markdown-preview td {
+    text-align: right;
+  }
+
+  
+  /* Dropdown RTL fixes */
+  [dir="rtl"] .dropdown-menu {
+    left: 0;
+    right: auto;
+    text-align: right;
+  }
+  
+  [dir="rtl"] .dropdown-content {
+    left: auto;
+    right: 0;
+  }
+  
+  /* Select RTL fixes */
+  [dir="rtl"] .select-trigger {
+    text-align: right;
+  }
+  
+  [dir="rtl"] .select-content {
+    text-align: right;
+  }
+  
+  /* Select dropdown icon positioning */
+  [dir="rtl"] [data-radix-select-trigger] {
+    flex-direction: row-reverse;
+  }
+  
+  /* Checkbox positioning in RTL */
+  [dir="rtl"] [data-radix-checkbox-root] {
+    margin-left: 0.5rem;
+    margin-right: 0;
+  }
+  
+  /* ChevronRight rotation in RTL for collapsed sections */
+  [dir="rtl"] .rtl\:rotate-180 {
+    transform: rotate(180deg);
+  }
+  
+  /* Dialog RTL fixes */
+  [dir="rtl"] .dialog-content {
+    text-align: right;
+  }
+  
+  [dir="rtl"] .dialog-header {
+    text-align: right;
+  }
+  
+  [dir="rtl"] .dialog-description {
+    text-align: right;
+  }
+  
+  /* Card RTL fixes */
+  [dir="rtl"] .card-header {
+    text-align: right;
+  }
+  
+  [dir="rtl"] .card-title {
+    text-align: right;
+  }
+  
+  /* Badge RTL fixes */
+  [dir="rtl"] .badge {
+    text-align: center;
+  }
+  
+  /* Button RTL fixes */
+  [dir="rtl"] .button {
+    text-align: center;
+  }
+  
+  [dir="rtl"] .button-icon-left {
+    margin-left: 0.5rem;
+    margin-right: 0;
+  }
+  
+  [dir="rtl"] .button-icon-right {
+    margin-right: 0.5rem;
+    margin-left: 0;
+  }
+  
+  /* Pagination RTL fixes */
+  [dir="rtl"] .pagination {
+    direction: rtl;
+  }
+  
+  [dir="rtl"] .pagination-previous {
+    order: 2;
+  }
+  
+  [dir="rtl"] .pagination-next {
+    order: 1;
+  }
+  
+  /* Tabs RTL fixes */
+  [dir="rtl"] .tabs-list {
+    direction: rtl;
+  }
+  
+  [dir="rtl"] .tabs-trigger {
+    text-align: right;
+  }
+  
+  /* Alert RTL fixes */
+  [dir="rtl"] .alert {
+    text-align: right;
+  }
+  
+  [dir="rtl"] .alert-title {
+    text-align: right;
+  }
+  
+  [dir="rtl"] .alert-description {
+    text-align: right;
+  }
+  
+  /* Tooltip RTL fixes */
+  [dir="rtl"] .tooltip-content {
+    text-align: right;
+  }
+  
+  /* Popover RTL fixes */
+  [dir="rtl"] .popover-content {
+    text-align: right;
+  }
+  
+  /* Checkbox RTL fixes */
+  [dir="rtl"] .checkbox-label {
+    text-align: right;
+    margin-right: 0.5rem;
+    margin-left: 0;
+  }
+  
+  /* Radio RTL fixes */
+  [dir="rtl"] .radio-label {
+    text-align: right;
+    margin-right: 0.5rem;
+    margin-left: 0;
+  }
+  
+  /* Switch RTL fixes */
+  [dir="rtl"] .switch-label {
+    text-align: right;
+    margin-right: 0.5rem;
+    margin-left: 0;
+  }
+  
+  /* Tree view RTL fixes */
+  [dir="rtl"] .tree-item {
+    text-align: right;
+  }
+  
+  [dir="rtl"] .tree-item-content {
+    padding-right: 0.5rem;
+    padding-left: 0;
+  }
+  
+  [dir="rtl"] .tree-item-icon {
+    margin-left: 0.5rem;
+    margin-right: 0;
+  }
+  
+  /* Sidebar RTL fixes */
+  [dir="rtl"] .sidebar {
+    right: 0;
+    left: auto;
+  }
+  
+  [dir="rtl"] .sidebar-content {
+    text-align: right;
+  }
+  
+  /* Navigation RTL fixes */
+  [dir="rtl"] .nav-link {
+    text-align: right;
+  }
+  
+  [dir="rtl"] .nav-item {
+    text-align: right;
+  }
+  
+  /* Form RTL fixes */
+  [dir="rtl"] .form-label {
+    text-align: right;
+  }
+  
+  [dir="rtl"] .form-description {
+    text-align: right;
+  }
+  
+  [dir="rtl"] .form-message {
+    text-align: right;
+  }
+  
+  /* Loading RTL fixes */
+  [dir="rtl"] .loading-text {
+    text-align: center;
+  }
+  
+  /* Error message RTL fixes */
+  [dir="rtl"] .error-message {
+    text-align: right;
+  }
+  
+  /* Success message RTL fixes */
+  [dir="rtl"] .success-message {
+    text-align: right;
+  }
+  
+  /* Warning message RTL fixes */
+  [dir="rtl"] .warning-message {
+    text-align: right;
+  }
+  
+  /* Info message RTL fixes */
+  [dir="rtl"] .info-message {
+    text-align: right;
+  }
+}
+
+
+/* Compact Mode Styles */
+.compact-mode {
+  /* Reduce font sizes */
+  --font-size-xs: 0.625rem;    /* 10px */
+  --font-size-sm: 0.6875rem;   /* 11px */
+  --font-size-base: 0.75rem;   /* 12px */
+  --font-size-lg: 0.875rem;    /* 14px */
+  --font-size-xl: 1rem;        /* 16px */
+  --font-size-2xl: 1.125rem;   /* 18px */
+  --font-size-3xl: 1.25rem;    /* 20px */
+  
+  /* Reduce spacing */
+  --spacing-1: 0.125rem;  /* 2px */
+  --spacing-2: 0.25rem;   /* 4px */
+  --spacing-3: 0.375rem;  /* 6px */
+  --spacing-4: 0.5rem;    /* 8px */
+  --spacing-6: 0.75rem;   /* 12px */
+  --spacing-8: 1rem;      /* 16px */
+}
+
+.compact-mode body {
+  font-size: var(--font-size-base);
+  line-height: 1.4;
+}
+
+/* Headings */
+.compact-mode h1 {
+  font-size: var(--font-size-2xl) !important;
+  line-height: 1.3;
+  margin-bottom: var(--spacing-3);
+}
+
+.compact-mode h2 {
+  font-size: var(--font-size-xl) !important;
+  line-height: 1.3;
+  margin-bottom: var(--spacing-2);
+}
+
+.compact-mode h3 {
+  font-size: var(--font-size-lg) !important;
+  line-height: 1.3;
+  margin-bottom: var(--spacing-2);
+}
+
+/* Text sizes */
+.compact-mode .text-xs {
+  font-size: var(--font-size-xs) !important;
+}
+
+.compact-mode .text-sm {
+  font-size: var(--font-size-sm) !important;
+}
+
+.compact-mode .text-base {
+  font-size: var(--font-size-base) !important;
+}
+
+.compact-mode .text-lg {
+  font-size: var(--font-size-lg) !important;
+}
+
+.compact-mode .text-xl {
+  font-size: var(--font-size-xl) !important;
+}
+
+.compact-mode .text-2xl {
+  font-size: var(--font-size-2xl) !important;
+}
+
+.compact-mode .text-3xl {
+  font-size: var(--font-size-3xl) !important;
+}
+
+/* Buttons */
+.compact-mode button,
+.compact-mode .button {
+  padding: var(--spacing-2) var(--spacing-4) !important;
+  font-size: var(--font-size-sm) !important;
+  height: auto !important;
+  min-height: 28px;
+}
+
+.compact-mode button.h-10,
+.compact-mode .button.h-10 {
+  height: 32px !important;
+  min-height: 32px !important;
+}
+
+.compact-mode button.h-9,
+.compact-mode .button.h-9 {
+  height: 28px !important;
+  min-height: 28px !important;
+}
+
+/* Inputs */
+.compact-mode input,
+.compact-mode textarea,
+.compact-mode select {
+  padding: var(--spacing-2) var(--spacing-3) !important;
+  font-size: var(--font-size-sm) !important;
+  height: auto !important;
+  min-height: 28px;
+}
+
+.compact-mode input.h-10 {
+  height: 32px !important;
+}
+
+/* Cards */
+.compact-mode .card {
+  padding: var(--spacing-4) !important;
+}
+
+.compact-mode .card-header {
+  padding: var(--spacing-4) !important;
+  margin-bottom: var(--spacing-3) !important;
+}
+
+.compact-mode .card-content {
+  padding: var(--spacing-4) !important;
+}
+
+.compact-mode .card-footer {
+  padding: var(--spacing-4) !important;
+}
+
+.compact-mode .card-title {
+  font-size: var(--font-size-lg) !important;
+  margin-bottom: var(--spacing-2) !important;
+}
+
+/* Tables */
+.compact-mode table {
+  font-size: var(--font-size-sm) !important;
+}
+
+.compact-mode th,
+.compact-mode td {
+  padding: var(--spacing-2) var(--spacing-3) !important;
+}
+
+.compact-mode thead th {
+  font-size: var(--font-size-xs) !important;
+  font-weight: 600;
+}
+
+/* Badges */
+.compact-mode .badge {
+  padding: 1px var(--spacing-2) !important;
+  font-size: var(--font-size-xs) !important;
+  height: 18px !important;
+  line-height: 16px;
+}
+
+/* Dialogs */
+.compact-mode .dialog-content {
+  padding: var(--spacing-6) !important;
+}
+
+.compact-mode .dialog-header {
+  margin-bottom: var(--spacing-4) !important;
+}
+
+.compact-mode .dialog-title {
+  font-size: var(--font-size-lg) !important;
+}
+
+.compact-mode .dialog-description {
+  font-size: var(--font-size-sm) !important;
+}
+
+/* Spacing utilities */
+.compact-mode .space-y-6 > * + * {
+  margin-top: var(--spacing-4) !important;
+}
+
+.compact-mode .space-y-4 > * + * {
+  margin-top: var(--spacing-3) !important;
+}
+
+.compact-mode .space-y-3 > * + * {
+  margin-top: var(--spacing-2) !important;
+}
+
+.compact-mode .space-y-2 > * + * {
+  margin-top: var(--spacing-2) !important;
+}
+
+.compact-mode .gap-6 {
+  gap: var(--spacing-4) !important;
+}
+
+.compact-mode .gap-4 {
+  gap: var(--spacing-3) !important;
+}
+
+.compact-mode .gap-3 {
+  gap: var(--spacing-2) !important;
+}
+
+.compact-mode .gap-2 {
+  gap: var(--spacing-2) !important;
+}
+
+/* Padding utilities */
+.compact-mode .p-6 {
+  padding: var(--spacing-4) !important;
+}
+
+.compact-mode .p-4 {
+  padding: var(--spacing-3) !important;
+}
+
+.compact-mode .p-3 {
+  padding: var(--spacing-2) !important;
+}
+
+.compact-mode .py-6 {
+  padding-top: var(--spacing-4) !important;
+  padding-bottom: var(--spacing-4) !important;
+}
+
+.compact-mode .py-4 {
+  padding-top: var(--spacing-3) !important;
+  padding-bottom: var(--spacing-3) !important;
+}
+
+.compact-mode .py-3 {
+  padding-top: var(--spacing-2) !important;
+  padding-bottom: var(--spacing-2) !important;
+}
+
+.compact-mode .px-6 {
+  padding-left: var(--spacing-4) !important;
+  padding-right: var(--spacing-4) !important;
+}
+
+.compact-mode .px-4 {
+  padding-left: var(--spacing-3) !important;
+  padding-right: var(--spacing-3) !important;
+}
+
+.compact-mode .px-3 {
+  padding-left: var(--spacing-2) !important;
+  padding-right: var(--spacing-2) !important;
+}
+
+.compact-mode .pt-6 {
+  padding-top: var(--spacing-4) !important;
+}
+
+.compact-mode .pt-4 {
+  padding-top: var(--spacing-3) !important;
+}
+
+.compact-mode .pb-6 {
+  padding-bottom: var(--spacing-4) !important;
+}
+
+.compact-mode .pb-4 {
+  padding-bottom: var(--spacing-3) !important;
+}
+
+/* Margin utilities */
+.compact-mode .mb-6 {
+  margin-bottom: var(--spacing-4) !important;
+}
+
+.compact-mode .mb-4 {
+  margin-bottom: var(--spacing-3) !important;
+}
+
+.compact-mode .mb-3 {
+  margin-bottom: var(--spacing-2) !important;
+}
+
+.compact-mode .mb-2 {
+  margin-bottom: var(--spacing-2) !important;
+}
+
+.compact-mode .mt-6 {
+  margin-top: var(--spacing-4) !important;
+}
+
+.compact-mode .mt-4 {
+  margin-top: var(--spacing-3) !important;
+}
+
+.compact-mode .mt-3 {
+  margin-top: var(--spacing-2) !important;
+}
+
+.compact-mode .mt-2 {
+  margin-top: var(--spacing-2) !important;
+}
+
+/* Icons */
+.compact-mode .h-5 {
+  height: 16px !important;
+  width: 16px !important;
+}
+
+.compact-mode .h-4 {
+  height: 14px !important;
+  width: 14px !important;
+}
+
+.compact-mode .w-5 {
+  width: 16px !important;
+}
+
+.compact-mode .w-4 {
+  width: 14px !important;
+}
+
+/* Tabs */
+.compact-mode .tabs-list {
+  height: 36px !important;
+  padding: 2px !important;
+}
+
+.compact-mode .tabs-trigger {
+  padding: var(--spacing-2) var(--spacing-3) !important;
+  font-size: var(--font-size-sm) !important;
+  height: 32px !important;
+}
+
+/* Select */
+.compact-mode .select-trigger {
+  height: 32px !important;
+  padding: var(--spacing-2) var(--spacing-3) !important;
+  font-size: var(--font-size-sm) !important;
+}
+
+.compact-mode .select-content {
+  font-size: var(--font-size-sm) !important;
+}
+
+.compact-mode .select-item {
+  padding: var(--spacing-2) var(--spacing-3) !important;
+  font-size: var(--font-size-sm) !important;
+}
+
+/* Dropdown Menu */
+.compact-mode .dropdown-menu-content {
+  padding: var(--spacing-2) !important;
+}
+
+.compact-mode .dropdown-menu-item {
+  padding: var(--spacing-2) var(--spacing-3) !important;
+  font-size: var(--font-size-sm) !important;
+}
+
+/* Sidebar */
+.compact-mode .sidebar {
+  width: 200px !important;
+}
+
+.compact-mode .sidebar-item {
+  padding: var(--spacing-2) var(--spacing-3) !important;
+  font-size: var(--font-size-sm) !important;
+}
+
+/* Navbar */
+.compact-mode .navbar {
+  height: 48px !important;
+  padding: var(--spacing-2) var(--spacing-4) !important;
+}
+
+/* Labels */
+.compact-mode label {
+  font-size: var(--font-size-sm) !important;
+  margin-bottom: var(--spacing-1) !important;
+}
+
+/* Descriptions */
+.compact-mode .text-muted-foreground {
+  font-size: var(--font-size-xs) !important;
+}
+
+/* Alerts */
+.compact-mode .alert {
+  padding: var(--spacing-3) !important;
+}
+
+.compact-mode .alert-title {
+  font-size: var(--font-size-sm) !important;
+  margin-bottom: var(--spacing-1) !important;
+}
+
+.compact-mode .alert-description {
+  font-size: var(--font-size-xs) !important;
+}
+
+/* Custom scrollbar styling for better UX */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
+}
+
+/* Firefox scrollbar */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #d1d5db transparent;
+}
+
+/* RTL scrollbar positioning */
+[dir="rtl"]::-webkit-scrollbar {
+  width: 8px;
+}
+
+[dir="rtl"]::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+[dir="rtl"]::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 4px;
+}
+
+[dir="rtl"]::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
+}
+
+/* Rich text editor list/preview styles */
+[data-rich-text-editor] .ProseMirror ul,
+[data-rich-text-editor] .rich-text-preview ul {
+  list-style: disc;
+  margin: 0.5rem 0;
+  padding-inline-start: 1.5rem;
+}
+
+[data-rich-text-editor] .ProseMirror ol,
+[data-rich-text-editor] .rich-text-preview ol {
+  list-style: decimal;
+  margin: 0.5rem 0;
+  padding-inline-start: 1.5rem;
+}
+
+[data-rich-text-editor] .ProseMirror li,
+[data-rich-text-editor] .rich-text-preview li {
+  margin: 0.25rem 0;
+}
+
+[data-rich-text-editor] .ProseMirror ul[data-type="taskList"],
+[data-rich-text-editor] .rich-text-preview ul[data-type="taskList"] {
+  list-style: none;
+  padding-inline-start: 0.25rem;
+  margin: 0.5rem 0;
+}
+
+[data-rich-text-editor] .ProseMirror ul[data-type="taskList"] li,
+[data-rich-text-editor] .rich-text-preview ul[data-type="taskList"] li {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin: 0.35rem 0;
+}
+
+[data-rich-text-editor] .ProseMirror ul[data-type="taskList"] li > label,
+[data-rich-text-editor] .rich-text-preview ul[data-type="taskList"] li > label {
+  margin-top: 0.15rem;
+}
+
+[data-rich-text-editor] .ProseMirror ul[data-type="taskList"] li[data-checked="true"] > div,
+[data-rich-text-editor] .rich-text-preview ul[data-type="taskList"] li[data-checked="true"] > div {
+  text-decoration: line-through;
+  opacity: 0.7;
+}
+
+[data-rich-text-editor] .ProseMirror blockquote,
+[data-rich-text-editor] .rich-text-preview blockquote {
+  border-inline-start: 3px solid #94a3b8;
+  margin: 0.75rem 0;
+  padding: 0.25rem 0 0.25rem 0.75rem;
+  color: #334155;
+  background: rgba(148, 163, 184, 0.12);
+  border-radius: 0.25rem;
+}
+
+[data-rich-text-editor] .ProseMirror table,
+[data-rich-text-editor] .rich-text-preview table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.75rem 0;
+}
+
+[data-rich-text-editor] .ProseMirror th,
+[data-rich-text-editor] .ProseMirror td,
+[data-rich-text-editor] .rich-text-preview th,
+[data-rich-text-editor] .rich-text-preview td {
+  border: 1px solid #cbd5e1;
+  padding: 0.4rem 0.5rem;
+  vertical-align: top;
+}
+
+[data-rich-text-editor] .ProseMirror th,
+[data-rich-text-editor] .rich-text-preview th {
+  background: #f1f5f9;
+  font-weight: 600;
+}

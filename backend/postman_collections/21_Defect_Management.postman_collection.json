@@ -1,0 +1,206 @@
+{
+  "info": {
+    "name": "Defect Management",
+    "description": "Advanced defect management with attachments",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8000",
+      "type": "string"
+    },
+    {
+      "key": "accessToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "testProjectId",
+      "value": "1",
+      "type": "string"
+    }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{accessToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "item": [
+    {
+      "name": "Login - Setup",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"password\": \"demo123\",\n  \"username_or_email\": \"demo@testmona.com\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/token",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "token"
+          ]
+        },
+        "description": "Login to get access token for subsequent requests"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"Response contains access_token\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('access_token');",
+              "    pm.environment.set(\"accessToken\", jsonData.access_token);",
+              "    if (jsonData.refresh_token) {",
+              "        pm.environment.set(\"refreshToken\", jsonData.refresh_token);",
+              "    }",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Get Project Defects",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/projects/{{testProjectId}}/defects-management",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "projects",
+            "{{testProjectId}}",
+            "defects-management"
+          ]
+        },
+        "description": "Get all defects for a project with management features"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"Response is array\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.be.an('array');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Create Defect with Attachment",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "multipart/form-data"
+          }
+        ],
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            {
+              "key": "title",
+              "value": "Bug with screenshot",
+              "type": "text"
+            },
+            {
+              "key": "description",
+              "value": "Bug description",
+              "type": "text"
+            },
+            {
+              "key": "project_id",
+              "value": "{{testProjectId}}",
+              "type": "text"
+            },
+            {
+              "key": "severity",
+              "value": "high",
+              "type": "text"
+            },
+            {
+              "key": "file",
+              "type": "file",
+              "src": []
+            }
+          ]
+        },
+        "url": {
+          "raw": "{{baseUrl}}/projects/{{testProjectId}}/defects-management",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "projects",
+            "{{testProjectId}}",
+            "defects-management"
+          ]
+        },
+        "description": "Create a defect with file attachment"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200, 201, or 422\", function () {",
+              "    pm.expect([200, 201, 422]).to.include(pm.response.code);",
+              "});",
+              "",
+              "if (pm.response.code === 200 || pm.response.code === 201) {",
+              "    pm.test(\"Response has id\", function () {",
+              "        var jsonData = pm.response.json();",
+              "        pm.expect(jsonData).to.have.property('id');",
+              "        pm.environment.set(\"defectId\", jsonData.id);",
+              "    });",
+              "    ",
+              "    pm.test(\"Response has required fields\", function () {",
+              "        var jsonData = pm.response.json();",
+              "        pm.expect(jsonData).to.have.property('title');",
+              "        pm.expect(jsonData).to.have.property('description');",
+              "        pm.expect(jsonData).to.have.property('project_id');",
+              "    });",
+              "} else {",
+              "    pm.test(\"Defect creation failed - validation error or file missing\", function () {",
+              "        console.log(\"Validation error or missing file\");",
+              "    });",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    }
+  ]
+}

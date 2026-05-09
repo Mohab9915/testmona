@@ -1,0 +1,376 @@
+import { Link, useLocation } from 'react-router-dom';
+import {
+  LayoutDashboard,
+  FolderOpen,
+  TestTube,
+  FileText,
+  PlayCircle,
+  BarChart3,
+  Settings,
+  LogOut,
+  FileCheck,
+  Bug,
+  Target,
+  Flag,
+  ChevronLeft,
+  Settings2,
+  FolderTree,
+  User,
+  Sparkles,
+  Database,
+  Layers,
+  Wrench
+} from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { useAuthStore } from '@/stores/authStore';
+import { useProjectStore } from '@/stores/projectStore';
+import { useTranslation } from '@/hooks/useTranslation';
+
+interface NavigationItem {
+  name: string;
+  href: string;
+  icon: any;
+  subsections?: NavigationItem[];
+  group?: string;
+  disabled?: boolean;
+  disabledReason?: string;
+}
+
+interface NavigationGroup {
+  name: string;
+  items: NavigationItem[];
+}
+
+interface SidebarProps {
+  isCollapsed: boolean;
+  onToggleCollapse: () => void;
+  isHovering: boolean;
+  onMouseEnter: () => void;
+  onMouseLeave: () => void;
+  isOpen: boolean;
+  onClose: () => void;
+}
+
+export function Sidebar({
+  isCollapsed,
+  onToggleCollapse,
+  isHovering,
+  onMouseEnter,
+  onMouseLeave,
+  isOpen,
+  onClose
+}: SidebarProps) {
+  const location = useLocation();
+  const { logout } = useAuthStore();
+  const { selectedProject, projects } = useProjectStore();
+  const { t, isRTL } = useTranslation();
+
+  // Build project-scoped navigation based on selected project and available projects
+  const buildNavigation = (): NavigationGroup[] => {
+    const projectId = selectedProject?.id;
+    const hasProjectsInDb = projects && projects.length > 0;
+    
+    if (!hasProjectsInDb) {
+      // Show only essential navigation when no projects exist in database
+      return [
+        {
+          name: t('gettingStarted'),
+          items: [
+            { name: t('projects'), href: '/projects', icon: FolderOpen },
+          ]
+        },
+        {
+          name: t('user'),
+          items: [
+            { name: t('profile'), href: '/profile', icon: User },
+            { name: t('settings'), href: '/settings', icon: Settings2 },
+          ]
+        }
+      ];
+    }
+    
+    if (!projectId) {
+      // Show global navigation when projects exist but none is selected
+      return [
+        {
+          name: t('global'),
+          items: [
+            { name: t('projects'), href: '/projects', icon: FolderOpen },
+            { name: t('environments'), href: '/environments', icon: Settings },
+            { name: t('activity'), href: '/activity-management', icon: BarChart3 },
+          ]
+        },
+        {
+          name: t('user'),
+          items: [
+            { name: t('profile'), href: '/profile', icon: User },
+            { name: t('settings'), href: '/settings', icon: Settings2 },
+          ]
+        }
+      ];
+    }
+
+    // Full navigation with project-scoped items organized in groups
+    return [
+      {
+        name: t('main'),
+        items: [
+          { name: t('projects'), href: '/projects', icon: FolderOpen },
+          { name: t('overview'), href: '/dashboard', icon: LayoutDashboard },
+        ]
+      },
+      {
+        name: t('testing'),
+        items: [
+          { name: t('requirements'), href: `/projects/${projectId}/requirements`, icon: FileCheck },
+          { name: t('testCases'), href: `/projects/${projectId}/test-cases`, icon: FileText },
+          { name: t('testSuites'), href: `/projects/${projectId}/test-suites`, icon: TestTube },
+          { name: t('testRuns'), href: `/projects/${projectId}/test-runs`, icon: PlayCircle },
+          { name: t('sections'), href: `/projects/${projectId}/sections`, icon: FolderTree },
+        ]
+      },
+      {
+        name: t('management'),
+        items: [
+          { name: t('defects'), href: `/projects/${projectId}/defects`, icon: Bug },
+          { name: t('milestones'), href: `/projects/${projectId}/milestones`, icon: Flag },
+          { name: t('reports'), href: `/projects/${projectId}/reports`, icon: BarChart3 },
+        ]
+      },
+      {
+        name: t('configuration'),
+        items: [
+          { name: t('customFields'), href: `/projects/${projectId}/custom-fields`, icon: Database },
+          { name: t('sharedSteps'), href: `/projects/${projectId}/shared-steps`, icon: Layers },
+          { name: t('globalParameters'), href: `/projects/${projectId}/global-parameters`, icon: Wrench },
+        ]
+      },
+      {
+        name: t('global'),
+        items: [
+          { name: t('environments'), href: `/projects/${projectId}/environments`, icon: Settings },
+        ]
+      },
+      {
+        name: t('user'),
+        items: [
+          { name: t('profile'), href: '/profile', icon: User },
+          { name: t('settings'), href: '/settings', icon: Settings2 },
+        ]
+      }
+    ];
+  };
+
+  const navigation = buildNavigation();
+
+  const isActive = (href: string) => location.pathname === href;
+  const showCollapsed = isCollapsed && !isHovering;
+
+  return (
+    <>
+      {/* Mobile sidebar backdrop */}
+      {isOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-gray-600 bg-opacity-75 lg:hidden"
+          onClick={onClose}
+        />
+      )}
+
+      {/* Sidebar */}
+      <div
+        className={`
+          bg-white dark:bg-gray-900 shadow-lg border-r border-gray-200 dark:border-gray-700
+          flex flex-col transition-all duration-300 ease-in-out
+          ${showCollapsed ? 'w-16' : 'w-64'}
+          ${isOpen ? 'fixed lg:static top-0 bottom-0 left-0 z-50 lg:z-auto translate-x-0 lg:translate-x-0' : 'fixed lg:static top-0 bottom-0 left-0 z-50 lg:z-auto -translate-x-full lg:translate-x-0'}
+          min-w-0 h-screen lg:relative
+        `}
+      >
+        {/* Sidebar Header */}
+        <div className={`flex items-center justify-between h-16 border-b border-gray-200 dark:border-gray-700 flex-shrink-0 transition-all duration-300 ease-in-out ${
+          showCollapsed ? 'px-2' : 'px-6'
+        }`}>
+          <div className={`flex items-center space-x-2 transition-all duration-300 ease-in-out overflow-hidden ${
+            showCollapsed ? 'opacity-0' : 'opacity-100'
+          }`}>
+            <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center flex-shrink-0">
+              <span className="text-white font-bold text-sm">TM</span>
+            </div>
+            <span className="text-xl font-bold text-gray-900 dark:text-white whitespace-nowrap">TestMona</span>
+          </div>
+
+          {/* Mobile close button */}
+          <Button
+            variant="ghost"
+            size="sm"
+            className="lg:hidden"
+            onClick={onClose}
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
+        </div>
+
+        {/* Navigation */}
+        <nav className="flex-1 mt-6 overflow-y-auto min-h-0">
+          <div className={`space-y-3 transition-all duration-300 ease-in-out ${
+            showCollapsed ? 'px-1' : 'px-3'
+          }`}>
+            {navigation.map((group, groupIndex) => (
+              <div key={group.name}>
+                {/* Group Items with inline grouping */}
+                <div className="space-y-1">
+                  {group.items.map((item, itemIndex) => {
+                    const Icon = item.icon;
+                    const hasSubsections = item.subsections && item.subsections.length > 0;
+                    const isItemActive = isActive(item.href);
+                    const isSubsectionActive = item.subsections?.some(sub => isActive(sub.href));
+                    const isFirstInGroup = itemIndex === 0;
+                    const isLastInGroup = itemIndex === group.items.length - 1;
+                    
+                    return (
+                      <div key={item.name}>
+                        {item.disabled ? (
+                          <div
+                            className={`
+                              group flex items-center py-2.5 text-sm font-medium rounded-lg transition-all duration-300 ease-in-out relative overflow-hidden
+                              text-gray-400 cursor-not-allowed opacity-60
+                              ${showCollapsed ? 'justify-center px-1' : 'px-3'}
+                              ${!showCollapsed && isFirstInGroup ? 'mt-2' : ''}
+                              ${!showCollapsed && isLastInGroup && groupIndex < navigation.length - 1 ? 'mb-2' : ''}
+                            `}
+                            title={showCollapsed ? item.disabledReason || item.name : item.disabledReason}
+                          >
+                            <Icon className={`${showCollapsed ? 'h-6 w-6' : (isRTL ? 'ml-3' : 'mr-3') + ' h-5 w-5'} transition-all duration-300 ease-in-out flex-shrink-0`} />
+                            <span className={`transition-all duration-300 ease-in-out whitespace-nowrap overflow-hidden ${
+                              showCollapsed ? 'opacity-0 w-0' : 'opacity-100'
+                            }`}>
+                              {item.name}
+                            </span>
+                            {!showCollapsed && isFirstInGroup && (
+                              <span className={`${isRTL ? 'mr-auto' : 'ml-auto'} flex items-center text-xs text-gray-400 dark:text-gray-500 font-medium`}>
+                                <span className="mx-2 text-gray-300 dark:text-gray-600">|</span>
+                                {group.name}
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          <Link
+                            to={item.href}
+                            className={`
+                              group flex items-center py-2.5 text-sm font-medium rounded-lg transition-all duration-300 ease-in-out relative overflow-hidden
+                              ${isItemActive || isSubsectionActive
+                                ? 'bg-blue-50 text-blue-700 border-r-2 border-blue-700 shadow-sm dark:bg-blue-900/20 dark:text-blue-400'
+                                : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900 hover:shadow-sm dark:text-gray-300 dark:hover:bg-gray-800 dark:hover:text-white'
+                              }
+                              ${showCollapsed ? 'justify-center px-1' : 'px-3'}
+                              ${!showCollapsed && isFirstInGroup ? 'mt-2' : ''}
+                              ${!showCollapsed && isLastInGroup && groupIndex < navigation.length - 1 ? 'mb-2' : ''}
+                            `}
+                            title={showCollapsed ? item.name : undefined}
+                          >
+                            <Icon className={`${showCollapsed ? 'h-6 w-6' : (isRTL ? 'ml-3' : 'mr-3') + ' h-5 w-5'} transition-all duration-300 ease-in-out flex-shrink-0`} />
+                            <span className={`transition-all duration-300 ease-in-out whitespace-nowrap overflow-hidden ${
+                              showCollapsed ? 'opacity-0 w-0' : 'opacity-100'
+                            }`}>
+                              {item.name}
+                            </span>
+                            {!showCollapsed && isFirstInGroup && (
+                              <span className={`${isRTL ? 'mr-auto' : 'ml-auto'} flex items-center text-xs text-gray-400 dark:text-gray-500 font-medium`}>
+                                <span className="mx-2 text-gray-300 dark:text-gray-600">|</span>
+                                {group.name}
+                              </span>
+                            )}
+                          </Link>
+                        )}
+                        
+                        {/* Render subsections if they exist and sidebar is not collapsed */}
+                        {hasSubsections && !showCollapsed && (
+                          <div className={`${isRTL ? 'mr-8' : 'ml-8'} mt-1 space-y-1`}>
+                            {item.subsections.map((subsection) => {
+                              const SubIcon = subsection.icon;
+                              return (
+                                <Link
+                                  key={subsection.name}
+                                  to={subsection.href}
+                                  className={`
+                                    group flex items-center py-2 text-sm font-medium rounded-md transition-all duration-200 relative overflow-hidden
+                                    ${isActive(subsection.href)
+                                      ? 'bg-blue-100 text-blue-600 border-r-2 border-blue-600 shadow-sm dark:bg-blue-900/30 dark:text-blue-400'
+                                      : 'text-gray-500 hover:bg-gray-100 hover:text-gray-700 hover:shadow-sm dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-200'
+                                    }
+                                    before:absolute before:inset-0 before:bg-gradient-to-r before:from-transparent before:via-white/5 before:to-transparent
+                                    before:translate-x-[-100%] hover:before:translate-x-[100%] before:transition-transform before:duration-500
+                                  `}
+                                  title={subsection.name}
+                                >
+                                  <SubIcon className={`${isRTL ? 'ml-2' : 'mr-2'} h-4 w-4 transition-all duration-200 group-hover:scale-110 flex-shrink-0`} />
+                                  <span className="transition-all duration-200 whitespace-nowrap">
+                                    {subsection.name}
+                                  </span>
+                                </Link>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+                
+                {/* Inline Group Separator - subtle dot line */}
+                {!showCollapsed && groupIndex < navigation.length - 1 && (
+                  <div className="flex items-center justify-center py-2">
+                    <div className="flex-1 h-px bg-gradient-to-r from-transparent via-gray-300 to-transparent dark:via-gray-600"></div>
+                    <div className="w-1 h-1 bg-gray-300 dark:bg-gray-600 rounded-full mx-2"></div>
+                    <div className="flex-1 h-px bg-gradient-to-r from-transparent via-gray-300 to-transparent dark:via-gray-600"></div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </nav>
+
+        {/* Sidebar Footer */}
+        <div className={`flex-shrink-0 border-t border-gray-200 dark:border-gray-700 space-y-3 transition-all duration-300 ease-in-out ${
+          showCollapsed ? 'p-2' : 'p-4'
+        }`}>
+          {/* Collapse/Expand button for desktop */}
+          <Button
+            variant="ghost"
+            className={`w-full text-gray-600 hover:text-gray-900 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800 dark:hover:text-white transition-all duration-300 ease-in-out justify-start ${
+              showCollapsed ? 'px-1' : 'px-3'
+            }`}
+            onClick={onToggleCollapse}
+            title={isCollapsed ? t('expandSidebar') : t('collapseSidebar')}
+          >
+            <ChevronLeft className={`h-4 w-4 transition-transform duration-300 ease-in-out ${
+              isRTL ? (isCollapsed ? '-rotate-180' : 'rotate-180') : (isCollapsed ? 'rotate-180' : '')
+            }`} />
+            <span className={`transition-all duration-300 ease-in-out whitespace-nowrap overflow-hidden ${isRTL ? 'mr-2' : 'ml-2'} ${
+              showCollapsed ? 'opacity-0 w-0' : 'opacity-100'
+            }`}>
+              {isCollapsed ? t('expand') : t('collapse')}
+            </span>
+          </Button>
+
+          {/* Logout button */}
+          <Button
+            variant="ghost"
+            className={`w-full text-gray-600 hover:text-gray-900 hover:bg-red-50 hover:text-red-700 transition-all duration-300 ease-in-out relative overflow-hidden ${
+              showCollapsed ? 'justify-center px-1' : 'justify-start px-3'
+            }`}
+            onClick={logout}
+            title={showCollapsed ? t('logout') : undefined}
+          >
+            <LogOut className={`${showCollapsed ? 'h-6 w-6' : (isRTL ? 'ml-3' : 'mr-3') + ' h-5 w-5'} transition-all duration-300 ease-in-out flex-shrink-0`} />
+            <span className={`transition-all duration-300 ease-in-out whitespace-nowrap overflow-hidden ${
+              showCollapsed ? 'opacity-0 w-0' : 'opacity-100'
+            }`}>
+              {t('logout')}
+            </span>
+          </Button>
+        </div>
+      </div>
+    </>
+  );
+}

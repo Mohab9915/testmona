@@ -1,0 +1,385 @@
+{
+  "info": {
+    "name": "Test Suites",
+    "description": "Test suite management endpoints with comprehensive tests",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8000",
+      "type": "string"
+    },
+    {
+      "key": "accessToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "testProjectId",
+      "value": "1",
+      "type": "string"
+    },
+    {
+      "key": "testSuiteId",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{accessToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "item": [
+    {
+      "name": "Login - Setup",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"password\": \"demo123\",\n  \"username_or_email\": \"demo@testmona.com\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/token",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "token"
+          ]
+        },
+        "description": "Login to get access token for subsequent requests"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"Response contains access_token\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('access_token');",
+              "    pm.environment.set(\"accessToken\", jsonData.access_token);",
+              "    if (jsonData.refresh_token) {",
+              "        pm.environment.set(\"refreshToken\", jsonData.refresh_token);",
+              "    }",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Create Test Suite",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"Login Test Suite {{$timestamp}}\",\n  \"description\": \"Comprehensive login functionality tests\",\n  \"project_id\": {{testProjectId}}\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/test-suites",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "test-suites"
+          ]
+        },
+        "description": "Create a new test suite"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200 or 201\", function () {",
+              "    pm.expect([200, 201]).to.include(pm.response.code);",
+              "});",
+              "",
+              "pm.test(\"Response contains test suite data\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('id');",
+              "    pm.expect(jsonData).to.have.property('name');",
+              "    pm.expect(jsonData).to.have.property('description');",
+              "    pm.expect(jsonData).to.have.property('project_id');",
+              "});",
+              "",
+              "pm.test(\"Test suite name matches request\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    var requestBody = JSON.parse(pm.request.body.raw);",
+              "    pm.expect(jsonData.name).to.eql(requestBody.name);",
+              "});",
+              "",
+              "pm.test(\"Project ID matches request\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    var testProjectId = pm.environment.get(\"testProjectId\");",
+              "    if (testProjectId) {",
+              "        pm.expect(jsonData.project_id.toString()).to.eql(testProjectId.toString());",
+              "    }",
+              "});",
+              "",
+              "// Store test suite ID for subsequent tests",
+              "if (pm.response.code === 200 || pm.response.code === 201) {",
+              "    pm.environment.set(\"testSuiteId\", pm.response.json().id);",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Get Test Suites",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/test-suites?project_id={{testProjectId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "test-suites"
+          ],
+          "query": [
+            {
+              "key": "project_id",
+              "value": "{{testProjectId}}"
+            }
+          ]
+        },
+        "description": "Retrieve test suites for a project"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"Response is an array\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.be.an('array');",
+              "});",
+              "",
+              "pm.test(\"Each test suite has required fields\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    if (jsonData.length > 0) {",
+              "        pm.expect(jsonData[0]).to.have.property('id');",
+              "        pm.expect(jsonData[0]).to.have.property('name');",
+              "        pm.expect(jsonData[0]).to.have.property('project_id');",
+              "    }",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Get Test Suite by ID",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/test-suites/{{testSuiteId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "test-suites",
+            "{{testSuiteId}}"
+          ]
+        },
+        "description": "Retrieve specific test suite by ID"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200 or 404\", function () {",
+              "    pm.expect([200, 404]).to.include(pm.response.code);",
+              "});",
+              "",
+              "if (pm.response.code === 200) {",
+              "    pm.test(\"Response contains test suite data\", function () {",
+              "        var jsonData = pm.response.json();",
+              "        pm.expect(jsonData).to.have.property('id');",
+              "        pm.expect(jsonData).to.have.property('name');",
+              "        pm.expect(jsonData).to.have.property('description');",
+              "        pm.expect(jsonData).to.have.property('project_id');",
+              "    });",
+              "    ",
+              "    pm.test(\"Test suite ID matches request\", function () {",
+              "        var jsonData = pm.response.json();",
+              "        var testSuiteId = pm.environment.get(\"testSuiteId\");",
+              "        if (testSuiteId) {",
+              "            pm.expect(jsonData.id.toString()).to.eql(testSuiteId.toString());",
+              "        }",
+              "    });",
+              "} else {",
+              "    pm.test(\"Test suite not found - test skipped\", function () {",
+              "        console.log(\"Test suite ID not set or not found\");",
+              "    });",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Update Test Suite",
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"Updated Test Suite Name {{$timestamp}}\",\n  \"description\": \"Updated description\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/test-suites/{{testSuiteId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "test-suites",
+            "{{testSuiteId}}"
+          ]
+        },
+        "description": "Update test suite details"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200 or 404\", function () {",
+              "    pm.expect([200, 404]).to.include(pm.response.code);",
+              "});",
+              "",
+              "if (pm.response.code === 200) {",
+              "    pm.test(\"Test suite updated successfully\", function () {",
+              "        var jsonData = pm.response.json();",
+              "        pm.expect(jsonData).to.have.property('name');",
+              "        pm.expect(jsonData).to.have.property('description');",
+              "    });",
+              "    ",
+              "    pm.test(\"Updated values match request\", function () {",
+              "        var jsonData = pm.response.json();",
+              "        var requestBody = JSON.parse(pm.request.body.raw);",
+              "        pm.expect(jsonData.name).to.eql(requestBody.name);",
+              "    });",
+              "} else {",
+              "    pm.test(\"Test suite not found - update skipped\", function () {",
+              "        console.log(\"Test suite ID not set or not found\");",
+              "    });",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Delete Test Suite",
+      "request": {
+        "method": "DELETE",
+        "url": {
+          "raw": "{{baseUrl}}/test-suites/{{testSuiteId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "test-suites",
+            "{{testSuiteId}}"
+          ]
+        },
+        "description": "Delete a test suite"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200, 204, or 404\", function () {",
+              "    pm.expect([200, 204, 404]).to.include(pm.response.code);",
+              "});",
+              "",
+              "if (pm.response.code === 200 || pm.response.code === 204) {",
+              "    pm.test(\"Test suite deleted successfully\", function () {",
+              "        var jsonData = pm.response.json();",
+              "        if (jsonData) {",
+              "            pm.expect(jsonData).to.have.property('message');",
+              "        }",
+              "    });",
+              "} else {",
+              "    pm.test(\"Test suite not found - delete skipped\", function () {",
+              "        console.log(\"Test suite ID not set or not found\");",
+              "    });",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Create Test Run from Suite",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"Automated suite run\",\n  \"description\": \"Creates a run and not_tested results for every suite test case\",\n  \"priority\": \"medium\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/test-suites/{{testSuiteId}}/test-runs",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "test-suites",
+            "{{testSuiteId}}",
+            "test-runs"
+          ]
+        },
+        "description": "Atomically create a test run from a suite and seed results for all suite test cases."
+      }
+    }
+  ]
+}

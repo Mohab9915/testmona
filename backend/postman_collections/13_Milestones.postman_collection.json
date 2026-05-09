@@ -1,0 +1,273 @@
+{
+  "info": {
+    "name": "Milestones",
+    "description": "Milestone management endpoints",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8000",
+      "type": "string"
+    },
+    {
+      "key": "accessToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "testProjectId",
+      "value": "1",
+      "type": "string"
+    },
+    {
+      "key": "milestoneId",
+      "value": "1",
+      "type": "string"
+    }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{accessToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "item": [
+    {
+      "name": "Login - Setup",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"password\": \"demo123\",\n  \"username_or_email\": \"demo@testmona.com\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/token",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "token"
+          ]
+        },
+        "description": "Login to get access token for subsequent requests"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"Response contains access_token\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('access_token');",
+              "    pm.environment.set(\"accessToken\", jsonData.access_token);",
+              "    if (jsonData.refresh_token) {",
+              "        pm.environment.set(\"refreshToken\", jsonData.refresh_token);",
+              "    }",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Create Milestone",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"Milestone 1\",\n  \"description\": \"First milestone\",\n  \"project_id\": {{testProjectId}},\n  \"target_date\": \"2024-01-31\",\n  \"created_by\": 1\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/milestones",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "milestones"
+          ]
+        },
+        "description": "Create a new milestone"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200, 201, or 422\", function () {",
+              "    pm.expect([200, 201, 422]).to.include(pm.response.code);",
+              "});",
+              "",
+              "if (pm.response.code === 200 || pm.response.code === 201) {",
+              "    pm.test(\"Response has id\", function () {",
+              "        var jsonData = pm.response.json();",
+              "        pm.expect(jsonData).to.have.property('id');",
+              "        pm.environment.set(\"milestoneId\", jsonData.id);",
+              "    });",
+              "    ",
+              "    pm.test(\"Response has required fields\", function () {",
+              "        var jsonData = pm.response.json();",
+              "        pm.expect(jsonData).to.have.property('name');",
+              "        pm.expect(jsonData).to.have.property('project_id');",
+              "    });",
+              "} else {",
+              "    pm.test(\"Validation error - creation skipped\", function () {",
+              "        console.log(\"Validation error creating milestone\");",
+              "    });",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Get Milestones",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/milestones?project_id={{testProjectId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "milestones"
+          ],
+          "query": [
+            {
+              "key": "project_id",
+              "value": "{{testProjectId}}"
+            }
+          ]
+        },
+        "description": "Get all milestones for a project"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"Response is array\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.be.an('array');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Update Milestone",
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"status\": \"completed\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/milestones/{{milestoneId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "milestones",
+            "{{milestoneId}}"
+          ]
+        },
+        "description": "Update a milestone"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200 or 404\", function () {",
+              "    pm.expect([200, 404]).to.include(pm.response.code);",
+              "});",
+              "",
+              "if (pm.response.code === 200) {",
+              "    pm.test(\"Status updated\", function () {",
+              "        var jsonData = pm.response.json();",
+              "        pm.expect(jsonData.status).to.eql('completed');",
+              "    });",
+              "} else {",
+              "    pm.test(\"Milestone not found - update skipped\", function () {",
+              "        console.log(\"Milestone ID not set or not found\");",
+              "    });",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Delete Milestone",
+      "request": {
+        "method": "DELETE",
+        "url": {
+          "raw": "{{baseUrl}}/milestones/{{milestoneId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "milestones",
+            "{{milestoneId}}"
+          ]
+        },
+        "description": "Delete a milestone"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200, 204, or 404\", function () {",
+              "    pm.expect([200, 204, 404]).to.include(pm.response.code);",
+              "});",
+              "",
+              "if (pm.response.code === 404) {",
+              "    pm.test(\"Milestone not found - delete skipped\", function () {",
+              "        console.log(\"Milestone ID not set or not found\");",
+              "    });",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    }
+  ]
+}

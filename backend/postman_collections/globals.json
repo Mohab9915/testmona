@@ -1,0 +1,22 @@
+{
+  "id": "testmona-globals",
+  "name": "TestMona Globals",
+  "values": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8000",
+      "enabled": true
+    },
+    {
+      "key": "apiVersion",
+      "value": "v1",
+      "enabled": true
+    },
+    {
+      "key": "timeout",
+      "value": "30000",
+      "enabled": true
+    }
+  ],
+  "_postman_variable_scope": "globals"
+}

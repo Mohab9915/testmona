@@ -1,0 +1,786 @@
+"""
+User management routes for user profiles, CRUD operations, and invitations.
+"""
+
+from fastapi import Depends, HTTPException, UploadFile
+from sqlalchemy.orm import Session
+from typing import List
+from datetime import datetime
+
+from .. import crud, schemas, auth, crud_rbac, models
+from ..database import get_db
+from ..auth import get_current_active_user, check_password_change_required, verify_password, get_password_hash
+from ..security_utils import validate_file_size, validate_file_type, MAX_AVATAR_SIZE
+from ..utils import sanitize_data
+
+
+def register_user_routes(app):
+    """Register user management routes with the FastAPI app."""
+    
+    @app.get("/users/check-username/{username}")
+    async def check_username_availability(
+        username: str,
+        db: Session = Depends(get_db),
+        current_user: schemas.User = Depends(get_current_active_user)
+    ):
+        """Check if username is available (not taken by another user)"""
+        db_user = crud.get_user_by_username(db, username=username)
+        # Username is available if it doesn't exist or belongs to the current user
+        is_available = db_user is None or db_user.id == current_user.id
+        return {"available": is_available}
+
+    @app.get("/users/check-email/{email}")
+    async def check_email_availability(
+        email: str,
+        db: Session = Depends(get_db),
+        current_user: schemas.User = Depends(get_current_active_user)
+    ):
+        """Check if email is available (not taken by another user)"""
+        db_user = crud.get_user_by_email(db, email=email)
+        # Email is available if it doesn't exist or belongs to the current user
+        is_available = db_user is None or db_user.id == current_user.id
+        return {"available": is_available}
+
+    @app.post("/users/me/change-password")
+    async def change_password(
+        password_data: dict,
+        db: Session = Depends(get_db),
+        current_user: schemas.User = Depends(get_current_active_user)
+    ):
+        """Change user password"""
+        old_password = password_data.get('old_password')
+        new_password = password_data.get('new_password')
+        
+        if not old_password or not new_password:
+            raise HTTPException(status_code=400, detail="Old password and new password are required")
+        
+        # Verify old password
+        if not verify_password(old_password, current_user.hashed_password):
+            raise HTTPException(status_code=400, detail="Incorrect old password")
+        
+        # Validate new password
+        if len(new_password) < 8:
+            raise HTTPException(status_code=400, detail="New password must be at least 8 characters")
+        
+        if old_password == new_password:
+            raise HTTPException(status_code=400, detail="New password must be different from old password")
+        
+        # Update password
+        current_user.hashed_password = get_password_hash(new_password)
+        # Clear force_password_change flag when password is changed (only after successful validation)
+        current_user.force_password_change = False
+        db.commit()
+        
+        # Create audit trail
+        try:
+            from ..services.audit_service import get_audit_service
+            from ..schemas_audit import AuditTrailCreate
+            from ..models import AuditAction, EntityType
+            audit_service = get_audit_service(db)
+            audit_data = AuditTrailCreate(
+                user_id=current_user.id if current_user else None,
+                action=AuditAction.UPDATE.value,
+                entity_type=EntityType.USER.value,
+                entity_id=current_user.id,
+                project_id=None,
+                description=f"Password changed for user: {current_user.username or current_user.email}",
+            )
+            audit_service.create_audit_trail(audit_data)
+        except Exception as e:
+            print(f"Failed to create audit trail for password change: {e}")
+        
+        # Auto-complete onboarding task if it exists
+        try:
+            from ..crud import update_onboarding_task
+            update_onboarding_task(db, current_user.id, "change_password", True)
+        except Exception as e:
+            print(f"Failed to update onboarding task: {e}")
+        
+        return {"message": "Password changed successfully"}
+
+    @app.post("/users/me/avatar")
+    async def upload_avatar(
+        file: UploadFile,
+        db: Session = Depends(get_db),
+        current_user: schemas.User = Depends(get_current_active_user)
+    ):
+        """Upload profile avatar"""
+        # Check if user needs to change password
+        check_password_change_required(current_user)
+        # Validate file type
+        validate_file_type(file, ['image/jpeg', 'image/png', 'image/gif', 'image/webp'], "Avatar")
+        
+        # Validate file size
+        content = await validate_file_size(file, MAX_AVATAR_SIZE, "Avatar")
+        
+        # In a real implementation, you would save to cloud storage or file system
+        # For now, we'll store as base64 in the database
+        import base64
+        avatar_data = f"data:{file.content_type};base64,{base64.b64encode(content).decode()}"
+        
+        current_user.avatar_url = avatar_data
+        db.commit()
+        db.refresh(current_user)
+        
+        # Create audit trail
+        try:
+            from ..services.audit_service import get_audit_service
+            from ..schemas_audit import AuditTrailCreate
+            from ..models import AuditAction, EntityType
+            audit_service = get_audit_service(db)
+            audit_data = AuditTrailCreate(
+                user_id=current_user.id if current_user else None,
+                action=AuditAction.UPDATE.value,
+                entity_type=EntityType.USER.value,
+                entity_id=current_user.id,
+                project_id=None,
+                description=f"Avatar uploaded for user: {current_user.username or current_user.email}",
+            )
+            audit_service.create_audit_trail(audit_data)
+        except Exception as e:
+            print(f"Failed to create audit trail for avatar upload: {e}")
+        
+        return {"avatar_url": current_user.avatar_url}
+
+    @app.delete("/users/me")
+    async def delete_account(
+        confirmation: dict,
+        db: Session = Depends(get_db),
+        current_user: schemas.User = Depends(get_current_active_user)
+    ):
+        """Delete user account"""
+        password = confirmation.get('password')
+        confirm_text = confirmation.get('confirm_text')
+        
+        if not password:
+            raise HTTPException(status_code=400, detail="Password is required")
+        
+        if not confirm_text:
+            raise HTTPException(status_code=400, detail="Confirmation text is required")
+        
+        if confirm_text != "DELETE MY ACCOUNT":
+            raise HTTPException(status_code=400, detail="Confirmation text must be 'DELETE MY ACCOUNT'")
+        
+        # Verify password
+        if not verify_password(password, current_user.hashed_password):
+            raise HTTPException(status_code=400, detail="Incorrect password")
+        
+        # Store data for audit trail before deletion
+        user_id_val = current_user.id
+        user_identifier = current_user.username or current_user.email
+        
+        # Delete user (this will cascade delete related data)
+        crud.delete_user(db, current_user.id)
+        
+        # Create audit trail
+        try:
+            from ..services.audit_service import get_audit_service
+            from ..schemas_audit import AuditTrailCreate
+            from ..models import AuditAction, EntityType
+            audit_service = get_audit_service(db)
+            audit_data = AuditTrailCreate(
+                user_id=current_user.id if current_user else None,
+                action=AuditAction.DELETE.value,
+                entity_type=EntityType.USER.value,
+                entity_id=user_id_val,
+                project_id=None,
+                description=f"User account deleted: {user_identifier}",
+            )
+            audit_service.create_audit_trail(audit_data)
+        except Exception as e:
+            print(f"Failed to create audit trail for account deletion: {e}")
+        
+        return {"message": "Account deleted successfully"}
+
+    @app.get("/users/me/statistics")
+    async def get_user_statistics(
+        db: Session = Depends(get_db),
+        current_user: schemas.User = Depends(get_current_active_user)
+    ):
+        """Get user statistics"""
+        from ..models import TestCase, TestResult, TestRun, Defect
+        
+        # Count test cases created by user
+        test_cases_count = db.query(TestCase).filter(TestCase.created_by == current_user.id).count()
+        
+        # Count test runs executed by user (as executor)
+        test_runs_count = db.query(TestResult).filter(TestResult.executed_by == current_user.id).count()
+        
+        # Count defects reported by user
+        defects_count = db.query(Defect).filter(Defect.reported_by == current_user.id).count()
+        
+        # Calculate success rate (passed test results / total test results)
+        total_results = db.query(TestResult).filter(TestResult.executed_by == current_user.id).count()
+        passed_results = db.query(TestResult).filter(
+            TestResult.executed_by == current_user.id,
+            TestResult.status == "pass"
+        ).count()
+        success_rate = (passed_results / total_results * 100) if total_results > 0 else 0
+        
+        return {
+            "test_cases_created": test_cases_count,
+            "test_runs_executed": test_runs_count,
+            "defects_reported": defects_count,
+            "success_rate": round(success_rate, 1)
+        }
+
+    @app.put("/users/me")
+    def update_current_user(
+        user_update: schemas.UserUpdate,
+        db: Session = Depends(get_db),
+        current_user: schemas.User = Depends(get_current_active_user)
+    ):
+        """Update current user's profile"""
+        # Check if user needs to change password
+        check_password_change_required(current_user)
+        # Create a regular UserUpdate object, excluding fields that shouldn't be updated via profile
+        update_data = user_update.model_dump(exclude_unset=True)
+
+        # Remove sensitive fields that shouldn't be updated via profile endpoint
+        update_data.pop('role', None)
+        update_data.pop('is_active', None)
+        update_data.pop('password', None)
+
+        # Check username uniqueness if username is being updated
+        if 'username' in update_data and update_data['username'] != current_user.username:
+            existing_user = crud.get_user_by_username(db, username=update_data['username'])
+            if existing_user and existing_user.id != current_user.id:
+                raise HTTPException(status_code=400, detail="Username already taken")
+
+        # Check email uniqueness if email is being updated
+        if 'email' in update_data and update_data['email'] != current_user.email:
+            existing_user = crud.get_user_by_email(db, email=update_data['email'])
+            if existing_user and existing_user.id != current_user.id:
+                raise HTTPException(status_code=400, detail="Email already taken")
+
+        # Sanitize all data to prevent XSS attacks (including nested structures and JSON)
+        # Website field is validated for URL format but not escaped
+        update_data = sanitize_data(update_data, skip_fields={'website'})
+
+        db_user = crud.update_user(db=db, user_id=current_user.id, user=schemas.UserUpdate(**update_data))
+        
+        # Create audit trail
+        try:
+            from ..services.audit_service import get_audit_service
+            from ..schemas_audit import AuditTrailCreate
+            from ..models import AuditAction, EntityType
+            audit_service = get_audit_service(db)
+            audit_data = AuditTrailCreate(
+                user_id=current_user.id if current_user else None,
+                action=AuditAction.UPDATE.value,
+                entity_type=EntityType.USER.value,
+                entity_id=current_user.id,
+                project_id=None,
+                description=f"User profile updated: {current_user.username or current_user.email}",
+            )
+            audit_service.create_audit_trail(audit_data)
+        except Exception as e:
+            print(f"Failed to create audit trail for profile update: {e}")
+        
+        return db_user
+
+    @app.post("/users", response_model=schemas.User)
+    def create_user(user: schemas.UserCreate, db: Session = Depends(get_db), current_user: schemas.User = Depends(get_current_active_user)):
+        # Check if user needs to change password
+        check_password_change_required(current_user)
+        
+        db_user = crud.get_user_by_username(db, username=user.username)
+        if db_user:
+            raise HTTPException(status_code=400, detail="Username already registered")
+        db_user = crud.get_user_by_email(db, email=user.email)
+        if db_user:
+            raise HTTPException(status_code=400, detail="Email already registered")
+        new_user = crud.create_user(db=db, user=user)
+        
+        # Create audit trail
+        try:
+            from ..services.audit_service import get_audit_service
+            from ..schemas_audit import AuditTrailCreate
+            from ..models import AuditAction, EntityType
+            audit_service = get_audit_service(db)
+            audit_data = AuditTrailCreate(
+                user_id=current_user.id if current_user else None,
+                action=AuditAction.CREATE.value,
+                entity_type=EntityType.USER.value,
+                entity_id=new_user.id,
+                project_id=None,
+                description=f"User created: {new_user.username or new_user.email}",
+            )
+            audit_service.create_audit_trail(audit_data)
+        except Exception as e:
+            print(f"Failed to create audit trail for user creation: {e}")
+        
+        # Initialize onboarding checklist for new user
+        try:
+            crud.initialize_onboarding_checklist(db, new_user.id)
+        except Exception as e:
+            print(f"Failed to initialize onboarding checklist: {e}")
+        
+        return new_user
+
+    @app.get("/users", response_model=List[schemas.User])
+    def read_users(skip: int = 0, limit: int = 100, db: Session = Depends(get_db), current_user: schemas.User = Depends(get_current_active_user)):
+        # Check if user needs to change password
+        check_password_change_required(current_user)
+        
+        users = crud.get_users(db, skip=skip, limit=limit)
+        # Convert role to lowercase if it's uppercase
+        for user in users:
+            if hasattr(user.role, 'value'):
+                user.role = user.role.value.lower()
+            elif isinstance(user.role, str) and user.role.upper() in ['ADMIN', 'MANAGER', 'TESTER', 'VIEWER']:
+                user.role = user.role.lower()
+        return users
+
+    @app.get("/users/{user_id}", response_model=schemas.User)
+    def read_user(user_id: int, db: Session = Depends(get_db), current_user: schemas.User = Depends(get_current_active_user)):
+        # Users can only view their own profile unless they're superuser or admin
+        if not current_user.is_superuser and current_user.id != user_id:
+            # Check if user is admin
+            from ..models import Role
+            if isinstance(current_user.role, str):
+                is_admin = current_user.role.lower() == Role.ADMIN.value
+            else:
+                is_admin = current_user.role == Role.ADMIN
+            
+            if not is_admin:
+                raise HTTPException(status_code=403, detail="Not authorized to view this user")
+        
+        db_user = crud.get_user(db, user_id=user_id)
+        if db_user is None:
+            raise HTTPException(status_code=404, detail="User not found")
+        return db_user
+
+    @app.put("/users/{user_id}", response_model=schemas.User)
+    def update_user(
+        user_id: int,
+        user: schemas.UserUpdate,
+        db: Session = Depends(get_db),
+        current_user: schemas.User = Depends(get_current_active_user)
+    ):
+        # Users can only update their own profile unless they're superuser or admin
+        if not current_user.is_superuser and current_user.id != user_id:
+            # Check if user is admin
+            from ..models import Role
+            if isinstance(current_user.role, str):
+                is_admin = current_user.role.lower() == Role.ADMIN.value
+            else:
+                is_admin = current_user.role == Role.ADMIN
+            
+            if not is_admin:
+                raise HTTPException(status_code=403, detail="Not authorized to update this user")
+        
+        # Prevent users from changing their own role (both upgrade and downgrade)
+        if current_user.id == user_id and user.role is not None:
+            from ..models import Role
+            # Get current role
+            if isinstance(current_user.role, str):
+                current_role = current_user.role.lower()
+            else:
+                current_role = current_user.role.value.lower()
+            
+            # Get new role
+            if isinstance(user.role, str):
+                new_role = user.role.lower()
+            else:
+                new_role = user.role.value.lower()
+            
+            # Prevent no-change updates
+            if current_role == new_role:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Role is already set to this value. No change needed."
+                )
+            
+            # Define role hierarchy
+            role_hierarchy = {
+                Role.ADMIN.value: 4,
+                Role.MANAGER.value: 3,
+                Role.TESTER.value: 2,
+                Role.VIEWER.value: 1
+            }
+            
+            current_level = role_hierarchy.get(current_role, 0)
+            new_level = role_hierarchy.get(new_role, 0)
+            
+            # Prevent both upgrade and downgrade
+            if new_level != current_level:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Cannot change your own role. Ask another admin to make this change."
+                )
+        
+        db_user = crud.update_user(db=db, user_id=user_id, user=user)
+        if db_user is None:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        # Create audit trail
+        try:
+            from ..services.audit_service import get_audit_service
+            from ..schemas_audit import AuditTrailCreate
+            from ..models import AuditAction, EntityType
+            audit_service = get_audit_service(db)
+            audit_data = AuditTrailCreate(
+                user_id=current_user.id if current_user else None,
+                action=AuditAction.UPDATE.value,
+                entity_type=EntityType.USER.value,
+                entity_id=db_user.id,
+                project_id=None,
+                description=f"User updated: {db_user.username or db_user.email}",
+            )
+            audit_service.create_audit_trail(audit_data)
+        except Exception as e:
+            print(f"Failed to create audit trail for user update: {e}")
+        
+        return db_user
+
+    @app.delete("/users/{user_id}")
+    def delete_user(
+        user_id: int,
+        db: Session = Depends(get_db),
+        current_user: schemas.User = Depends(get_current_active_user)
+    ):
+        # Check if user needs to change password
+        check_password_change_required(current_user)
+        
+        if not current_user.is_superuser:
+            raise HTTPException(status_code=403, detail="Only superusers can delete users")
+        
+        if current_user.id == user_id:
+            raise HTTPException(status_code=400, detail="Cannot delete yourself")
+        
+        # Store data for audit trail before deletion
+        db_user = crud.get_user(db, user_id=user_id)
+        if db_user is None:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        user_id_val = db_user.id
+        user_identifier = db_user.username or db_user.email
+        
+        db_user = crud.delete_user(db, user_id=user_id)
+        
+        # Create audit trail
+        try:
+            from ..services.audit_service import get_audit_service
+            from ..schemas_audit import AuditTrailCreate
+            from ..models import AuditAction, EntityType
+            audit_service = get_audit_service(db)
+            audit_data = AuditTrailCreate(
+                user_id=current_user.id if current_user else None,
+                action=AuditAction.DELETE.value,
+                entity_type=EntityType.USER.value,
+                entity_id=user_id_val,
+                project_id=None,
+                description=f"User deleted: {user_identifier}",
+            )
+            audit_service.create_audit_trail(audit_data)
+        except Exception as e:
+            print(f"Failed to create audit trail for user deletion: {e}")
+        
+        return {"message": "User deleted successfully"}
+
+    # User Invitation Endpoints
+    @app.post("/invitations", response_model=schemas.UserInvitation)
+    def create_invitation(
+        invitation: schemas.UserInvitationCreate,
+        db: Session = Depends(get_db),
+        current_user: schemas.User = Depends(get_current_active_user)
+    ):
+        # Check if user already exists
+        existing_user = crud.get_user_by_email(db, email=invitation.email)
+        if existing_user:
+            raise HTTPException(status_code=400, detail="User with this email already exists")
+        
+        # Create invitation
+        invitation_data = invitation.model_dump()
+        db_invitation = crud.create_user_invitation(db, invitation_data, current_user.id)
+        
+        # Create audit trail
+        try:
+            from ..services.audit_service import get_audit_service
+            from ..schemas_audit import AuditTrailCreate
+            from ..models import AuditAction, EntityType
+            audit_service = get_audit_service(db)
+            audit_data = AuditTrailCreate(
+                user_id=current_user.id if current_user else None,
+                action=AuditAction.CREATE.value,
+                entity_type=EntityType.INVITATION.value,
+                entity_id=db_invitation.id,
+                project_id=None,
+                description=f"Invitation created for email: {invitation.email}",
+            )
+            audit_service.create_audit_trail(audit_data)
+        except Exception as e:
+            print(f"Failed to create audit trail for invitation creation: {e}")
+        
+        # TODO: Send email with invitation link
+        # For now, we'll just return the invitation with the token
+        # In production, you would send an email here
+        
+        return db_invitation
+
+    @app.get("/invitations", response_model=List[schemas.UserInvitation])
+    def read_invitations(
+        skip: int = 0,
+        limit: int = 100,
+        db: Session = Depends(get_db),
+        current_user: schemas.User = Depends(get_current_active_user)
+    ):
+        if not current_user.is_superuser:
+            raise HTTPException(status_code=403, detail="Only superusers can view invitations")
+        
+        invitations = crud.get_user_invitations(db, skip=skip, limit=limit)
+        return invitations
+
+    @app.get("/invitations/{token}")
+    def get_invitation_by_token(token: str, db: Session = Depends(get_db)):
+        invitation = crud.get_user_invitation_by_token(db, token=token)
+        if invitation is None:
+            raise HTTPException(status_code=404, detail="Invitation not found or already used")
+        
+        # Check if expired
+        if invitation.expires_at < datetime.now():
+            raise HTTPException(status_code=400, detail="Invitation has expired")
+        
+        return {
+            "email": invitation.email,
+            "role": invitation.role,
+            "expires_at": invitation.expires_at
+        }
+
+    @app.post("/invitations/{token}/accept")
+    def accept_invitation(
+        token: str,
+        accept_data: schemas.UserInvitationAccept,
+        db: Session = Depends(get_db)
+    ):
+        # Verify token matches
+        if accept_data.token != token:
+            raise HTTPException(status_code=400, detail="Invalid token")
+        
+        # Get invitation
+        invitation = crud.get_user_invitation_by_token(db, token=token)
+        if invitation is None:
+            raise HTTPException(status_code=404, detail="Invitation not found or already used")
+        
+        # Check if expired
+        if invitation.expires_at < datetime.now():
+            raise HTTPException(status_code=400, detail="Invitation has expired")
+        
+        # Check if user already exists
+        existing_user = crud.get_user_by_email(db, email=invitation.email)
+        if existing_user:
+            raise HTTPException(status_code=400, detail="User already exists")
+        
+        # Create user
+        user_data = schemas.UserCreate(
+            username=accept_data.username,
+            email=invitation.email,
+            password=accept_data.password,
+            full_name=accept_data.full_name,
+            role=invitation.role,
+            is_active=True
+        )
+        new_user = crud.create_user(db, user=user_data)
+        
+        # Assign to projects
+        if invitation.project_ids:
+            project_ids = [int(pid) for pid in invitation.project_ids.split(',') if pid]
+            for project_id in project_ids:
+                assignment = crud_rbac.create_project_assignment(
+                    db,
+                    crud_rbac.ProjectAssignmentCreate(
+                        user_id=new_user.id,
+                        project_id=project_id,
+                )
+            )
+        
+        # Create audit trail
+        try:
+            from ..services.audit_service import get_audit_service
+            from ..schemas_audit import AuditTrailCreate
+            from ..models import AuditAction, EntityType
+            audit_service = get_audit_service(db)
+            audit_data = AuditTrailCreate(
+                user_id=new_user.id,
+                action=AuditAction.CREATE.value,
+                entity_type=EntityType.USER.value,
+                entity_id=new_user.id,
+                project_id=None,
+                description=f"User created via invitation: {new_user.username or new_user.email}",
+            )
+            audit_service.create_audit_trail(audit_data)
+        except Exception as e:
+            print(f"Failed to create audit trail for invitation acceptance: {e}")
+        
+        # Mark invitation as used
+        crud.delete_user_invitation(db, invitation_id=invitation.id)
+        return {"message": "Invitation accepted successfully", "user_id": new_user.id}
+
+    @app.delete("/invitations/{invitation_id}")
+    def delete_invitation(
+        invitation_id: int,
+        db: Session = Depends(get_db),
+        current_user: schemas.User = Depends(get_current_active_user)
+    ):
+        if not current_user.is_superuser:
+            raise HTTPException(status_code=403, detail="Only superusers can delete invitations")
+        
+        # Store data for audit trail before deletion
+        db_invitation = crud.get_user_invitation(db, invitation_id=invitation_id)
+        if db_invitation is None:
+            raise HTTPException(status_code=404, detail="Invitation not found")
+        
+        invitation_email = db_invitation.email
+        
+        db_invitation = crud.delete_user_invitation(db, invitation_id=invitation_id)
+        
+        # Create audit trail
+        try:
+            from ..services.audit_service import get_audit_service
+            from ..schemas_audit import AuditTrailCreate
+            from ..models import AuditAction, EntityType
+            audit_service = get_audit_service(db)
+            audit_data = AuditTrailCreate(
+                user_id=current_user.id if current_user else None,
+                action=AuditAction.DELETE.value,
+                entity_type=EntityType.INVITATION.value,
+                entity_id=invitation_id,
+                project_id=None,
+                description=f"Invitation deleted for email: {invitation_email}",
+            )
+            audit_service.create_audit_trail(audit_data)
+        except Exception as e:
+            print(f"Failed to create audit trail for invitation deletion: {e}")
+        
+        return {"message": "Invitation deleted successfully"}
+
+    @app.put("/users/me/notification-preferences")
+    def update_notification_preferences(
+        request: schemas.NotificationPreferencesUpdate,
+        db: Session = Depends(get_db),
+        current_user: schemas.User = Depends(get_current_active_user)
+    ):
+        """Update user notification preferences"""
+        from datetime import datetime, timedelta
+        from ..models import User
+        
+        user = db.query(User).filter(User.id == current_user.id).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        if request.do_not_disturb is not None:
+            user.do_not_disturb = request.do_not_disturb
+            # When DND is disabled, also clear the mute time
+            if not request.do_not_disturb:
+                user.notifications_muted_until = None
+        
+        if request.notification_sound_enabled is not None:
+            user.notification_sound_enabled = request.notification_sound_enabled
+        
+        if request.mute_duration_hours is not None:
+            if request.mute_duration_hours < 1:
+                raise HTTPException(status_code=400, detail="mute_duration_hours must be at least 1")
+            if request.mute_duration_hours > 168:  # Max 1 week
+                raise HTTPException(status_code=400, detail="mute_duration_hours cannot exceed 168 hours (1 week)")
+            user.notifications_muted_until = datetime.now() + timedelta(hours=request.mute_duration_hours)
+            # When setting mute duration, also enable DND
+            user.do_not_disturb = True
+        
+        db.commit()
+        db.refresh(user)
+        
+        # Create audit trail
+        try:
+            from ..services.audit_service import get_audit_service
+            from ..schemas_audit import AuditTrailCreate
+            from ..models import AuditAction, EntityType
+            audit_service = get_audit_service(db)
+            audit_data = AuditTrailCreate(
+                user_id=current_user.id if current_user else None,
+                action=AuditAction.UPDATE.value,
+                entity_type=EntityType.USER.value,
+                entity_id=current_user.id,
+                project_id=None,
+                description=f"Notification preferences updated for user: {current_user.username or current_user.email}",
+            )
+            audit_service.create_audit_trail(audit_data)
+        except Exception as e:
+            print(f"Failed to create audit trail for notification preferences update: {e}")
+        
+        return {
+            "do_not_disturb": user.do_not_disturb,
+            "notification_sound_enabled": user.notification_sound_enabled,
+            "notifications_muted_until": user.notifications_muted_until
+        }
+
+    @app.get("/users/me/notification-preferences")
+    def get_notification_preferences(
+        db: Session = Depends(get_db),
+        current_user: schemas.User = Depends(get_current_active_user)
+    ):
+        """Get user notification preferences"""
+        from ..models import User
+        
+        user = db.query(User).filter(User.id == current_user.id).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        return {
+            "do_not_disturb": user.do_not_disturb,
+            "notification_sound_enabled": user.notification_sound_enabled,
+            "notifications_muted_until": user.notifications_muted_until
+        }
+
+    @app.get("/users/me/onboarding-checklist")
+    def get_onboarding_checklist(
+        db: Session = Depends(get_db),
+        current_user: schemas.User = Depends(get_current_active_user)
+    ):
+        """Get onboarding checklist for current user"""
+        try:
+            checklist = crud.get_onboarding_checklist(db, current_user.id)
+            return [
+                {
+                    "id": item.id,
+                    "task_key": item.task_key,
+                    "task_name": item.task_name,
+                    "description": item.description,
+                    "is_completed": item.is_completed,
+                    "completed_at": item.completed_at.isoformat() if item.completed_at else None
+                }
+                for item in checklist
+            ]
+        except Exception as e:
+            # If checklist doesn't exist or table missing, return empty array
+            print(f"Failed to get onboarding checklist: {e}")
+            return []
+
+    @app.put("/users/me/onboarding-checklist/{task_key}")
+    def update_onboarding_task(
+        task_key: str,
+        task_data: dict,
+        db: Session = Depends(get_db),
+        current_user: schemas.User = Depends(get_current_active_user)
+    ):
+        """Update onboarding task completion status"""
+        try:
+            is_completed = task_data.get('is_completed', False)
+            task = crud.update_onboarding_task(db, current_user.id, task_key, is_completed)
+            
+            if not task:
+                raise HTTPException(status_code=404, detail="Task not found")
+            
+            return {
+                "id": task.id,
+                "task_key": task.task_key,
+                "task_name": task.task_name,
+                "description": task.description,
+                "is_completed": task.is_completed,
+                "completed_at": task.completed_at.isoformat() if task.completed_at else None
+            }
+        except HTTPException:
+            raise
+        except Exception as e:
+            print(f"Failed to update onboarding task: {e}")
+            raise HTTPException(status_code=500, detail="Failed to update onboarding task")

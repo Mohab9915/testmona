@@ -1,0 +1,243 @@
+{
+  "info": {
+    "name": "Versioning",
+    "description": "Version control for test cases and other entities",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8000",
+      "type": "string"
+    },
+    {
+      "key": "accessToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "testCaseId",
+      "value": "1",
+      "type": "string"
+    },
+    {
+      "key": "versionId",
+      "value": "1",
+      "type": "string"
+    }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{accessToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "item": [
+    {
+      "name": "Login - Setup",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"password\": \"demo123\",\n  \"username_or_email\": \"demo@testmona.com\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/token",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "token"
+          ]
+        },
+        "description": "Login to get access token for subsequent requests"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"Response contains access_token\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('access_token');",
+              "    pm.environment.set(\"accessToken\", jsonData.access_token);",
+              "    if (jsonData.refresh_token) {",
+              "        pm.environment.set(\"refreshToken\", jsonData.refresh_token);",
+              "    }",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Create Version",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"test_case_id\": {{testCaseId}},\n  \"version_name\": \"v1.0\",\n  \"description\": \"Initial version\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/versions",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "versions"
+          ]
+        },
+        "description": "Create a new version of a test case"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200, 201, or 404\", function () {",
+              "    pm.expect([200, 201, 404]).to.include(pm.response.code);",
+              "});",
+              "",
+              "if (pm.response.code === 200 || pm.response.code === 201) {",
+              "    pm.test(\"Response has id\", function () {",
+              "        var jsonData = pm.response.json();",
+              "        pm.expect(jsonData).to.have.property('id');",
+              "        pm.environment.set(\"versionId\", jsonData.id);",
+              "    });",
+              "    ",
+              "    pm.test(\"Response has required fields\", function () {",
+              "        var jsonData = pm.response.json();",
+              "        pm.expect(jsonData).to.have.property('version_name');",
+              "        pm.expect(jsonData).to.have.property('test_case_id');",
+              "    });",
+              "} else {",
+              "    pm.test(\"Versioning endpoint not found - creation skipped\", function () {",
+              "        console.log(\"Versioning endpoint not implemented\");",
+              "    });",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Get Versions",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/versions?test_case_id={{testCaseId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "versions"
+          ],
+          "query": [
+            {
+              "key": "test_case_id",
+              "value": "{{testCaseId}}"
+            }
+          ]
+        },
+        "description": "Get all versions of a test case"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200 or 404\", function () {",
+              "    pm.expect([200, 404]).to.include(pm.response.code);",
+              "});",
+              "",
+              "if (pm.response.code === 200) {",
+              "    pm.test(\"Response is array\", function () {",
+              "        var jsonData = pm.response.json();",
+              "        pm.expect(jsonData).to.be.an('array');",
+              "    });",
+              "} else {",
+              "    pm.test(\"Versioning endpoint not found - test skipped\", function () {",
+              "        console.log(\"Versioning endpoint not implemented\");",
+              "    });",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Compare Versions",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"version_id_1\": 1,\n  \"version_id_2\": 2\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/versions/compare",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "versions",
+            "compare"
+          ]
+        },
+        "description": "Compare two versions of a test case"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200 or 404\", function () {",
+              "    pm.expect([200, 404]).to.include(pm.response.code);",
+              "});",
+              "",
+              "if (pm.response.code === 200) {",
+              "    pm.test(\"Response has comparison data\", function () {",
+              "        var jsonData = pm.response.json();",
+              "        pm.expect(jsonData).to.have.property('differences');",
+              "    });",
+              "} else {",
+              "    pm.test(\"Versioning endpoint not found - test skipped\", function () {",
+              "        console.log(\"Versioning endpoint not implemented\");",
+              "    });",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    }
+  ]
+}

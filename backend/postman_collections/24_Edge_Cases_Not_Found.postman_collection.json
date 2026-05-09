@@ -1,0 +1,369 @@
+{
+  "info": {
+    "name": "Edge Cases - Not Found",
+    "description": "404 Not Found edge case tests",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8000",
+      "type": "string"
+    },
+    {
+      "key": "accessToken",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{accessToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "item": [
+    {
+      "name": "Login - Setup",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"password\": \"demo123\",\n  \"username_or_email\": \"demo@testmona.com\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/token",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "token"
+          ]
+        },
+        "description": "Login to get access token for subsequent requests"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"Response contains access_token\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('access_token');",
+              "    pm.environment.set(\"accessToken\", jsonData.access_token);",
+              "    if (jsonData.refresh_token) {",
+              "        pm.environment.set(\"refreshToken\", jsonData.refresh_token);",
+              "    }",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Get Non-Existent User",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/users/99999",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "users",
+            "99999"
+          ]
+        },
+        "description": "Expected: 404 Not Found - User does not exist"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 404\", function () {",
+              "    pm.response.to.have.status(404);",
+              "});",
+              "",
+              "pm.test(\"Not found error returned\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('detail');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Get Non-Existent Project",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/projects/99999",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "projects",
+            "99999"
+          ]
+        },
+        "description": "Expected: 404 Not Found - Project does not exist"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 404\", function () {",
+              "    pm.response.to.have.status(404);",
+              "});",
+              "",
+              "pm.test(\"Not found error returned\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('detail');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Get Non-Existent Test Suite",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/test-suites/99999",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "test-suites",
+            "99999"
+          ]
+        },
+        "description": "Expected: 404 Not Found - Test suite does not exist"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 404\", function () {",
+              "    pm.response.to.have.status(404);",
+              "});",
+              "",
+              "pm.test(\"Not found error returned\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('detail');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Get Non-Existent Test Case",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/test-cases/99999",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "test-cases",
+            "99999"
+          ]
+        },
+        "description": "Expected: 404 Not Found - Test case does not exist"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 404\", function () {",
+              "    pm.response.to.have.status(404);",
+              "});",
+              "",
+              "pm.test(\"Not found error returned\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('detail');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Get Non-Existent Defect",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/defects/99999",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "defects",
+            "99999"
+          ]
+        },
+        "description": "Expected: 404 Not Found - Defect does not exist"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 404\", function () {",
+              "    pm.response.to.have.status(404);",
+              "});",
+              "",
+              "pm.test(\"Not found error returned\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('detail');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Get Non-Existent Requirement",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/requirements/99999",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "requirements",
+            "99999"
+          ]
+        },
+        "description": "Expected: 404 Not Found - Requirement does not exist"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 404\", function () {",
+              "    pm.response.to.have.status(404);",
+              "});",
+              "",
+              "pm.test(\"Not found error returned\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('detail');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Update Non-Existent Resource",
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"Updated\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/projects/99999",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "projects",
+            "99999"
+          ]
+        },
+        "description": "Expected: 404 Not Found - Resource does not exist"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 404\", function () {",
+              "    pm.response.to.have.status(404);",
+              "});",
+              "",
+              "pm.test(\"Not found error returned\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('detail');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Delete Non-Existent Resource",
+      "request": {
+        "method": "DELETE",
+        "url": {
+          "raw": "{{baseUrl}}/projects/99999",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "projects",
+            "99999"
+          ]
+        },
+        "description": "Expected: 404 Not Found - Resource does not exist"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 404\", function () {",
+              "    pm.response.to.have.status(404);",
+              "});",
+              "",
+              "pm.test(\"Not found error returned\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('detail');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    }
+  ]
+}

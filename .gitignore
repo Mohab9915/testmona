@@ -1,0 +1,130 @@
+# Root level .gitignore for TestMona project
+
+# IDE and Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Environment and configuration files
+.env
+.env.docker
+.env.local
+.env.development
+.env.test
+.env.production
+config.local.*
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage directory used by tools like istanbul
+coverage/
+*.lcov
+.nyc_output
+
+# Dependency directories
+node_modules/
+venv/
+env/
+ENV/
+
+# Build outputs
+dist/
+build/
+out/
+.next/
+.nuxt/
+.storybook-out
+storybook-static/
+
+# Cache directories
+.cache/
+.parcel-cache/
+.eslintcache
+.stylelintcache
+.pytest_cache/
+.mypy_cache/
+__pycache__/
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.temp
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Desktop.ini
+
+# Docker
+.dockerignore
+
+# Python specific
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+venv/lib/
+env/lib/
+ENV/lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Test files (keep structure but ignore execution artifacts)
+test_*.py
+!test_*.py.bak
+
+# Alembic (keep structure but ignore version files)
+alembic/versions/*.py
+!alembic/versions/__init__.py
+
+# Package manager files
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+poetry.lock
+Pipfile.lock
+
+# Documentation build
+docs/_build/
+
+# Backup files
+*.bak
+*.backup

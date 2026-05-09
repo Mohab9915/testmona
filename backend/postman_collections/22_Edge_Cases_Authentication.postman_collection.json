@@ -1,0 +1,503 @@
+{
+  "info": {
+    "name": "Edge Cases - Authentication",
+    "description": "Authentication edge case and error handling tests",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8000",
+      "type": "string"
+    },
+    {
+      "key": "accessToken",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "auth": {
+    "type": "noauth"
+  },
+  "item": [
+    {
+      "name": "Login with Invalid Credentials",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"password\": \"wrongpassword\",\n  \"username_or_email\": \"demo@testmona.com\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/token",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "token"
+          ]
+        },
+        "description": "Expected: 401 Unauthorized - Incorrect username or password"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 401\", function () {",
+              "    pm.response.to.have.status(401);",
+              "});",
+              "",
+              "pm.test(\"No access token returned\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.not.have.property('access_token');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Login with Missing Fields",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"username_or_email\": \"demo@testmona.com\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/token",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "token"
+          ]
+        },
+        "description": "Expected: 422 Unprocessable Entity - Missing password field"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 422\", function () {",
+              "    pm.response.to.have.status(422);",
+              "});",
+              "",
+              "pm.test(\"Validation error returned\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('detail');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Login with Empty Credentials",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"password\": \"\",\n  \"username_or_email\": \"\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/token",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "token"
+          ]
+        },
+        "description": "Expected: 422 Unprocessable Entity - Empty credentials"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 422\", function () {",
+              "    pm.response.to.have.status(422);",
+              "});",
+              "",
+              "pm.test(\"Validation error returned\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('detail');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Access Protected Endpoint Without Token",
+      "request": {
+        "auth": {
+          "type": "noauth"
+        },
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/users/me",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "users",
+            "me"
+          ]
+        },
+        "description": "Expected: 401 Unauthorized - Missing or invalid token"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 401\", function () {",
+              "    pm.response.to.have.status(401);",
+              "});",
+              "",
+              "pm.test(\"Unauthorized access blocked\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.not.have.property('id');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Access with Invalid Token",
+      "request": {
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "invalid_token_12345",
+              "type": "string"
+            }
+          ]
+        },
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/users/me",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "users",
+            "me"
+          ]
+        },
+        "description": "Expected: 401 Unauthorized - Invalid token"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 401\", function () {",
+              "    pm.response.to.have.status(401);",
+              "});",
+              "",
+              "pm.test(\"Invalid token rejected\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.not.have.property('id');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Refresh with Invalid Token",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"refresh_token\": \"invalid_refresh_token\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/refresh",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "refresh"
+          ]
+        },
+        "description": "Expected: 401 Unauthorized - Invalid or expired refresh token"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 401\", function () {",
+              "    pm.response.to.have.status(401);",
+              "});",
+              "",
+              "pm.test(\"No new token returned\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.not.have.property('access_token');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Refresh with Missing Token",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/refresh",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "refresh"
+          ]
+        },
+        "description": "Expected: 422 Unprocessable Entity - Missing refresh_token field"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 422\", function () {",
+              "    pm.response.to.have.status(422);",
+              "});",
+              "",
+              "pm.test(\"Validation error returned\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('detail');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Register with Duplicate Username",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"username\": \"demo@testmona.com\",\n  \"email\": \"new@example.com\",\n  \"password\": \"password123\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/register",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "register"
+          ]
+        },
+        "description": "Expected: 400 Bad Request - Username already registered"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 400\", function () {",
+              "    pm.response.to.have.status(400);",
+              "});",
+              "",
+              "pm.test(\"Duplicate username error\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('detail');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Register with Duplicate Email",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"username\": \"newuser\",\n  \"email\": \"demo@testmona.com\",\n  \"password\": \"password123\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/register",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "register"
+          ]
+        },
+        "description": "Expected: 400 Bad Request - Email already registered"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 400\", function () {",
+              "    pm.response.to.have.status(400);",
+              "});",
+              "",
+              "pm.test(\"Duplicate email error\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('detail');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Register with Weak Password",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"username\": \"newuser\",\n  \"email\": \"new@example.com\",\n  \"password\": \"123\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/register",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "register"
+          ]
+        },
+        "description": "Expected: 422 Unprocessable Entity - Password too short"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 422\", function () {",
+              "    pm.response.to.have.status(422);",
+              "});",
+              "",
+              "pm.test(\"Password validation error\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('detail');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Register with Invalid Email",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"username\": \"newuser\",\n  \"email\": \"invalid-email\",\n  \"password\": \"password123\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/register",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "register"
+          ]
+        },
+        "description": "Expected: 422 Unprocessable Entity - Invalid email format"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 422\", function () {",
+              "    pm.response.to.have.status(422);",
+              "});",
+              "",
+              "pm.test(\"Email validation error\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('detail');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    }
+  ]
+}

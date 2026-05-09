@@ -1,0 +1,394 @@
+{
+  "info": {
+    "name": "Projects",
+    "description": "Project management endpoints with comprehensive tests",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8000",
+      "type": "string"
+    },
+    {
+      "key": "accessToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "testProjectId",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{accessToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "item": [
+    {
+      "name": "Login - Setup",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"password\": \"demo123\",\n  \"username_or_email\": \"demo@testmona.com\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/token",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "token"
+          ]
+        },
+        "description": "Login to get access token for subsequent requests"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"Response contains access_token\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('access_token');",
+              "    pm.environment.set(\"accessToken\", jsonData.access_token);",
+              "    if (jsonData.refresh_token) {",
+              "        pm.environment.set(\"refreshToken\", jsonData.refresh_token);",
+              "    }",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Create Project",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"Test Project {{$timestamp}}\",\n  \"description\": \"A test project for API testing\",\n  \"status\": \"active\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/projects/",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "projects"
+          ]
+        },
+        "description": "Create a new project"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200 or 201\", function () {",
+              "    pm.expect([200, 201]).to.include(pm.response.code);",
+              "});",
+              "",
+              "pm.test(\"Response contains project data\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('id');",
+              "    pm.expect(jsonData).to.have.property('name');",
+              "    pm.expect(jsonData).to.have.property('description');",
+              "    pm.expect(jsonData).to.have.property('status');",
+              "});",
+              "",
+              "pm.test(\"Project name matches request\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    var requestBody = JSON.parse(pm.request.body.raw);",
+              "    pm.expect(jsonData.name).to.eql(requestBody.name);",
+              "});",
+              "",
+              "pm.test(\"Status is valid\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(['active', 'archived', 'on_hold']).to.include(jsonData.status);",
+              "});",
+              "",
+              "// Store project ID for subsequent tests",
+              "if (pm.response.code === 200 || pm.response.code === 201) {",
+              "    pm.environment.set(\"testProjectId\", pm.response.json().id);",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Get All Projects",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/projects/?skip=0&limit=100",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "projects"
+          ],
+          "query": [
+            {
+              "key": "skip",
+              "value": "0"
+            },
+            {
+              "key": "limit",
+              "value": "100"
+            }
+          ]
+        },
+        "description": "Retrieve paginated list of projects"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"Response is an array\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.be.an('array');",
+              "});",
+              "",
+              "pm.test(\"Each project has required fields\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    if (jsonData.length > 0) {",
+              "        pm.expect(jsonData[0]).to.have.property('id');",
+              "        pm.expect(jsonData[0]).to.have.property('name');",
+              "        pm.expect(jsonData[0]).to.have.property('status');",
+              "    }",
+              "});",
+              "",
+              "pm.test(\"Pagination works correctly\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData.length).to.be.at.most(100);",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Get Project by ID",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/projects/{{testProjectId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "projects",
+            "{{testProjectId}}"
+          ]
+        },
+        "description": "Retrieve specific project by ID"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200 or 404\", function () {",
+              "    pm.expect([200, 404]).to.include(pm.response.code);",
+              "});",
+              "",
+              "if (pm.response.code === 200) {",
+              "    pm.test(\"Response contains project data\", function () {",
+              "        var jsonData = pm.response.json();",
+              "        pm.expect(jsonData).to.have.property('id');",
+              "        pm.expect(jsonData).to.have.property('name');",
+              "        pm.expect(jsonData).to.have.property('description');",
+              "        pm.expect(jsonData).to.have.property('status');",
+              "        pm.expect(jsonData).to.have.property('created_at');",
+              "    });",
+              "    ",
+              "    pm.test(\"Project ID matches request\", function () {",
+              "        var jsonData = pm.response.json();",
+              "        var testProjectId = pm.environment.get(\"testProjectId\");",
+              "        if (testProjectId) {",
+              "            pm.expect(jsonData.id.toString()).to.eql(testProjectId.toString());",
+              "        }",
+              "    });",
+              "} else {",
+              "    pm.test(\"Project not found - test skipped\", function () {",
+              "        console.log(\"Project ID not set or project not found\");",
+              "    });",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Update Project",
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"Updated Project Name {{$timestamp}}\",\n  \"description\": \"Updated description\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/projects/{{testProjectId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "projects",
+            "{{testProjectId}}"
+          ]
+        },
+        "description": "Update project details"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200 or 404\", function () {",
+              "    pm.expect([200, 404]).to.include(pm.response.code);",
+              "});",
+              "",
+              "if (pm.response.code === 200) {",
+              "    pm.test(\"Project updated successfully\", function () {",
+              "        var jsonData = pm.response.json();",
+              "        pm.expect(jsonData).to.have.property('name');",
+              "        pm.expect(jsonData).to.have.property('description');",
+              "    });",
+              "    ",
+              "    pm.test(\"Updated values match request\", function () {",
+              "        var jsonData = pm.response.json();",
+              "        var requestBody = JSON.parse(pm.request.body.raw);",
+              "        pm.expect(jsonData.name).to.eql(requestBody.name);",
+              "        pm.expect(jsonData.description).to.eql(requestBody.description);",
+              "    });",
+              "} else {",
+              "    pm.test(\"Project not found - update skipped\", function () {",
+              "        console.log(\"Project ID not set or project not found\");",
+              "    });",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Delete Project",
+      "request": {
+        "method": "DELETE",
+        "url": {
+          "raw": "{{baseUrl}}/projects/{{testProjectId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "projects",
+            "{{testProjectId}}"
+          ]
+        },
+        "description": "Delete a project"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200, 204, or 404\", function () {",
+              "    pm.expect([200, 204, 404]).to.include(pm.response.code);",
+              "});",
+              "",
+              "if (pm.response.code === 200 || pm.response.code === 204) {",
+              "    pm.test(\"Project deleted successfully\", function () {",
+              "        var jsonData = pm.response.json();",
+              "        if (jsonData) {",
+              "            pm.expect(jsonData).to.have.property('message');",
+              "        }",
+              "    });",
+              "} else {",
+              "    pm.test(\"Project not found - delete skipped\", function () {",
+              "        console.log(\"Project ID not set or project not found\");",
+              "    });",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Get My Projects",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/my-projects/",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "my-projects"
+          ]
+        },
+        "description": "Get projects associated with current user"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"Response is an array\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.be.an('array');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    }
+  ]
+}

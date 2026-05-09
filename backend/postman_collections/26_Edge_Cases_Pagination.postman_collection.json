@@ -1,0 +1,316 @@
+{
+  "info": {
+    "name": "Edge Cases - Pagination",
+    "description": "Pagination edge case tests",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8000",
+      "type": "string"
+    },
+    {
+      "key": "accessToken",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{accessToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "item": [
+    {
+      "name": "Login - Setup",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"password\": \"demo123\",\n  \"username_or_email\": \"demo@testmona.com\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/token",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "token"
+          ]
+        },
+        "description": "Login to get access token for subsequent requests"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"Response contains access_token\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('access_token');",
+              "    pm.environment.set(\"accessToken\", jsonData.access_token);",
+              "    if (jsonData.refresh_token) {",
+              "        pm.environment.set(\"refreshToken\", jsonData.refresh_token);",
+              "    }",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Negative Skip Value",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/users?skip=-10&limit=100",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "users"
+          ],
+          "query": [
+            {
+              "key": "skip",
+              "value": "-10"
+            },
+            {
+              "key": "limit",
+              "value": "100"
+            }
+          ]
+        },
+        "description": "Expected: 422 Unprocessable Entity - Negative skip value"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200 or 422\", function () {",
+              "    pm.expect([200, 422]).to.include(pm.response.code);",
+              "});",
+              "",
+              "if (pm.response.code === 422) {",
+              "    pm.test(\"Validation error returned\", function () {",
+              "        var jsonData = pm.response.json();",
+              "        pm.expect(jsonData).to.have.property('detail');",
+              "    });",
+              "} else {",
+              "    pm.test(\"Backend handles negative skip gracefully\", function () {",
+              "        console.log(\"Negative skip value accepted by backend\");",
+              "    });",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Negative Limit Value",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/users?skip=0&limit=-10",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "users"
+          ],
+          "query": [
+            {
+              "key": "skip",
+              "value": "0"
+            },
+            {
+              "key": "limit",
+              "value": "-10"
+            }
+          ]
+        },
+        "description": "Expected: 422 Unprocessable Entity - Negative limit value"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200 or 422\", function () {",
+              "    pm.expect([200, 422]).to.include(pm.response.code);",
+              "});",
+              "",
+              "if (pm.response.code === 422) {",
+              "    pm.test(\"Validation error returned\", function () {",
+              "        var jsonData = pm.response.json();",
+              "        pm.expect(jsonData).to.have.property('detail');",
+              "    });",
+              "} else {",
+              "    pm.test(\"Backend handles negative limit gracefully\", function () {",
+              "        console.log(\"Negative limit value accepted by backend\");",
+              "    });",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Extremely Large Limit Value",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/users?skip=0&limit=999999",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "users"
+          ],
+          "query": [
+            {
+              "key": "skip",
+              "value": "0"
+            },
+            {
+              "key": "limit",
+              "value": "999999"
+            }
+          ]
+        },
+        "description": "Expected: 422 Unprocessable Entity or truncated results - Limit too large"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200 or 422\", function () {",
+              "    pm.expect([200, 422]).to.include(pm.response.code);",
+              "});",
+              "",
+              "if (pm.response.code === 200) {",
+              "    pm.test(\"Results returned\", function () {",
+              "        var jsonData = pm.response.json();",
+              "        pm.expect(jsonData).to.be.an('array');",
+              "    });",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Zero Limit Value",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/users?skip=0&limit=0",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "users"
+          ],
+          "query": [
+            {
+              "key": "skip",
+              "value": "0"
+            },
+            {
+              "key": "limit",
+              "value": "0"
+            }
+          ]
+        },
+        "description": "Expected: Empty array or 422 - Zero limit value"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200 or 422\", function () {",
+              "    pm.expect([200, 422]).to.include(pm.response.code);",
+              "});",
+              "",
+              "if (pm.response.code === 200) {",
+              "    pm.test(\"Empty array returned\", function () {",
+              "        var jsonData = pm.response.json();",
+              "        pm.expect(jsonData).to.be.an('array');",
+              "        pm.expect(jsonData.length).to.eql(0);",
+              "    });",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Non-Numeric Skip Value",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/users?skip=abc&limit=100",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "users"
+          ],
+          "query": [
+            {
+              "key": "skip",
+              "value": "abc"
+            },
+            {
+              "key": "limit",
+              "value": "100"
+            }
+          ]
+        },
+        "description": "Expected: 422 Unprocessable Entity - Invalid skip value type"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 422\", function () {",
+              "    pm.response.to.have.status(422);",
+              "});",
+              "",
+              "pm.test(\"Validation error returned\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('detail');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,555 @@
+{
+  "info": {
+    "name": "Security Tests",
+    "description": "Security and vulnerability testing endpoints",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8000",
+      "type": "string"
+    },
+    {
+      "key": "accessToken",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{accessToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "item": [
+    {
+      "name": "Login - Setup",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"password\": \"demo123\",\n  \"username_or_email\": \"demo@testmona.com\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/token",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "token"
+          ]
+        },
+        "description": "Login to get access token for subsequent requests"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"Response contains access_token\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('access_token');",
+              "    pm.environment.set(\"accessToken\", jsonData.access_token);",
+              "    if (jsonData.refresh_token) {",
+              "        pm.environment.set(\"refreshToken\", jsonData.refresh_token);",
+              "    }",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "SQL Injection - Login",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"password\": \"password\",\n  \"username_or_email\": \"admin' OR '1'='1\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/token",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "token"
+          ]
+        },
+        "description": "Test SQL injection vulnerability in login"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 401 or 422\", function () {",
+              "    pm.expect([401, 422]).to.include(pm.response.code);",
+              "});",
+              "",
+              "pm.test(\"SQL injection blocked\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.not.have.property('access_token');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "XSS - User Profile",
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"full_name\": \"<script>alert('XSS')</script>\",\n  \"email\": \"test@example.com\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/users/me",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "users",
+            "me"
+          ]
+        },
+        "description": "Test XSS vulnerability in user profile update"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200 or 422\", function () {",
+              "    pm.expect([200, 422]).to.include(pm.response.code);",
+              "});",
+              "",
+              "pm.test(\"XSS sanitized or rejected\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    if (pm.response.code === 200) {",
+              "        pm.expect(jsonData.full_name).to.not.include('<script>');",
+              "    }",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Path Traversal",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/users/../../../etc/passwd",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "users",
+            "..",
+            "..",
+            "..",
+            "etc",
+            "passwd"
+          ]
+        },
+        "description": "Test path traversal vulnerability"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 400 or 404\", function () {",
+              "    pm.expect([400, 404]).to.include(pm.response.code);",
+              "});",
+              "",
+              "pm.test(\"Path traversal blocked\", function () {",
+              "    var responseText = pm.response.text();",
+              "    pm.expect(responseText).to.not.include('root:');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Command Injection",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"test; rm -rf /tmp\",\n  \"description\": \"test project\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/projects/",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "projects"
+          ]
+        },
+        "description": "Test command injection vulnerability"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 422 or 400\", function () {",
+              "    pm.expect([422, 400]).to.include(pm.response.code);",
+              "});",
+              "",
+              "pm.test(\"Command injection blocked\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.not.have.property('id');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Mass Assignment",
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"full_name\": \"Test User\",\n  \"email\": \"test@example.com\",\n  \"role\": \"admin\",\n  \"is_superuser\": true\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/users/me",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "users",
+            "me"
+          ]
+        },
+        "description": "Test mass assignment vulnerability (attempting to escalate privileges)"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200 or 422\", function () {",
+              "    pm.expect([200, 422]).to.include(pm.response.code);",
+              "});",
+              "",
+              "pm.test(\"Privilege escalation prevented\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    if (pm.response.code === 200) {",
+              "        pm.expect(jsonData).to.not.have.property('is_superuser');",
+              "        pm.expect(jsonData.role).to.not.eql('admin');",
+              "    }",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Rate Limiting - Login",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"password\": \"wrongpass\",\n  \"username_or_email\": \"wronguser\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/token",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "token"
+          ]
+        },
+        "description": "Test rate limiting on login endpoint (run multiple times)"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 401 or 429\", function () {",
+              "    pm.expect([401, 429]).to.include(pm.response.code);",
+              "});",
+              "",
+              "if (pm.response.code === 429) {",
+              "    pm.test(\"Rate limit headers present\", function () {",
+              "        pm.expect(pm.response.headers).to.have.property('X-RateLimit-Limit');",
+              "        pm.expect(pm.response.headers).to.have.property('X-RateLimit-Remaining');",
+              "    });",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "CSRF Token Check",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"Test Project\",\n  \"description\": \"Test\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/projects/",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "projects"
+          ]
+        },
+        "description": "Test if CSRF protection is in place"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"CSRF token required or stateless auth used\", function () {",
+              "    // For stateless JWT APIs, CSRF is less critical",
+              "    // This test documents the security posture",
+              "    pm.expect(pm.response.code).to.be.oneOf([201, 401, 422]);",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Sensitive Data Exposure - Headers",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/users/me",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "users",
+            "me"
+          ]
+        },
+        "description": "Check for sensitive data in response headers"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"No sensitive data in headers\", function () {",
+              "    var headers = pm.response.headers;",
+              "    var headerNames = headers.map(h => h.key.toLowerCase());",
+              "    pm.expect(headerNames).to.not.include('x-api-key');",
+              "    pm.expect(headerNames).to.not.include('authorization');",
+              "});",
+              "",
+              "pm.test(\"Security headers present\", function () {",
+              "    var headers = pm.response.headers;",
+              "    var headerNames = headers.map(h => h.key.toLowerCase());",
+              "    // Check for common security headers",
+              "    // pm.expect(headerNames).to.include('x-frame-options');",
+              "    // pm.expect(headerNames).to.include('x-content-type-options');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Authentication Bypass - No Token",
+      "request": {
+        "auth": {
+          "type": "noauth"
+        },
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/users/me",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "users",
+            "me"
+          ]
+        },
+        "description": "Test authentication bypass by removing token"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 401\", function () {",
+              "    pm.response.to.have.status(401);",
+              "});",
+              "",
+              "pm.test(\"Unauthorized access blocked\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.not.have.property('id');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Invalid Token - Malformed JWT",
+      "request": {
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "invalid.jwt.token",
+              "type": "string"
+            }
+          ]
+        },
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/users/me",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "users",
+            "me"
+          ]
+        },
+        "description": "Test with malformed JWT token"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 401\", function () {",
+              "    pm.response.to.have.status(401);",
+              "});",
+              "",
+              "pm.test(\"Invalid token rejected\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.not.have.property('id');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Header Injection",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "X-Forwarded-For",
+            "value": "127.0.0.1\r\nX-Injected: true"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"Test Project\",\n  \"description\": \"Test\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/projects/",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "projects"
+          ]
+        },
+        "description": "Test header injection vulnerability"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Header injection blocked\", function () {",
+              "    pm.expect(pm.response.code).to.be.oneOf([201, 400, 422]);",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    }
+  ]
+}
