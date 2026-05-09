@@ -2,6 +2,18 @@
 
 TestMona is a full-stack test management system for organizing QA work across projects. It combines project-scoped requirements, sections, test cases, suites, runs, defects, reports, milestones, reusable test assets, and activity tracking in a React web app backed by a FastAPI API.
 
+**Sponsor or hire us:** Support TestMona or hire us.
+
+- USDT (TRC20) - TRX (Tron): `THVWGyyD7HmFZB8vLakuHxB6VUKXF6Dz8j`
+- Polygon: `0xe662c535565e3bbf553ab79a6ca3eb220d65d491`
+- SUI: `0xd16f6c89b4f0db396ee3a108d78a90d4469c4acfd36ac9cf76a87d064741f8eb`
+- DOT (Polkadot): `135XJi1pK9gK7wdzbj8UUZ5RMzVGXoXkeypV67Hh4g21Dve2`
+- Solana: `CLg467FS4PnuV6jBT7fYBHSL8BH4fCcqtGd1WHEufrhN`
+- ETH: `0xe662c535565e3bbf553ab79a6ca3eb220d65d491`
+- BTC (Bitcoin): `bc1qcc0jyfe8r07uy8r972v9m7pp5cgp9zpd0kkzjs`
+- XRP (Ripple): `rKyycDku9qevKWzSw9DxCDUSRXMNFHHq1k`
+- TON: `UQDSdI27I1LVRSaflE9GypnWPAGN4z0YARlYJtbF9RmSxzpF`
+
 ![TestMona dashboard](Docs/Screenshot.png)
 
 ## What This Project Includes
