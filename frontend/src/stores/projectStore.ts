@@ -36,7 +36,12 @@ export const useProjectStore = create<ProjectState>()(
       },
 
       setProjects: (projects: Project[]) => {
-        set({ projects });
+        const selectedProject = get().selectedProject;
+        const refreshedSelectedProject = selectedProject
+          ? projects.find((project) => project.id === selectedProject.id) || selectedProject
+          : null;
+
+        set({ projects, selectedProject: refreshedSelectedProject });
       },
 
       addProject: (project: Project) => {
