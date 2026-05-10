@@ -801,7 +801,7 @@
           "request": {
             "method": "GET",
             "url": {
-              "raw": "{{baseUrl}}/test-runs?test_suite_id=1",
+              "raw": "{{baseUrl}}/test-runs?project_id=1&search=Test&status=pending&priority=medium&assigned_to=1",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -810,8 +810,28 @@
               ],
               "query": [
                 {
-                  "key": "test_suite_id",
+                  "key": "project_id",
                   "value": "1"
+                },
+                {
+                  "key": "search",
+                  "value": "Test",
+                  "description": "Optional: search by name or description"
+                },
+                {
+                  "key": "status",
+                  "value": "pending",
+                  "description": "Optional: pending, running, passed, failed, skipped, blocked, completed"
+                },
+                {
+                  "key": "priority",
+                  "value": "medium",
+                  "description": "Optional: low, medium, high, critical"
+                },
+                {
+                  "key": "assigned_to",
+                  "value": "1",
+                  "description": "Optional: assigned user ID"
                 }
               ]
             }

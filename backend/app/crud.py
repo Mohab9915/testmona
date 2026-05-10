@@ -1,5 +1,5 @@
 from sqlalchemy.orm import Session, joinedload, noload, selectinload
-from sqlalchemy import text
+from sqlalchemy import or_, text
 from typing import List, Optional
 from datetime import datetime, timedelta
 from . import schemas
@@ -352,10 +352,34 @@ def get_test_run(db: Session, test_run_id: int):
     return db.query(TestRun).filter(TestRun.id == test_run_id).first()
 
 
-def get_test_runs(db: Session, project_id: Optional[int] = None, skip: int = 0, limit: int = 100):
+def get_test_runs(
+    db: Session,
+    project_id: Optional[int] = None,
+    skip: int = 0,
+    limit: int = 100,
+    search: Optional[str] = None,
+    status: Optional[str] = None,
+    priority: Optional[str] = None,
+    assigned_to: Optional[int] = None,
+):
     query = db.query(TestRun)
     if project_id:
         query = query.filter(TestRun.project_id == project_id)
+    if search:
+        search_pattern = f"%{search.strip()}%"
+        query = query.filter(
+            or_(
+                TestRun.name.ilike(search_pattern),
+                TestRun.description.ilike(search_pattern),
+            )
+        )
+    if status:
+        query = query.filter(TestRun.status == status)
+    if priority:
+        query = query.filter(TestRun.priority == priority)
+    if assigned_to:
+        query = query.filter(TestRun.assigned_to == assigned_to)
+    query = query.order_by(TestRun.created_at.desc(), TestRun.id.desc())
     return query.offset(skip).limit(limit).all()
 
 
@@ -446,6 +470,9 @@ def get_test_results(db: Session, test_run_id: Optional[int] = None, test_case_i
     query = db.query(TestResult).options(
         joinedload(TestResult.test_case).joinedload(TestCase.section),
         joinedload(TestResult.executor)
+    ).filter(
+        TestResult.test_case_id.isnot(None),
+        TestResult.test_run_id.isnot(None)
     )
     if test_run_id:
         query = query.filter(TestResult.test_run_id == test_run_id)

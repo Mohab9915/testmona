@@ -377,10 +377,21 @@ export const testCasesAPI = {
 
 
 // Test Runs API
+export interface TestRunFilters {
+  search?: string;
+  status?: string;
+  priority?: string;
+  assigned_to?: number;
+}
+
 export const testRunsAPI = {
-  getAll: async (projectId?: number, skip = 0, limit = 100) => {
+  getAll: async (projectId?: number, skip = 0, limit = 100, filters: TestRunFilters = {}) => {
     const params = new URLSearchParams({ skip: skip.toString(), limit: limit.toString() });
     if (projectId) params.append('project_id', projectId.toString());
+    if (filters.search?.trim()) params.append('search', filters.search.trim());
+    if (filters.status && filters.status !== 'all') params.append('status', filters.status);
+    if (filters.priority && filters.priority !== 'all') params.append('priority', filters.priority);
+    if (filters.assigned_to) params.append('assigned_to', filters.assigned_to.toString());
     const response = await api.get(`/test-runs?${params}`);
     return response.data;
   },
@@ -404,9 +415,10 @@ export const testRunsAPI = {
 
 // Test Results API
 export const testResultsAPI = {
-  getAll: async (testRunId?: number, skip = 0, limit = 100) => {
+  getAll: async (testRunId?: number, testCaseId?: number, skip = 0, limit = 100) => {
     const params = new URLSearchParams({ skip: skip.toString(), limit: limit.toString() });
     if (testRunId) params.append('test_run_id', testRunId.toString());
+    if (testCaseId) params.append('test_case_id', testCaseId.toString());
     const response = await api.get(`/test-results?${params}`);
     return response.data;
   },

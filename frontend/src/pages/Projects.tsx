@@ -27,7 +27,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Plus, FolderOpen, Settings, Trash2, TestTube, FileText, PlayCircle, ChevronRight, AlertTriangle, Edit, WifiOff, RefreshCw, Database, Archive, Copy, UserPlus, Clock, CheckCircle2, XCircle, Download, Upload, FileDown, FileUp, Filter, Eye, X } from 'lucide-react';
+import { Plus, FolderOpen, Settings, Trash2, TestTube, FileText, PlayCircle, ChevronRight, AlertTriangle, Edit, WifiOff, RefreshCw, Database, Archive, Copy, UserPlus, Clock, CheckCircle2, XCircle, Download, Upload, FileDown, FileUp, Filter, Eye, X, BarChart3, Layers3, Sparkles } from 'lucide-react';
 import { useProjectStore, type Project } from '@/stores/projectStore';
 import { useToast } from '@/hooks/use-toast';
 import { useTranslation } from '@/hooks/useTranslation';
@@ -66,19 +66,19 @@ export function Projects() {
   const [isRetrying, setIsRetrying] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
   const [partialFailure, setPartialFailure] = useState<{ successCount: number; totalCount: number } | null>(null);
-  
+
   // Enhanced error handling hooks
   const { isOnline, wasOffline, checkBackendConnectivity, isSlowConnection } = useNetworkStatus();
   const { enhancedApiCall, enhancedBulkApiCall, getQueueStatus, clearRequestQueue, processQueuedRequests, isProcessingQueue } = useEnhancedApiCall();
   const [queueSize, setQueueSize] = useState(0);
-  
+
   // Bulk operations states
   const [selectedProjects, setSelectedProjects] = useState<Set<number>>(new Set());
   const [isBulkMode, setIsBulkMode] = useState(false);
   const [isBulkDeleteDialogOpen, setIsBulkDeleteDialogOpen] = useState(false);
   const [isBulkArchiveDialogOpen, setIsBulkArchiveDialogOpen] = useState(false);
   const [bulkConfirmationText, setBulkConfirmationText] = useState('');
-  
+
   // Advanced features states
   const [isStatusDialogOpen, setIsStatusDialogOpen] = useState(false);
   const [statusProject, setStatusProject] = useState<Project | null>(null);
@@ -91,7 +91,7 @@ export function Projects() {
   const [cloneProject, setCloneProject] = useState<Project | null>(null);
   const [cloneName, setCloneName] = useState('');
   const [cloneDescription, setCloneDescription] = useState('');
-  
+
   // Import/Export states
   const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
   const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
@@ -106,7 +106,7 @@ export function Projects() {
   const [isExporting, setIsExporting] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [validationResult, setValidationResult] = useState<any>(null);
-  
+
   // Check if user has admin/manager role
   const userRole = user?.role?.toLowerCase();
   const canImportExport = userRole === 'admin' || userRole === 'manager';
@@ -118,7 +118,7 @@ export function Projects() {
       setError(null);
       setIsRetrying(false);
       setRetryCount(0);
-      
+
       const result = await enhancedApiCall(
         () => projectsAPI.getAll(),
         {
@@ -145,7 +145,7 @@ export function Projects() {
         setStoreProjects([]);
         setError(result.error?.message || 'Unable to connect to the backend server. Please check your connection and try again.');
       }
-      
+
       setIsRetrying(false);
       setIsLoading(false);
     };
@@ -219,12 +219,12 @@ export function Projects() {
         const updatedProjects = [...projects, result.data];
         setProjects(updatedProjects);
         setStoreProjects(updatedProjects);
-        
+
         toast({
           title: t('success'),
           description: t('projectCreatedSuccessfully', {name: projectName}),
         });
-        
+
         setProjectName('');
         setProjectDescription('');
         setHasUnsavedChanges(false);
@@ -311,7 +311,7 @@ export function Projects() {
       });
       return;
     }
-    
+
     // Verify the project name matches
     if (deleteConfirmationName !== projectToDelete.name) {
       toast({
@@ -340,12 +340,12 @@ export function Projects() {
       const updatedProjects = projects.filter(p => p.id !== projectToDelete.id);
       setProjects(updatedProjects);
       setStoreProjects(updatedProjects);
-      
+
       toast({
         title: t('success'),
         description: t('projectDeletedSuccessfully', {name: projectToDelete.name}),
       });
-      
+
       setIsDeleteDialogOpen(false);
       setProjectToDelete(null);
       setDeleteConfirmationName('');
@@ -395,17 +395,17 @@ export function Projects() {
     setIsRetrying(false);
 
     if (result.data) {
-      const updatedProjects = projects.map(p => 
+      const updatedProjects = projects.map(p =>
         p.id === editingProject.id ? { ...p, name: projectName, description: projectDescription, updated_at: new Date().toISOString() } : p
       );
       setProjects(updatedProjects);
       setStoreProjects(updatedProjects);
-      
+
       toast({
         title: t('success'),
         description: t('projectUpdatedSuccessfully'),
       });
-      
+
       setIsEditDialogOpen(false);
       setEditingProject(null);
       setProjectName('');
@@ -442,7 +442,7 @@ export function Projects() {
 
   const handleBulkDelete = async () => {
     if (selectedProjects.size === 0) return;
-    
+
     if (!isOnline) {
       toast({
         title: "Offline Mode",
@@ -476,11 +476,11 @@ export function Projects() {
       const successfullyDeletedIds = bulkResult.results
         .map((result, index) => result.data ? Array.from(selectedProjects)[index] : null)
         .filter(id => id !== null) as number[];
-      
+
       const updatedProjects = projects.filter(p => !successfullyDeletedIds.includes(p.id));
       setProjects(updatedProjects);
       setStoreProjects(updatedProjects);
-      
+
       if (bulkResult.failureCount > 0) {
         toast({
           title: "Partial Success",
@@ -493,7 +493,7 @@ export function Projects() {
           description: `${bulkResult.successCount} project(s) deleted successfully.`,
         });
       }
-      
+
       setSelectedProjects(new Set());
       setIsBulkDeleteDialogOpen(false);
       setBulkConfirmationText('');
@@ -511,7 +511,7 @@ export function Projects() {
 
   const handleBulkArchive = async () => {
     if (selectedProjects.size === 0) return;
-    
+
     if (!isOnline) {
       toast({
         title: "Offline Mode",
@@ -522,7 +522,7 @@ export function Projects() {
     }
 
     setIsRetrying(true);
-    const archiveMethods = Array.from(selectedProjects).map(id => () => 
+    const archiveMethods = Array.from(selectedProjects).map(id => () =>
       projectsAPI.update(id, { status: 'archived' })
     );
     const bulkResult = await enhancedBulkApiCall(archiveMethods, {
@@ -538,13 +538,13 @@ export function Projects() {
       const successfullyArchivedIds = bulkResult.results
         .map((result, index) => result.data ? Array.from(selectedProjects)[index] : null)
         .filter(id => id !== null) as number[];
-      
-      const updatedProjects = projects.map(p => 
+
+      const updatedProjects = projects.map(p =>
         successfullyArchivedIds.includes(p.id) ? { ...p, status: 'archived' } : p
       );
       setProjects(updatedProjects);
       setStoreProjects(updatedProjects);
-      
+
       if (bulkResult.failureCount > 0) {
         toast({
           title: "Partial Success",
@@ -557,7 +557,7 @@ export function Projects() {
           description: `${bulkResult.successCount} project(s) archived successfully.`,
         });
       }
-      
+
       setSelectedProjects(new Set());
       setIsBulkArchiveDialogOpen(false);
       setPartialFailure(null);
@@ -575,7 +575,7 @@ export function Projects() {
   // Advanced features handlers
   const handleStatusChange = async () => {
     if (!statusProject) return;
-    
+
     if (!isOnline) {
       toast({
         title: "Offline Mode",
@@ -600,17 +600,17 @@ export function Projects() {
     setIsRetrying(false);
 
     if (result.data) {
-      const updatedProjects = projects.map(p => 
+      const updatedProjects = projects.map(p =>
         p.id === statusProject.id ? { ...p, status: newStatus } : p
       );
       setProjects(updatedProjects);
       setStoreProjects(updatedProjects);
-      
+
       toast({
         title: "Success",
         description: `Project status changed to ${newStatus}.`,
       });
-      
+
       setIsStatusDialogOpen(false);
       setStatusProject(null);
       setNewStatus('');
@@ -627,7 +627,7 @@ export function Projects() {
 
   const handleCloneProject = async () => {
     if (!cloneProject || !cloneName.trim()) return;
-    
+
     if (!isOnline) {
       toast({
         title: "Offline Mode",
@@ -660,12 +660,12 @@ export function Projects() {
       const updatedProjects = [...projects, result.data];
       setProjects(updatedProjects);
       setStoreProjects(updatedProjects);
-      
+
       toast({
         title: "Success",
         description: `Project "${cloneName}" cloned successfully.`,
       });
-      
+
       setIsCloneDialogOpen(false);
       setCloneProject(null);
       setCloneName('');
@@ -708,12 +708,12 @@ export function Projects() {
           result.content,
           result.media_type
         );
-        
+
         toast({
           title: "Success",
           description: `Projects exported successfully as ${exportFormat.toUpperCase()}`,
         });
-        
+
         setIsExportDialogOpen(false);
       }
     } catch (error: any) {
@@ -731,7 +731,7 @@ export function Projects() {
 
   const handleImportFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0] || null;
-    
+
     if (!file) {
       setImportFile(null);
       setValidationResult(null);
@@ -740,7 +740,7 @@ export function Projects() {
 
     // Client-side file validation
     const validationErrors = [];
-    
+
     // Validate file size (10MB limit)
     const MAX_FILE_SIZE = 10 * 1024 * 1024;
     if (file.size > MAX_FILE_SIZE) {
@@ -789,7 +789,7 @@ export function Projects() {
     try {
       const result = await projectImportExportAPI.validateProjectImport(importFile);
       setValidationResult(result);
-      
+
       if (result.valid) {
         toast({
           title: "Validation Successful",
@@ -837,19 +837,19 @@ export function Projects() {
     setIsImporting(true);
     try {
       const result = await projectImportExportAPI.importProjects(importFile, strategy, partial);
-      
+
       toast({
         title: "Import Completed",
         description: result.message,
       });
-      
+
       // Refresh projects list
       const refreshResult = await enhancedApiCall(() => projectsAPI.getAll());
       if (refreshResult.data) {
         setProjects(refreshResult.data);
         setStoreProjects(refreshResult.data);
       }
-      
+
       setIsImportDialogOpen(false);
       setShowImportPreview(false);
       setImportFile(null);
@@ -870,13 +870,13 @@ export function Projects() {
   const handleDownloadTemplate = async (format: string) => {
     try {
       const result = await projectImportExportAPI.getProjectImportTemplate(format);
-      
+
       projectImportExportAPI.downloadExport(
         result.filename,
         result.content,
         result.media_type
       );
-      
+
       toast({
         title: "Template Downloaded",
         description: `Import template downloaded as ${format.toUpperCase()}`,
@@ -890,6 +890,37 @@ export function Projects() {
         variant: "destructive",
       });
     }
+  };
+
+  const projectSummary = projects.reduce(
+    (summary, project) => ({
+      active: summary.active + (project.status === 'active' ? 1 : 0),
+      archived: summary.archived + (project.status === 'archived' ? 1 : 0),
+      suites: summary.suites + (project.test_suites_count ?? 0),
+      cases: summary.cases + (project.test_cases_count ?? 0),
+      runs: summary.runs + (project.test_runs_count ?? 0),
+    }),
+    { active: 0, archived: 0, suites: 0, cases: 0, runs: 0 }
+  );
+
+  const getProjectStatusLabel = (status: string) => {
+    const statusLabels: Record<string, string> = {
+      active: t('projectStatusActive'),
+      inactive: t('projectStatusInactive'),
+      archived: t('projectStatusArchived'),
+    };
+
+    return statusLabels[status] || status.charAt(0).toUpperCase() + status.slice(1);
+  };
+
+  const getProjectStatusClasses = (status: string) => {
+    const statusClasses: Record<string, string> = {
+      active: 'border-primary/30 bg-primary/10 text-primary',
+      inactive: 'border-secondary bg-secondary text-secondary-foreground',
+      archived: 'border-muted bg-muted text-muted-foreground',
+    };
+
+    return statusClasses[status] || 'border-accent bg-accent text-accent-foreground';
   };
 
   return (
@@ -911,7 +942,7 @@ export function Projects() {
                   {!isOnline ? t('youAreOffline') : t('backendUnavailable')}
                 </h3>
                 <p className={`mt-1 text-sm ${!isOnline ? 'text-yellow-700 dark:text-yellow-300' : 'text-red-700 dark:text-red-300'}`}>
-                  {!isOnline 
+                  {!isOnline
                     ? t('youAreOfflineDesc')
                     : (error || t('backendConnectionLostDesc'))}
                 </p>
@@ -922,9 +953,9 @@ export function Projects() {
                   </div>
                 )}
                 <div className="mt-3 flex space-x-2">
-                  <Button 
-                    variant="outline" 
-                    size="sm" 
+                  <Button
+                    variant="outline"
+                    size="sm"
                     onClick={() => window.location.reload()}
                     className={`${!isOnline ? 'text-yellow-700 border-yellow-300 hover:bg-yellow-100 dark:text-yellow-300 dark:border-yellow-700 dark:hover:bg-yellow-900/30' : 'text-red-700 border-red-300 hover:bg-red-100 dark:text-red-300 dark:border-red-700 dark:hover:bg-red-900/30'}`}
                   >
@@ -932,9 +963,9 @@ export function Projects() {
                     {t('retryConnection')}
                   </Button>
                   {!isOnline && queueSize > 0 && (
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
+                    <Button
+                      variant="outline"
+                      size="sm"
                       onClick={processQueuedRequests}
                       disabled={isProcessingQueue}
                       className="text-yellow-700 border-yellow-300 hover:bg-yellow-100 dark:text-yellow-300 dark:border-yellow-700 dark:hover:bg-yellow-900/30"
@@ -944,9 +975,9 @@ export function Projects() {
                     </Button>
                   )}
                   {queueSize > 0 && (
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
+                    <Button
+                      variant="outline"
+                      size="sm"
                       onClick={clearRequestQueue}
                       className={`${!isOnline ? 'text-yellow-700 border-yellow-300 hover:bg-yellow-100 dark:text-yellow-300 dark:border-yellow-700 dark:hover:bg-yellow-900/30' : 'text-red-700 border-red-300 hover:bg-red-100 dark:text-red-300 dark:border-red-700 dark:hover:bg-red-900/30'}`}
                     >
@@ -974,9 +1005,9 @@ export function Projects() {
                   {t('partialFailureDesc', { successCount: partialFailure.successCount, totalCount: partialFailure.totalCount })}
                 </p>
                 <div className="mt-3">
-                  <Button 
-                    variant="outline" 
-                    size="sm" 
+                  <Button
+                    variant="outline"
+                    size="sm"
                     onClick={() => setPartialFailure(null)}
                     className="text-orange-700 border-orange-300 hover:bg-orange-100 dark:text-orange-300 dark:border-orange-700 dark:hover:bg-orange-900/30"
                   >
@@ -1003,128 +1034,183 @@ export function Projects() {
         </Card>
       )}
 
-      <div>
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h1 className="text-3xl font-bold">{t('projectsTitle')}</h1>
-            <p className="text-gray-600 dark:text-gray-400">
-              {isBackendDown ? t('backendUnavailable') : t('projectsDescription')}
-            </p>
-          </div>
-          <div className="flex items-center space-x-2">
-            {projects.length > 0 && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setIsBulkMode(!isBulkMode)}
-                disabled={!isOnline}
-              >
-                {isBulkMode ? t('exitBulkMode') : t('bulkSelect')}
-              </Button>
-            )}
-            {canImportExport && (
-              <>
-                {projects.length > 0 && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setIsExportDialogOpen(true)}
-                    disabled={!isOnline || isBackendDown}
-                  >
-                    <Download className={`h-4 w-4 ${isRTL ? 'ml-2' : 'mr-2'}`} />
-                    {t('export')}
-                  </Button>
-                )}
+      <section className="relative overflow-hidden rounded-[2rem] border border-border bg-card text-card-foreground shadow-2xl shadow-muted/50">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,hsl(var(--primary)/0.16),transparent_34%),radial-gradient(circle_at_bottom_right,hsl(var(--accent)/0.42),transparent_30%)]" />
+        <div className="absolute -right-20 -top-20 h-56 w-56 rounded-full border border-border bg-muted/30 blur-sm" />
+        <div className="absolute -bottom-24 left-16 h-64 w-64 rounded-full bg-primary/10 blur-3xl" />
+
+        <div className="relative p-6 sm:p-8">
+          <div className="flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
+            <div className="max-w-3xl space-y-4">
+              <Badge className="w-fit border border-primary/30 bg-primary/10 px-3 py-1 text-primary hover:bg-primary/15">
+                <Sparkles className={`h-3.5 w-3.5 ${isRTL ? 'ml-2' : 'mr-2'}`} />
+                {t('projectCommandCenter')}
+              </Badge>
+              <div>
+                <h1 className="text-4xl font-black tracking-tight sm:text-5xl">{t('projectsTitle')}</h1>
+                <p className="mt-3 max-w-2xl text-base leading-7 text-muted-foreground">
+                  {isBackendDown ? t('backendUnavailable') : t('projectsOverviewDesc')}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              {projects.length > 0 && (
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => setIsImportDialogOpen(true)}
-                  disabled={!isOnline || isBackendDown}
+                  onClick={() => setIsBulkMode(!isBulkMode)}
+                  disabled={!isOnline}
+                  className="border-border bg-background/80 text-foreground hover:bg-accent hover:text-accent-foreground"
                 >
-                  <Upload className={`h-4 w-4 ${isRTL ? 'ml-2' : 'mr-2'}`} />
-                  {t('import')}
+                  {isBulkMode ? t('exitBulkMode') : t('bulkSelect')}
                 </Button>
-              </>
-            )}
-            <Dialog open={isDialogOpen} onOpenChange={handleDialogClose}>
-              <DialogTrigger asChild>
-                <Button disabled={!isOnline}>
-                  <Plus className={`h-4 w-4 ${isRTL ? 'ml-2' : 'mr-2'}`} />
-                  {t('addNewProject')}
-                </Button>
-              </DialogTrigger>
-            </Dialog>
-          </div>
-        </div>
-        
-        {/* Bulk Operations Bar */}
-        {isBulkMode && projects.length > 0 && (
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4 dark:bg-blue-900/20 dark:border-blue-800">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-4">
-                <div className="flex items-center space-x-2">
-                  <Checkbox
-                    checked={selectedProjects.size === projects.length}
-                    onCheckedChange={toggleAllProjects}
-                  />
-                  <span className="text-sm font-medium">
-                    {selectedProjects.size} {t('selectedOf')} {projects.length}
-                  </span>
-                </div>
-                {selectedProjects.size > 0 && (
-                  <div className="flex items-center space-x-2">
+              )}
+              {canImportExport && (
+                <>
+                  {projects.length > 0 && (
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => setIsBulkArchiveDialogOpen(true)}
-                      disabled={isBackendDown}
+                      onClick={() => setIsExportDialogOpen(true)}
+                      disabled={!isOnline || isBackendDown}
+                      className="border-border bg-background/80 text-foreground hover:bg-accent hover:text-accent-foreground"
                     >
-                      <Archive className={`h-4 w-4 ${isRTL ? 'ml-1' : 'mr-1'}`} />
-                      {t('archive')} ({selectedProjects.size})
+                      <Download className={`h-4 w-4 ${isRTL ? 'ml-2' : 'mr-2'}`} />
+                      {t('export')}
                     </Button>
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      onClick={() => setIsBulkDeleteDialogOpen(true)}
-                      disabled={isBackendDown}
-                    >
-                      <Trash2 className={`h-4 w-4 ${isRTL ? 'ml-1' : 'mr-1'}`} />
-                      {t('delete')} ({selectedProjects.size})
-                    </Button>
-                  </div>
-                )}
-              </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setSelectedProjects(new Set())}
-              >
-                {t('clearSelection')}
-              </Button>
+                  )}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setIsImportDialogOpen(true)}
+                    disabled={!isOnline || isBackendDown}
+                    className="border-border bg-background/80 text-foreground hover:bg-accent hover:text-accent-foreground"
+                  >
+                    <Upload className={`h-4 w-4 ${isRTL ? 'ml-2' : 'mr-2'}`} />
+                    {t('import')}
+                  </Button>
+                </>
+              )}
+              <Dialog open={isDialogOpen} onOpenChange={handleDialogClose}>
+                <DialogTrigger asChild>
+                  <Button disabled={!isOnline} className="bg-primary text-primary-foreground hover:bg-primary/90">
+                    <Plus className={`h-4 w-4 ${isRTL ? 'ml-2' : 'mr-2'}`} />
+                    {t('addNewProject')}
+                  </Button>
+                </DialogTrigger>
+              </Dialog>
             </div>
           </div>
-        )}
-      </div>
 
-      {/* Projects List */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-      {isLoading ? (
-        <div className="col-span-full bg-white p-6 rounded-lg shadow dark:bg-gray-800">
-          <div className="flex items-center justify-center py-12">
-            <div className="text-center">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
-              <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">{t('loadingProjects')}</p>
+          <div className="mt-8 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+            <div className="rounded-2xl border border-border bg-background/70 p-4 backdrop-blur">
+              <div className="text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground">{t('allProjects')}</div>
+              <div className="mt-2 text-3xl font-black">{projects.length}</div>
+            </div>
+            <div className="rounded-2xl border border-border bg-background/70 p-4 backdrop-blur">
+              <div className="text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground">{t('activeProjects')}</div>
+              <div className="mt-2 text-3xl font-black text-primary">{projectSummary.active}</div>
+            </div>
+            <div className="rounded-2xl border border-border bg-background/70 p-4 backdrop-blur">
+              <div className="text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground">{t('totalSuites')}</div>
+              <div className="mt-2 text-3xl font-black text-primary">{projectSummary.suites}</div>
+            </div>
+            <div className="rounded-2xl border border-border bg-background/70 p-4 backdrop-blur">
+              <div className="text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground">{t('totalCases')}</div>
+              <div className="mt-2 text-3xl font-black text-primary">{projectSummary.cases}</div>
+            </div>
+            <div className="rounded-2xl border border-border bg-background/70 p-4 backdrop-blur">
+              <div className="text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground">{t('totalRuns')}</div>
+              <div className="mt-2 text-3xl font-black text-primary">{projectSummary.runs}</div>
             </div>
           </div>
         </div>
-      ) : projects.length > 0 ? (
+      </section>
+
+      {/* Bulk Operations Bar */}
+      {isBulkMode && projects.length > 0 && (
+        <div className="rounded-2xl border border-border bg-muted/60 p-4 shadow-sm">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex flex-wrap items-center gap-4">
+              <div className="flex items-center gap-2 rounded-full bg-card px-3 py-2 shadow-sm">
+                <Checkbox
+                  checked={selectedProjects.size === projects.length}
+                  onCheckedChange={toggleAllProjects}
+                />
+                <span className="text-sm font-semibold text-foreground">
+                  {selectedProjects.size} {t('selectedOf')} {projects.length}
+                </span>
+              </div>
+              {selectedProjects.size > 0 && (
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setIsBulkArchiveDialogOpen(true)}
+                    disabled={isBackendDown}
+                  >
+                    <Archive className={`h-4 w-4 ${isRTL ? 'ml-1' : 'mr-1'}`} />
+                    {t('archive')} ({selectedProjects.size})
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={() => setIsBulkDeleteDialogOpen(true)}
+                    disabled={isBackendDown}
+                  >
+                    <Trash2 className={`h-4 w-4 ${isRTL ? 'ml-1' : 'mr-1'}`} />
+                    {t('delete')} ({selectedProjects.size})
+                  </Button>
+                </div>
+              )}
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setSelectedProjects(new Set())}
+              className="self-start lg:self-auto"
+            >
+              {t('clearSelection')}
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Projects List */}
+      <section className="space-y-4">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h2 className="text-2xl font-bold tracking-tight text-foreground">{t('projectPortfolio')}</h2>
+            <p className="text-sm text-muted-foreground">{t('projectPortfolioDesc', { count: projects.length })}</p>
+          </div>
+          {selectedProject && !isBulkMode && (
+            <Badge variant="outline" className="w-fit border-primary/30 bg-primary/10 px-3 py-1 text-primary">
+              {t('selectedProjectLabel', { name: selectedProject.name })}
+            </Badge>
+          )}
+        </div>
+
+        <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
+        {isLoading ? (
+          <div className="col-span-full overflow-hidden rounded-[2rem] border border-border bg-card shadow-sm">
+            <div className="flex items-center justify-center px-6 py-16">
+              <div className="text-center">
+                <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10">
+                  <RefreshCw className="h-8 w-8 animate-spin text-primary" />
+                </div>
+                <p className="mt-4 text-sm font-medium text-muted-foreground">{t('loadingProjects')}</p>
+              </div>
+            </div>
+          </div>
+        ) : projects.length > 0 ? (
           projects.map((project) => (
-            <Card 
-              key={project.id} 
-              className={`hover:shadow-lg transition-all cursor-pointer ${
-                selectedProject?.id === project.id ? 'ring-2 ring-blue-500 shadow-lg' : ''
+            <Card
+              key={project.id}
+              className={`group relative overflow-hidden rounded-[1.75rem] border-border bg-card shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-primary/30 hover:shadow-2xl hover:shadow-muted/70 ${
+                selectedProject?.id === project.id ? 'ring-2 ring-primary shadow-xl shadow-muted' : ''
               } ${
-                selectedProjects.has(project.id) ? 'ring-2 ring-green-500 shadow-lg bg-green-50 dark:bg-green-900/20' : ''
+                selectedProjects.has(project.id) ? 'ring-2 ring-primary/70 shadow-xl shadow-muted' : ''
               }`}
               onClick={() => {
                 if (isBulkMode) {
@@ -1134,93 +1220,119 @@ export function Projects() {
                 }
               }}
             >
-              <CardHeader>
-                <div className="flex items-start justify-between">
-                  <div className="flex items-start space-x-3 flex-1">
+              <div className="absolute inset-x-0 top-0 h-1 bg-primary" />
+              <CardHeader className="pb-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex min-w-0 flex-1 items-start gap-3">
                     {isBulkMode && (
                       <Checkbox
                         checked={selectedProjects.has(project.id)}
                         onCheckedChange={() => toggleProjectSelection(project.id)}
                         onClick={(e) => e.stopPropagation()}
+                        className="mt-1"
                       />
                     )}
-                    <div className="flex-1">
-                      <CardTitle className="text-lg">{project.name}</CardTitle>
-                      <p className="text-sm text-gray-600 mt-1 dark:text-gray-400">{project.description}</p>
+                    <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-lg shadow-muted transition-transform group-hover:scale-105">
+                      <FolderOpen className="h-6 w-6" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <CardTitle className="truncate text-xl font-black tracking-tight text-foreground">{project.name}</CardTitle>
+                      <p className="mt-2 line-clamp-2 min-h-[2.5rem] text-sm leading-5 text-muted-foreground">
+                        {project.description || t('noDescription')}
+                      </p>
                     </div>
                   </div>
                   {selectedProject?.id === project.id && !isBulkMode && (
-                    <div className="ml-2 p-1 bg-blue-100 rounded dark:bg-blue-900/30">
-                      <ChevronRight className="h-5 w-5 text-blue-600" />
+                    <div className="rounded-full bg-primary/10 p-2 text-primary">
+                      <ChevronRight className={`h-5 w-5 ${isRTL ? 'rotate-180' : ''}`} />
                     </div>
                   )}
                 </div>
-                <Badge className={`w-fit ${
-                  project.status === 'active' ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300' :
-                  project.status === 'inactive' ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300' :
-                  project.status === 'archived' ? 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300' :
-                  'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300'
-                }`}>
-                  {project.status.charAt(0).toUpperCase() + project.status.slice(1)}
-                </Badge>
+                <div className="mt-4 flex flex-wrap items-center gap-2">
+                  <Badge variant="outline" className={`w-fit ${getProjectStatusClasses(project.status)}`}>
+                    {getProjectStatusLabel(project.status)}
+                  </Badge>
+                  {project.owner_id && (
+                    <Badge variant="outline" className="w-fit border-border bg-muted text-muted-foreground">
+                      {t('ownerIdLabel', { id: project.owner_id })}
+                    </Badge>
+                  )}
+                </div>
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
-                  <div className="grid grid-cols-3 gap-4 text-center">
-                    <div>
-                      <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">{project.test_suites_count}</div>
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="rounded-2xl bg-muted p-3 text-center">
+                      <TestTube className="mx-auto h-4 w-4 text-primary" />
+                      <div className="mt-2 text-2xl font-black text-foreground">{project.test_suites_count ?? 0}</div>
+                      <div className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{t('suites')}</div>
                     </div>
-                    <div>
-                      <div className="text-2xl font-bold text-green-600 dark:text-green-400">{project.test_cases_count}</div>
+                    <div className="rounded-2xl bg-muted p-3 text-center">
+                      <FileText className="mx-auto h-4 w-4 text-primary" />
+                      <div className="mt-2 text-2xl font-black text-foreground">{project.test_cases_count ?? 0}</div>
+                      <div className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{t('cases')}</div>
                     </div>
-                    <div>
-                      <div className="text-2xl font-bold text-purple-600 dark:text-purple-400">{project.test_runs_count}</div>
+                    <div className="rounded-2xl bg-muted p-3 text-center">
+                      <PlayCircle className="mx-auto h-4 w-4 text-primary" />
+                      <div className="mt-2 text-2xl font-black text-foreground">{project.test_runs_count ?? 0}</div>
+                      <div className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{t('runs')}</div>
                     </div>
                   </div>
-                  
-                  <div className="flex flex-wrap gap-2">
-                    <Button 
-                      variant="outline" 
+
+                  <div className="grid grid-cols-3 gap-2">
+                    <Button
+                      variant="outline"
                       size="sm"
                       onClick={(e) => {
                         e.stopPropagation();
                         handleViewTestSuites(project);
                       }}
-                      className="flex-1"
+                      className="rounded-xl bg-background/80"
                     >
                       <TestTube className={`h-4 w-4 ${isRTL ? 'ml-1' : 'mr-1'}`} />
                       {t('suites')}
                     </Button>
-                    <Button 
-                      variant="outline" 
+                    <Button
+                      variant="outline"
                       size="sm"
                       onClick={(e) => {
                         e.stopPropagation();
                         handleViewTestCases(project);
                       }}
-                      className="flex-1"
+                      className="rounded-xl bg-background/80"
                     >
                       <FileText className={`h-4 w-4 ${isRTL ? 'ml-1' : 'mr-1'}`} />
                       {t('cases')}
                     </Button>
-                    <Button 
-                      variant="outline" 
+                    <Button
+                      variant="outline"
                       size="sm"
                       onClick={(e) => {
                         e.stopPropagation();
                         handleViewTestRuns(project);
                       }}
-                      className="flex-1"
+                      className="rounded-xl bg-background/80"
                     >
                       <PlayCircle className={`h-4 w-4 ${isRTL ? 'ml-1' : 'mr-1'}`} />
                       {t('runs')}
                     </Button>
                   </div>
-                  
-                  <div className="flex justify-between pt-2 border-t">
+
+                  <div className="flex items-center justify-between gap-3 border-t border-border pt-4">
+                    <Button
+                      size="sm"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleSelectProject(project);
+                      }}
+                      className="rounded-xl bg-primary text-primary-foreground hover:bg-primary/90"
+                    >
+                      <Layers3 className={`h-4 w-4 ${isRTL ? 'ml-2' : 'mr-2'}`} />
+                      {t('openProjectWorkspace')}
+                    </Button>
                     <div className="flex gap-1">
-                      <Button 
-                        variant="outline" 
+                      <Button
+                        variant="outline"
                         size="sm"
                         onClick={(e) => {
                           e.stopPropagation();
@@ -1228,23 +1340,25 @@ export function Projects() {
                           setNewStatus(project.status);
                           setIsStatusDialogOpen(true);
                         }}
-                        title="Change status"
+                        title={t('changeProjectStatus')}
+                        className="h-9 w-9 rounded-xl p-0"
                       >
                         <Settings className="h-4 w-4" />
                       </Button>
-                      <Button 
-                        variant="outline" 
+                      <Button
+                        variant="outline"
                         size="sm"
                         onClick={(e) => {
                           e.stopPropagation();
                           handleOpenEditDialog(project);
                         }}
-                        title="Edit project"
+                        title={t('editProject')}
+                        className="h-9 w-9 rounded-xl p-0"
                       >
                         <Edit className="h-4 w-4" />
                       </Button>
-                      <Button 
-                        variant="outline" 
+                      <Button
+                        variant="outline"
                         size="sm"
                         onClick={(e) => {
                           e.stopPropagation();
@@ -1253,31 +1367,32 @@ export function Projects() {
                           setCloneDescription(project.description || '');
                           setIsCloneDialogOpen(true);
                         }}
-                        title="Clone project"
+                        title={t('cloneProject')}
+                        className="h-9 w-9 rounded-xl p-0"
                       >
                         <Copy className="h-4 w-4" />
                       </Button>
-                      <Button 
-                        variant="outline" 
+                      <Button
+                        variant="outline"
                         size="sm"
                         onClick={(e) => {
                           e.stopPropagation();
                           handleOpenDeleteDialog(project);
                         }}
-                        className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:text-red-400 dark:hover:text-red-300 dark:hover:bg-red-900/30"
-                        title="Delete project"
+                        className="h-9 w-9 rounded-xl p-0 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                        title={t('deleteProject')}
                       >
                         <Trash2 className="h-4 w-4" />
                       </Button>
                     </div>
                   </div>
-                  
-                  <div className="flex flex-col gap-1 pt-2 border-t">
-                    <span className="text-xs text-gray-500 dark:text-gray-400">
+
+                  <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl bg-muted px-3 py-2 text-xs text-muted-foreground">
+                    <span>
                       {t('created')}: {new Date(project.created_at).toLocaleDateString()}
                     </span>
                     {project.updated_at && project.updated_at !== project.created_at && (
-                      <span className="text-xs text-gray-500 dark:text-gray-400">
+                      <span>
                         {t('updated')}: {new Date(project.updated_at).toLocaleDateString()}
                       </span>
                     )}
@@ -1288,37 +1403,37 @@ export function Projects() {
           ))
         ) : isBackendDown ? (
           <div className="col-span-full">
-            <Card className="border-dashed border-gray-300 bg-gray-50 dark:border-gray-700 dark:bg-gray-900/20">
-              <CardContent className="pt-12 pb-12">
-                <div className="text-center">
-                  <WifiOff className="mx-auto h-16 w-16 text-gray-400 mb-4 dark:text-gray-600" />
-                  <h3 className="text-lg font-medium text-gray-900 mb-2 dark:text-gray-100">{t('backendConnectionLost')}</h3>
-                  <p className="text-gray-600 mb-6 max-w-md mx-auto dark:text-gray-400">
+            <Card className="overflow-hidden rounded-[2rem] border-dashed border-border bg-muted/40">
+              <CardContent className="px-6 py-14">
+                <div className="mx-auto max-w-lg text-center">
+                  <div className="mx-auto mb-5 flex h-20 w-20 items-center justify-center rounded-3xl bg-destructive/10 text-destructive">
+                    <WifiOff className="h-10 w-10" />
+                  </div>
+                  <h3 className="text-2xl font-black tracking-tight text-foreground">{t('backendConnectionLost')}</h3>
+                  <p className="mt-3 text-muted-foreground">
                     {t('backendConnectionLostDesc')}
                   </p>
-                  <div className="space-y-3">
-                    <div className="flex justify-center space-x-3">
-                      <Button 
-                        onClick={() => window.location.reload()}
-                        className="bg-blue-600 hover:bg-blue-700 dark:bg-blue-700 dark:hover:bg-blue-800"
-                      >
-                        <RefreshCw className={`h-4 w-4 ${isRTL ? 'ml-2' : 'mr-2'}`} />
-                        {t('retryConnection')}
-                      </Button>
-                      <Button 
-                        variant="outline"
-                        onClick={() => setIsBackendDown(false)}
-                      >
-                        {t('checkStatus')}
-                      </Button>
-                    </div>
-                    <div className="text-sm text-gray-500 dark:text-gray-400">
-                      <p>{t('possibleCauses')}</p>
-                      <ul className="mt-1 space-y-1">
-                        <li>• {t('causeBackendNotRunning')}</li>
-                        <li>• {t('causeNetworkIssues')}</li>
-                        <li>• {t('causeServerInactive')}</li>
-                      </ul>
+                  <div className="mt-6 flex flex-wrap justify-center gap-3">
+                    <Button
+                      onClick={() => window.location.reload()}
+                      className="bg-primary text-primary-foreground hover:bg-primary/90"
+                    >
+                      <RefreshCw className={`h-4 w-4 ${isRTL ? 'ml-2' : 'mr-2'}`} />
+                      {t('retryConnection')}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => setIsBackendDown(false)}
+                    >
+                      {t('checkStatus')}
+                    </Button>
+                  </div>
+                  <div className="mt-6 rounded-2xl bg-card p-4 text-sm text-muted-foreground shadow-sm">
+                    <p className="font-semibold text-foreground">{t('possibleCauses')}</p>
+                    <div className="mt-2 space-y-1">
+                      <p>{t('causeBackendNotRunning')}</p>
+                      <p>{t('causeNetworkIssues')}</p>
+                      <p>{t('causeServerInactive')}</p>
                     </div>
                   </div>
                 </div>
@@ -1327,29 +1442,31 @@ export function Projects() {
           </div>
         ) : (
           <div className="col-span-full">
-            <Card className="border-dashed border-gray-300 bg-gradient-to-br from-blue-50 to-indigo-50 dark:border-gray-700 dark:from-blue-900/20 dark:to-indigo-900/20">
-              <CardContent className="pt-12 pb-12">
-                <div className="text-center max-w-lg mx-auto">
-                  <div className="mx-auto w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mb-4 dark:bg-blue-900/30">
-                    <FolderOpen className="h-8 w-8 text-blue-600" />
+            <Card className="relative overflow-hidden rounded-[2rem] border-dashed border-border bg-card">
+              <div className="absolute left-8 top-8 h-24 w-24 rounded-full bg-primary/10 blur-2xl" />
+              <div className="absolute bottom-8 right-8 h-32 w-32 rounded-full bg-accent/40 blur-2xl" />
+              <CardContent className="relative px-6 py-16">
+                <div className="mx-auto max-w-xl text-center">
+                  <div className="mx-auto mb-5 flex h-20 w-20 items-center justify-center rounded-3xl bg-primary text-primary-foreground shadow-xl shadow-muted">
+                    <FolderOpen className="h-10 w-10" />
                   </div>
-                  <h3 className="text-lg font-semibold text-gray-900 mb-2 dark:text-gray-100">{t('startFirstProject')}</h3>
-                  <p className="text-gray-600 mb-6 leading-relaxed dark:text-gray-400">
+                  <h3 className="text-3xl font-black tracking-tight text-foreground">{t('startFirstProject')}</h3>
+                  <p className="mt-4 text-muted-foreground leading-7">
                     {t('startFirstProjectDesc')}
                   </p>
-                  <div className="space-y-3">
+                  <div className="mt-7 space-y-4">
                     <Dialog open={isDialogOpen} onOpenChange={handleDialogClose}>
                       <DialogTrigger asChild>
-                        <Button className="bg-blue-600 hover:bg-blue-700">
+                        <Button className="bg-primary text-primary-foreground hover:bg-primary/90">
                           <Plus className={`h-4 w-4 ${isRTL ? 'ml-2' : 'mr-2'}`} />
                           {t('createFirstProject')}
                         </Button>
-                        </DialogTrigger>
+                      </DialogTrigger>
                     </Dialog>
-                    <div className="text-sm text-gray-500 space-y-1 dark:text-gray-400">
-                      <p>✓ {t('organizeTestSuites')}</p>
-                      <p>✓ {t('trackTestRuns')}</p>
-                      <p>✓ {t('manageDefects')}</p>
+                    <div className="flex flex-wrap justify-center gap-2 text-sm text-muted-foreground">
+                      <Badge variant="outline" className="bg-background/70"><TestTube className={`h-3.5 w-3.5 ${isRTL ? 'ml-1' : 'mr-1'}`} />{t('organizeTestSuites')}</Badge>
+                      <Badge variant="outline" className="bg-background/70"><BarChart3 className={`h-3.5 w-3.5 ${isRTL ? 'ml-1' : 'mr-1'}`} />{t('trackTestRuns')}</Badge>
+                      <Badge variant="outline" className="bg-background/70"><AlertTriangle className={`h-3.5 w-3.5 ${isRTL ? 'ml-1' : 'mr-1'}`} />{t('manageDefects')}</Badge>
                     </div>
                   </div>
                 </div>
@@ -1357,7 +1474,8 @@ export function Projects() {
             </Card>
           </div>
         )}
-      </div>
+        </div>
+      </section>
 
       {/* Create Project Dialog */}
       <Dialog open={isDialogOpen} onOpenChange={handleDialogClose}>
@@ -1383,7 +1501,7 @@ export function Projects() {
                   placeholder={t('enterProjectName')}
                   maxLength={200}
                 />
-                <div className="flex justify-between text-xs text-gray-500">
+                <div className="flex justify-between text-xs text-muted-foreground">
                   <span>{t('enterProjectName')}</span>
                   <span>{projectName.length}/200</span>
                 </div>
@@ -1402,7 +1520,7 @@ export function Projects() {
                   rows={3}
                   maxLength={1000}
                 />
-                <div className="flex justify-between text-xs text-gray-500">
+                <div className="flex justify-between text-xs text-muted-foreground">
                   <span>{t('enterProjectDescription')}</span>
                   <span>{projectDescription.length}/1000</span>
                 </div>
@@ -1410,7 +1528,7 @@ export function Projects() {
             </div>
           </div>
           <DialogFooter className="flex-col sm:flex-row gap-2">
-            <div className="text-xs text-gray-500 mb-2 sm:mb-0 sm:mr-auto">
+            <div className="text-xs text-muted-foreground mb-2 sm:mb-0 sm:mr-auto">
               {t('toSubmit')}
             </div>
             <Button
@@ -1798,13 +1916,13 @@ export function Projects() {
                   <SelectItem value="csv">{t('csvBasicInfo')}</SelectItem>
                 </SelectContent>
               </Select>
-              <p className="text-xs text-gray-500 dark:text-gray-400">
-                {exportFormat === 'json' 
+              <p className="text-xs text-muted-foreground dark:text-gray-400">
+                {exportFormat === 'json'
                   ? t('jsonExportDesc')
                   : t('csvExportDesc')}
               </p>
             </div>
-            
+
             {exportFormat === 'json' && (
               <div className="flex items-center space-x-2">
                 <Checkbox
@@ -1817,7 +1935,7 @@ export function Projects() {
                 </Label>
               </div>
             )}
-            
+
             {exportFormat === 'json' && includeData && (
               <div className="bg-yellow-50 border border-yellow-200 rounded-md p-3 dark:bg-yellow-900/20 dark:border-yellow-800">
                 <p className="text-xs text-yellow-800 dark:text-yellow-200">
@@ -1825,7 +1943,7 @@ export function Projects() {
                 </p>
               </div>
             )}
-            
+
             <div className="space-y-2">
               <Label htmlFor="export-fields">{t('fieldSelection')}</Label>
               <Input
@@ -1835,11 +1953,11 @@ export function Projects() {
                 placeholder={t('fieldSelectionPlaceholder')}
                 className="text-sm"
               />
-              <p className="text-xs text-gray-500 dark:text-gray-400">
+              <p className="text-xs text-muted-foreground dark:text-gray-400">
                 {t('fieldSelectionDesc')}
               </p>
             </div>
-            
+
             <div className="space-y-2">
               <Label htmlFor="export-status-filter">{t('statusFilter')}</Label>
               <Select value={exportStatusFilter} onValueChange={setExportStatusFilter}>
@@ -1853,7 +1971,7 @@ export function Projects() {
                   <SelectItem value="archived">{t('archived')}</SelectItem>
                 </SelectContent>
               </Select>
-              <p className="text-xs text-gray-500 dark:text-gray-400">
+              <p className="text-xs text-muted-foreground dark:text-gray-400">
                 {t('statusFilterDesc')}
               </p>
             </div>
@@ -1901,11 +2019,11 @@ export function Projects() {
                 onChange={handleImportFileChange}
                 className="cursor-pointer"
               />
-              <p className="text-xs text-gray-500 dark:text-gray-400">
+              <p className="text-xs text-muted-foreground dark:text-gray-400">
                 {t('supportedFormats')}
               </p>
             </div>
-            
+
             {importFile && (
               <div className="bg-blue-50 border border-blue-200 rounded-md p-3 dark:bg-blue-900/20 dark:border-blue-800">
                 <div className="flex items-center gap-2">
@@ -1929,7 +2047,7 @@ export function Projects() {
                 </div>
               </div>
             )}
-            
+
             {validationResult && !showImportPreview && (
               <div className={`rounded-md p-3 ${
                 validationResult.valid ? 'bg-green-50 border border-green-200 dark:bg-green-900/20 dark:border-green-800' : 'bg-yellow-50 border border-yellow-200 dark:bg-yellow-900/20 dark:border-yellow-800'

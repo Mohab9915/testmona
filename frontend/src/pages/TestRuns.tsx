@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -23,7 +23,26 @@ import {
 } from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Plus, History, Loader2, Search, ChevronDown, ChevronRight, Folder, FileText, Calendar, User, Target } from 'lucide-react';
+import {
+  Plus,
+  History,
+  Loader2,
+  Search,
+  ChevronDown,
+  ChevronRight,
+  ChevronLeft,
+  Folder,
+  FileText,
+  Calendar,
+  User,
+  Target,
+  CheckCircle2,
+  XCircle,
+  PlayCircle,
+  CircleDot,
+  Ban,
+  PauseCircle,
+} from 'lucide-react';
 import { testRunsAPI, testCasesAPI, sectionsAPI, usersAPI, testSuitesAPI, testResultsAPI, environmentsAPI } from '@/lib/api';
 import { TestRun, TestCase } from '@/types';
 import { useTranslation } from '@/hooks/useTranslation';
@@ -55,7 +74,7 @@ interface Section {
 export function TestRuns() {
   const navigate = useNavigate();
   const { projectId } = useParams<{ projectId?: string }>();
-  const { t, isRTL, language } = useTranslation();
+  const { t, isRTL } = useTranslation();
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [runName, setRunName] = useState('');
   const [runDescription, setRunDescription] = useState('');
@@ -80,12 +99,108 @@ export function TestRuns() {
   const [selectedSections, setSelectedSections] = useState<number[]>([]);
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState('');
+  const [testRunSearchQuery, setTestRunSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [priorityFilter, setPriorityFilter] = useState('all');
+  const [assigneeFilter, setAssigneeFilter] = useState('all');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(6);
   const [isLoading, setIsLoading] = useState(true);
   const [isCreating, setIsCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   
   // Validate projectId from URL params
   const currentProjectId = projectId ? parseInt(projectId) : null;
+
+  const totalPages = Math.max(1, Math.ceil(testRuns.length / itemsPerPage));
+  const hasActiveTestRunFilters =
+    testRunSearchQuery.trim() !== '' ||
+    statusFilter !== 'all' ||
+    priorityFilter !== 'all' ||
+    assigneeFilter !== 'all';
+  const paginatedTestRuns = useMemo(() => {
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    return testRuns.slice(startIndex, startIndex + itemsPerPage);
+  }, [testRuns, currentPage, itemsPerPage]);
+  const paginationStart = testRuns.length === 0 ? 0 : (currentPage - 1) * itemsPerPage + 1;
+  const paginationEnd = Math.min(currentPage * itemsPerPage, testRuns.length);
+
+  const getStatusMeta = (status: TestRun['status']) => {
+    const normalizedStatus = status || 'pending';
+    const statusConfig = {
+      pending: {
+        label: t('testRunStatusPending'),
+        icon: CircleDot,
+        badgeClass: 'bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-900/40 dark:text-slate-300 dark:border-slate-700',
+        accentClass: 'from-slate-500 to-slate-400',
+      },
+      running: {
+        label: t('testRunStatusRunning'),
+        icon: PlayCircle,
+        badgeClass: 'bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-900/40 dark:text-blue-300 dark:border-blue-700',
+        accentClass: 'from-blue-500 to-cyan-400',
+      },
+      passed: {
+        label: t('testRunStatusPassed'),
+        icon: CheckCircle2,
+        badgeClass: 'bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-700',
+        accentClass: 'from-emerald-500 to-lime-400',
+      },
+      failed: {
+        label: t('testRunStatusFailed'),
+        icon: XCircle,
+        badgeClass: 'bg-red-100 text-red-700 border-red-200 dark:bg-red-900/40 dark:text-red-300 dark:border-red-700',
+        accentClass: 'from-red-500 to-rose-400',
+      },
+      skipped: {
+        label: t('testRunStatusSkipped'),
+        icon: PauseCircle,
+        badgeClass: 'bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-700',
+        accentClass: 'from-amber-500 to-yellow-400',
+      },
+      blocked: {
+        label: t('testRunStatusBlocked'),
+        icon: Ban,
+        badgeClass: 'bg-orange-100 text-orange-700 border-orange-200 dark:bg-orange-900/40 dark:text-orange-300 dark:border-orange-700',
+        accentClass: 'from-orange-500 to-red-400',
+      },
+      completed: {
+        label: t('testRunStatusCompleted'),
+        icon: CheckCircle2,
+        badgeClass: 'bg-indigo-100 text-indigo-700 border-indigo-200 dark:bg-indigo-900/40 dark:text-indigo-300 dark:border-indigo-700',
+        accentClass: 'from-indigo-500 to-blue-400',
+      },
+    } satisfies Record<TestRun['status'], {
+      label: string;
+      icon: typeof CircleDot;
+      badgeClass: string;
+      accentClass: string;
+    }>;
+
+    return statusConfig[normalizedStatus] || statusConfig.pending;
+  };
+
+  const getAssigneeName = (assignedToId?: number) => {
+    if (!assignedToId) return t('unassigned');
+    const assignee = users.find((user) => user.id === assignedToId);
+    return assignee?.full_name || assignee?.username || assignee?.email || t('unassigned');
+  };
+
+  const formatDateTime = (date?: string) => (
+    date ? new Date(date).toLocaleString() : t('notStarted')
+  );
+
+  const clearTestRunFilters = () => {
+    setTestRunSearchQuery('');
+    setStatusFilter('all');
+    setPriorityFilter('all');
+    setAssigneeFilter('all');
+    setCurrentPage(1);
+  };
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [testRuns.length, itemsPerPage]);
   useEffect(() => {
     // Auto-focus on name input when dialog opens
     if (isCreateDialogOpen && runNameInputRef.current) {
@@ -115,8 +230,12 @@ export function TestRuns() {
       setIsLoading(false);
       return;
     }
-    loadData();
-  }, [projectId]);
+    const timeoutId = window.setTimeout(() => {
+      loadData();
+    }, 250);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [projectId, testRunSearchQuery, statusFilter, priorityFilter, assigneeFilter]);
 
   const loadData = async () => {
     if (!currentProjectId || isNaN(currentProjectId) || currentProjectId <= 0) return;
@@ -124,8 +243,14 @@ export function TestRuns() {
     try {
       setIsLoading(true);
       setError(null);
+      const selectedAssigneeId = assigneeFilter !== 'all' ? parseInt(assigneeFilter, 10) : undefined;
       const [testRunsData, testCasesData, testSuitesData, usersData, sectionsData, environmentsData] = await Promise.all([
-        testRunsAPI.getAll(currentProjectId).catch(err => {
+        testRunsAPI.getAll(currentProjectId, 0, 500, {
+          search: testRunSearchQuery,
+          status: statusFilter,
+          priority: priorityFilter,
+          assigned_to: Number.isInteger(selectedAssigneeId) ? selectedAssigneeId : undefined,
+        }).catch(err => {
           if (err.response?.status === 404) {
             setError('Project not found');
             return [];
@@ -912,6 +1037,91 @@ export function TestRuns() {
         </Dialog>
       </div>
 
+      <Card className="border-slate-200/80 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-950">
+        <CardContent className="p-4">
+          <div className="grid gap-3 lg:grid-cols-[1fr_180px_180px_220px_auto] lg:items-end">
+            <div className="space-y-2">
+              <Label htmlFor="test-run-search" className="text-sm font-medium text-slate-700 dark:text-slate-200">
+                {t('searchTestRuns')}
+              </Label>
+              <div className="relative">
+                <Search className={`absolute top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 ${isRTL ? 'right-3' : 'left-3'}`} />
+                <Input
+                  id="test-run-search"
+                  value={testRunSearchQuery}
+                  onChange={(event) => setTestRunSearchQuery(event.target.value)}
+                  placeholder={t('searchTestRunsPlaceholder')}
+                  className={isRTL ? 'pr-9' : 'pl-9'}
+                  maxLength={200}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-sm font-medium text-slate-700 dark:text-slate-200">{t('status')}</Label>
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">{t('allStatuses')}</SelectItem>
+                  <SelectItem value="pending">{t('testRunStatusPending')}</SelectItem>
+                  <SelectItem value="running">{t('testRunStatusRunning')}</SelectItem>
+                  <SelectItem value="passed">{t('testRunStatusPassed')}</SelectItem>
+                  <SelectItem value="failed">{t('testRunStatusFailed')}</SelectItem>
+                  <SelectItem value="skipped">{t('testRunStatusSkipped')}</SelectItem>
+                  <SelectItem value="blocked">{t('testRunStatusBlocked')}</SelectItem>
+                  <SelectItem value="completed">{t('testRunStatusCompleted')}</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-sm font-medium text-slate-700 dark:text-slate-200">{t('priority')}</Label>
+              <Select value={priorityFilter} onValueChange={setPriorityFilter}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">{t('allPriorities')}</SelectItem>
+                  <SelectItem value="low">{t('low')}</SelectItem>
+                  <SelectItem value="medium">{t('medium')}</SelectItem>
+                  <SelectItem value="high">{t('high')}</SelectItem>
+                  <SelectItem value="critical">{t('critical')}</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-sm font-medium text-slate-700 dark:text-slate-200">{t('assignedToLabel')}</Label>
+              <Select value={assigneeFilter} onValueChange={setAssigneeFilter}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">{t('allAssignees')}</SelectItem>
+                  {users.map((user) => (
+                    <SelectItem key={user.id} value={String(user.id)}>
+                      {user.full_name || user.username || user.email}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <Button
+              type="button"
+              variant="outline"
+              onClick={clearTestRunFilters}
+              disabled={!hasActiveTestRunFilters}
+              className="lg:mb-0"
+            >
+              {t('clearFilters')}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Test Runs List */}
       {isLoading ? (
         <div className="flex items-center justify-center py-12">
@@ -925,60 +1135,152 @@ export function TestRuns() {
       ) : testRuns.length === 0 ? (
         <div className="text-center py-12">
           <History className="h-12 w-12 mx-auto text-gray-400 mb-4" />
-          <h3 className="text-lg font-semibold text-gray-700 mb-2">{t('noTestRunsFound')}</h3>
-          <p className="text-gray-500 mb-4">{t('createFirstTestRun')}</p>
-          <Button onClick={() => setIsCreateDialogOpen(true)}>
-            <Plus className={`h-4 w-4 ${isRTL ? 'ml-2' : 'mr-2'}`} />
-            {t('createTestRun')}
-          </Button>
+          <h3 className="text-lg font-semibold text-gray-700 mb-2">
+            {hasActiveTestRunFilters ? t('noMatchingTestRunsFound') : t('noTestRunsFound')}
+          </h3>
+          <p className="text-gray-500 mb-4">
+            {hasActiveTestRunFilters ? t('adjustTestRunFilters') : t('createFirstTestRun')}
+          </p>
+          {hasActiveTestRunFilters ? (
+            <Button variant="outline" onClick={clearTestRunFilters}>
+              {t('clearFilters')}
+            </Button>
+          ) : (
+            <Button onClick={() => setIsCreateDialogOpen(true)}>
+              <Plus className={`h-4 w-4 ${isRTL ? 'ml-2' : 'mr-2'}`} />
+              {t('createTestRun')}
+            </Button>
+          )}
         </div>
       ) : (
-        <div className="grid gap-4">
-          {testRuns.map((run) => (
-            <Card 
-              key={run.id} 
-              className="cursor-pointer hover:shadow-md transition-shadow"
-              onClick={() => navigate(`/projects/${currentProjectId}/test-runs/${run.id}`)}
-            >
-              <CardHeader className="pb-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex-1 min-w-0 mr-4">
-                    <CardTitle className="text-lg truncate" title={run.name}>
-                      {run.name}
-                    </CardTitle>
-                    <p className="text-sm text-gray-600">
-                      Project ID: {run.project_id} • Status: {run.status}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2 flex-shrink-0">
-                    <Badge variant={run.status === 'completed' ? 'default' : 'secondary'}>
-                      {run.status}
-                    </Badge>
-                    <span className="text-sm text-gray-500">
-                      0 {t('cases')}
-                    </span>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => navigate(`/projects/${currentProjectId}/test-runs/${run.id}`)}
-                    >
-                      {t('viewDetails')}
-                    </Button>
-                  </div>
-                </div>
-              </CardHeader>
-              <div className="space-y-2">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-gray-500">{t('started')}:</span>
-                  <span className="font-medium">{run.started_at ? new Date(run.started_at).toLocaleString() : t('notStarted')}</span>
-                </div>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-gray-500">Completed:</span>
-                  <span className="font-medium">{run.completed_at ? new Date(run.completed_at).toLocaleString() : 'In progress'}</span>
-                </div>
+        <div className="space-y-5">
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {paginatedTestRuns.map((run) => {
+              const statusMeta = getStatusMeta(run.status);
+              const StatusIcon = statusMeta.icon;
+
+              return (
+                <Card
+                  key={run.id}
+                  className="group relative cursor-pointer overflow-hidden border-slate-200/80 bg-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-xl dark:border-slate-800 dark:bg-slate-950"
+                  onClick={() => navigate(`/projects/${currentProjectId}/test-runs/${run.id}`)}
+                >
+                  <div className={`absolute inset-x-0 top-0 h-1 bg-gradient-to-r ${statusMeta.accentClass}`} />
+                  <CardHeader className="pb-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 space-y-2">
+                        <div className="flex items-center gap-2 text-xs font-medium text-slate-500 dark:text-slate-400">
+                          <span>{t('runId')}: TR-{run.id.toString().padStart(3, '0')}</span>
+                          <span className="h-1 w-1 rounded-full bg-slate-300 dark:bg-slate-600" />
+                          <span>{t('projectIdLabel')}: {run.project_id}</span>
+                        </div>
+                        <CardTitle className="line-clamp-2 text-lg leading-tight text-slate-950 dark:text-slate-50" title={run.name}>
+                          {run.name}
+                        </CardTitle>
+                      </div>
+                      <Badge variant="outline" className={`shrink-0 gap-1.5 border px-2.5 py-1 font-semibold ${statusMeta.badgeClass}`}>
+                        <StatusIcon className="h-3.5 w-3.5" />
+                        {statusMeta.label}
+                      </Badge>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    {run.description && (
+                      <p className="line-clamp-2 text-sm text-slate-600 dark:text-slate-300">
+                        {run.description}
+                      </p>
+                    )}
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="rounded-xl bg-slate-50 p-3 dark:bg-slate-900/70">
+                        <div className="mb-1 flex items-center gap-1.5 text-xs font-medium text-slate-500 dark:text-slate-400">
+                          <Calendar className="h-3.5 w-3.5" />
+                          {t('started')}
+                        </div>
+                        <p className="truncate text-sm font-semibold text-slate-900 dark:text-slate-100" title={run.started_at ? new Date(run.started_at).toLocaleString() : t('notStarted')}>
+                          {formatDateTime(run.started_at)}
+                        </p>
+                      </div>
+                      <div className="rounded-xl bg-slate-50 p-3 dark:bg-slate-900/70">
+                        <div className="mb-1 flex items-center gap-1.5 text-xs font-medium text-slate-500 dark:text-slate-400">
+                          <Target className="h-3.5 w-3.5" />
+                          {t('completedLabel')}
+                        </div>
+                        <p className="truncate text-sm font-semibold text-slate-900 dark:text-slate-100" title={run.completed_at ? new Date(run.completed_at).toLocaleString() : t('inProgress')}>
+                          {run.completed_at ? new Date(run.completed_at).toLocaleString() : t('inProgress')}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between border-t border-slate-100 pt-3 text-sm dark:border-slate-800">
+                      <div className="flex min-w-0 items-center gap-2 text-slate-600 dark:text-slate-300">
+                        <User className="h-4 w-4 shrink-0 text-slate-400" />
+                        <span className="truncate" title={getAssigneeName(run.assigned_to)}>
+                          {getAssigneeName(run.assigned_to)}
+                        </span>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="shrink-0 text-blue-600 hover:text-blue-700 dark:text-blue-400"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          navigate(`/projects/${currentProjectId}/test-runs/${run.id}`);
+                        }}
+                      >
+                        {t('viewDetails')}
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+
+          <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-950 sm:flex-row sm:items-center sm:justify-between">
+            <div className="text-sm text-slate-600 dark:text-slate-300">
+              {t('showing', { start: paginationStart, end: paginationEnd, total: testRuns.length })}
+            </div>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+              <div className="flex items-center gap-2">
+                <Label className="text-sm text-slate-600 dark:text-slate-300">{t('itemsPerPage')}:</Label>
+                <Select value={itemsPerPage.toString()} onValueChange={(value) => setItemsPerPage(parseInt(value, 10))}>
+                  <SelectTrigger className="h-9 w-20">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="6">6</SelectItem>
+                    <SelectItem value="9">9</SelectItem>
+                    <SelectItem value="12">12</SelectItem>
+                    <SelectItem value="24">24</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
-            </Card>
-          ))}
+              <div className="flex items-center justify-between gap-2 sm:justify-start">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+                  disabled={currentPage === 1}
+                >
+                  <ChevronLeft className="h-4 w-4 rtl:rotate-180" />
+                  {t('previous')}
+                </Button>
+                <span className="min-w-24 text-center text-sm font-medium text-slate-700 dark:text-slate-200">
+                  {t('pageOf', { current: currentPage, total: totalPages })}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
+                  disabled={currentPage === totalPages}
+                >
+                  {t('next')}
+                  <ChevronRight className="h-4 w-4 rtl:rotate-180" />
+                </Button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
@@ -996,39 +1298,43 @@ export function TestRuns() {
               <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <Label className="text-sm font-medium text-gray-600">Status</Label>
-                    <Badge variant={selectedTestRun.status === 'completed' ? 'default' : 'secondary'}>
-                      {selectedTestRun.status.replace('_', ' ')}
+                    <Label className="text-sm font-medium text-gray-600">{t('status')}</Label>
+                    <Badge variant="outline" className={`${getStatusMeta(selectedTestRun.status).badgeClass} mt-1 gap-1.5`}>
+                      {(() => {
+                        const StatusIcon = getStatusMeta(selectedTestRun.status).icon;
+                        return <StatusIcon className="h-3.5 w-3.5" />;
+                      })()}
+                      {getStatusMeta(selectedTestRun.status).label}
                     </Badge>
                   </div>
                   <div>
-                    <Label className="text-sm font-medium text-gray-600">Project ID</Label>
+                    <Label className="text-sm font-medium text-gray-600">{t('projectIdLabel')}</Label>
                     <p className="text-sm">{selectedTestRun.project_id}</p>
                   </div>
                 </div>
                 
                 {selectedTestRun.description && (
                   <div>
-                    <Label className="text-sm font-medium text-gray-600">Description</Label>
+                    <Label className="text-sm font-medium text-gray-600">{t('description')}</Label>
                     <p className="text-sm mt-1">{selectedTestRun.description}</p>
                   </div>
                 )}
                 
                 {selectedTestRun.environment && (
                   <div>
-                    <Label className="text-sm font-medium text-gray-600">Environment</Label>
+                    <Label className="text-sm font-medium text-gray-600">{t('environmentLabel')}</Label>
                     <p className="text-sm mt-1">{selectedTestRun.environment.name}</p>
                   </div>
                 )}
                 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <Label className="text-sm font-medium text-gray-600">Created</Label>
+                    <Label className="text-sm font-medium text-gray-600">{t('created')}</Label>
                     <p className="text-sm mt-1">{new Date(selectedTestRun.created_at).toLocaleString()}</p>
                   </div>
                   {selectedTestRun.started_at && (
                     <div>
-                      <Label className="text-sm font-medium text-gray-600">Started</Label>
+                      <Label className="text-sm font-medium text-gray-600">{t('started')}</Label>
                       <p className="text-sm mt-1">{new Date(selectedTestRun.started_at).toLocaleString()}</p>
                     </div>
                   )}
@@ -1036,7 +1342,7 @@ export function TestRuns() {
                 
                 {selectedTestRun.completed_at && (
                   <div>
-                    <Label className="text-sm font-medium text-gray-600">Completed</Label>
+                    <Label className="text-sm font-medium text-gray-600">{t('completedLabel')}</Label>
                     <p className="text-sm mt-1">{new Date(selectedTestRun.completed_at).toLocaleString()}</p>
                   </div>
                 )}
@@ -1048,7 +1354,7 @@ export function TestRuns() {
               variant="outline"
               onClick={() => setSelectedTestRun(null)}
             >
-              Close
+              {t('close')}
             </Button>
             <Button
               onClick={() => {
@@ -1058,7 +1364,7 @@ export function TestRuns() {
                 }
               }}
             >
-              View Full Details
+              {t('viewFullDetails')}
             </Button>
           </DialogFooter>
         </DialogContent>

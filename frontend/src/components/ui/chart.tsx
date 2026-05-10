@@ -1,14 +1,32 @@
-import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
+import {
+  Area,
+  AreaChart,
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts';
+import { Badge } from '@/components/ui/badge';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { useTranslation } from '@/hooks/useTranslation';
 
 const COLORS = {
-  passed: '#10b981',
-  failed: '#ef4444',
-  blocked: '#f59e0b',
-  skipped: '#6b7280',
-  'in-progress': '#3b82f6',
+  pass: '#10b981',
+  fail: '#ef4444',
+  block: '#f59e0b',
+  skip: '#64748b',
+  not_tested: '#94a3b8',
+  trend: '#2563eb',
 };
 
 interface TestResultData {
+  key?: string;
   name: string;
   value: number;
   color: string;
@@ -20,95 +38,15 @@ interface TestRunChartProps {
   onChartClick?: (data: any) => void;
 }
 
-export function TestRunPieChart({ data, title, onChartClick }: TestRunChartProps) {
-  const handlePieClick = (data: any) => {
-    if (onChartClick && data) {
-      onChartClick({ type: 'status', value: data.name.toLowerCase() });
-    }
-  };
-
-  return (
-    <div className="space-y-4">
-      <h3 className="text-lg font-semibold">{title}</h3>
-      <ResponsiveContainer width="100%" height={300}>
-        <PieChart>
-          <Pie
-            data={data}
-            cx="50%"
-            cy="50%"
-            labelLine={false}
-            label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-            outerRadius={80}
-            fill="#8884d8"
-            dataKey="value"
-            onClick={handlePieClick}
-            style={{ cursor: 'pointer' }}
-          >
-            {data.map((entry, index) => (
-              <Cell key={`cell-${index}`} fill={entry.color} />
-            ))}
-          </Pie>
-          <Tooltip />
-          <Legend />
-        </PieChart>
-      </ResponsiveContainer>
-    </div>
-  );
-}
-
 interface SectionData {
   name: string;
-  passed: number;
-  failed: number;
-  blocked: number;
+  pass: number;
+  fail: number;
+  block: number;
+  skip: number;
+  not_tested: number;
   total: number;
-}
-
-export function TestRunBarChart({ data, title, onChartClick }: { data: SectionData[], title: string, onChartClick?: (data: any) => void }) {
-  const handleBarClick = (data: any) => {
-    if (onChartClick && data) {
-      onChartClick({ type: 'section', value: data.name });
-    }
-  };
-
-  return (
-    <div className="space-y-4">
-      <h3 className="text-lg font-semibold">{title}</h3>
-      <ResponsiveContainer width="100%" height={300}>
-        <BarChart data={data} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-          <CartesianGrid strokeDasharray="3 3" />
-          <XAxis dataKey="name" />
-          <YAxis />
-          <Tooltip />
-          <Legend />
-          <Bar 
-            dataKey="passed" 
-            stackId="a" 
-            fill={COLORS.passed} 
-            name="Passed"
-            onClick={handleBarClick}
-            style={{ cursor: 'pointer' }}
-          />
-          <Bar 
-            dataKey="failed" 
-            stackId="a" 
-            fill={COLORS.failed} 
-            name="Failed"
-            onClick={handleBarClick}
-            style={{ cursor: 'pointer' }}
-          />
-          <Bar 
-            dataKey="blocked" 
-            stackId="a" 
-            fill={COLORS.blocked} 
-            name="Blocked"
-            onClick={handleBarClick}
-            style={{ cursor: 'pointer' }}
-          />
-        </BarChart>
-      </ResponsiveContainer>
-    </div>
-  );
+  passRate: number;
 }
 
 interface TrendData {
@@ -117,20 +55,243 @@ interface TrendData {
   totalTests: number;
 }
 
-export function TestRunTrendChart({ data, title }: { data: TrendData[], title: string }) {
+const EmptyChart = () => {
+  const { t } = useTranslation();
+
   return (
-    <div className="space-y-4">
-      <h3 className="text-lg font-semibold">{title}</h3>
-      <ResponsiveContainer width="100%" height={300}>
-        <BarChart data={data} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-          <CartesianGrid strokeDasharray="3 3" />
-          <XAxis dataKey="date" />
-          <YAxis />
-          <Tooltip />
-          <Legend />
-          <Bar dataKey="passRate" fill={COLORS.passed} name="Pass Rate %" />
-        </BarChart>
-      </ResponsiveContainer>
+    <div className="flex h-[260px] items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-50 text-sm text-slate-500 dark:border-slate-800 dark:bg-slate-900/40 dark:text-slate-400">
+      {t('noChartDataAvailable')}
     </div>
+  );
+};
+
+const ChartTooltip = ({ active, payload, label }: any) => {
+  if (!active || !payload?.length) return null;
+
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white/95 p-3 text-xs shadow-xl backdrop-blur dark:border-slate-800 dark:bg-slate-950/95">
+      {label && <div className="mb-2 font-semibold text-slate-900 dark:text-slate-100">{label}</div>}
+      <div className="space-y-1.5">
+        {payload.map((item: any) => (
+          <div key={`${item.name}-${item.dataKey}`} className="flex min-w-32 items-center justify-between gap-4">
+            <span className="flex items-center gap-2 text-slate-600 dark:text-slate-300">
+              <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: item.color || item.payload?.color }} />
+              {item.name}
+            </span>
+            <span className="font-semibold text-slate-950 dark:text-slate-50">{item.value}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+export function TestRunPieChart({ data, title, onChartClick }: TestRunChartProps) {
+  const { t } = useTranslation();
+  const total = data.reduce((sum, item) => sum + item.value, 0);
+  const topResult = data.reduce<TestResultData | null>(
+    (current, item) => (!current || item.value > current.value ? item : current),
+    null
+  );
+
+  const handlePieClick = (entry: TestResultData) => {
+    if (onChartClick && entry) {
+      onChartClick({ type: 'status', value: entry.key || entry.name.toLowerCase() });
+    }
+  };
+
+  return (
+    <Card className="overflow-hidden border-slate-200/80 bg-gradient-to-br from-white to-slate-50 shadow-sm dark:border-slate-800 dark:from-slate-950 dark:to-slate-900">
+      <CardHeader className="pb-2">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <CardTitle className="text-base text-slate-950 dark:text-slate-50">{title}</CardTitle>
+            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{t('clickableStatusSegmentsFilterTable')}</p>
+          </div>
+          <Badge variant="outline" className="border-slate-200 bg-white/70 text-slate-700 dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-300">
+            {t('totalCount', { count: total })}
+          </Badge>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {data.length === 0 ? (
+          <EmptyChart />
+        ) : (
+          <>
+            <div className="relative h-[260px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={data}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={58}
+                    outerRadius={92}
+                    paddingAngle={3}
+                    cornerRadius={8}
+                    dataKey="value"
+                    onClick={handlePieClick}
+                    style={{ cursor: 'pointer' }}
+                  >
+                    {data.map((entry) => (
+                      <Cell key={entry.key || entry.name} fill={entry.color} stroke="transparent" />
+                    ))}
+                  </Pie>
+                  <Tooltip content={<ChartTooltip />} />
+                </PieChart>
+              </ResponsiveContainer>
+              <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                <div className="text-center">
+                  <div className="text-3xl font-black text-slate-950 dark:text-slate-50">{total}</div>
+                  <div className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">{t('tests')}</div>
+                </div>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              {data.map((item) => (
+                <button
+                  key={item.key || item.name}
+                  type="button"
+                  onClick={() => handlePieClick(item)}
+                  className="flex items-center justify-between rounded-xl border border-slate-200 bg-white px-3 py-2 text-left text-xs transition hover:-translate-y-0.5 hover:shadow-md dark:border-slate-800 dark:bg-slate-950"
+                >
+                  <span className="flex min-w-0 items-center gap-2 text-slate-600 dark:text-slate-300">
+                    <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: item.color }} />
+                    <span className="truncate">{item.name}</span>
+                  </span>
+                  <span className="font-bold text-slate-950 dark:text-slate-50">{item.value}</span>
+                </button>
+              ))}
+            </div>
+            {topResult && (
+              <div className="rounded-xl bg-slate-950 px-3 py-2 text-xs text-white dark:bg-slate-100 dark:text-slate-950">
+                {t('leadingResultAtPercent', { name: topResult.name, percent: Math.round((topResult.value / total) * 100) })}
+              </div>
+            )}
+          </>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+export function TestRunBarChart({ data, title, onChartClick }: { data: SectionData[]; title: string; onChartClick?: (data: any) => void }) {
+  const { t } = useTranslation();
+  const visibleData = [...data].sort((a, b) => b.total - a.total).slice(0, 8);
+  const largestSection = visibleData[0];
+
+  const handleBarClick = (entry: any) => {
+    if (onChartClick && entry?.name) {
+      onChartClick({ type: 'section', value: entry.name });
+    }
+  };
+
+  return (
+    <Card className="overflow-hidden border-slate-200/80 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-950">
+      <CardHeader className="pb-2">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <CardTitle className="text-base text-slate-950 dark:text-slate-50">{title}</CardTitle>
+            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{t('stackedOutcomesBySection')}</p>
+          </div>
+          {largestSection && (
+            <Badge variant="outline" className="border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-800 dark:bg-blue-950/50 dark:text-blue-300">
+              {t('sectionsCount', { count: visibleData.length })}
+            </Badge>
+          )}
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {visibleData.length === 0 ? (
+          <EmptyChart />
+        ) : (
+          <>
+            <ResponsiveContainer width="100%" height={280}>
+              <BarChart data={visibleData} margin={{ top: 12, right: 8, left: -16, bottom: 0 }} barCategoryGap={18}>
+                <CartesianGrid strokeDasharray="4 6" vertical={false} stroke="#e2e8f0" />
+                <XAxis dataKey="name" tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: '#64748b' }} interval={0} tickFormatter={(value) => String(value).slice(0, 12)} />
+                <YAxis allowDecimals={false} tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: '#64748b' }} />
+                <Tooltip content={<ChartTooltip />} />
+                <Bar dataKey="pass" stackId="results" fill={COLORS.pass} name={t('passed')} radius={[8, 8, 0, 0]} onClick={handleBarClick} cursor="pointer" />
+                <Bar dataKey="fail" stackId="results" fill={COLORS.fail} name={t('failed')} onClick={handleBarClick} cursor="pointer" />
+                <Bar dataKey="block" stackId="results" fill={COLORS.block} name={t('blocked')} onClick={handleBarClick} cursor="pointer" />
+                <Bar dataKey="skip" stackId="results" fill={COLORS.skip} name={t('skipped')} onClick={handleBarClick} cursor="pointer" />
+                <Bar dataKey="not_tested" stackId="results" fill={COLORS.not_tested} name={t('notTested')} radius={[8, 8, 0, 0]} onClick={handleBarClick} cursor="pointer" />
+              </BarChart>
+            </ResponsiveContainer>
+            <div className="grid gap-2">
+              {visibleData.slice(0, 3).map((section) => (
+                <div key={section.name} className="flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2 text-xs dark:bg-slate-900/60">
+                  <span className="truncate font-medium text-slate-700 dark:text-slate-200">{section.name}</span>
+                  <span className="shrink-0 text-slate-500 dark:text-slate-400">
+                    {t('sectionPassRateSummary', { passRate: section.passRate, total: section.total })}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+export function TestRunTrendChart({ data, title }: { data: TrendData[]; title: string }) {
+  const { t } = useTranslation();
+  const latest = data[data.length - 1];
+  const first = data[0];
+  const delta = latest && first ? latest.passRate - first.passRate : 0;
+
+  return (
+    <Card className="overflow-hidden border-slate-200/80 bg-[radial-gradient(circle_at_top_right,_rgba(37,99,235,0.16),_transparent_32%),linear-gradient(180deg,_#fff,_#f8fafc)] shadow-sm dark:border-slate-800 dark:bg-[radial-gradient(circle_at_top_right,_rgba(59,130,246,0.2),_transparent_32%),linear-gradient(180deg,_#020617,_#0f172a)]">
+      <CardHeader className="pb-2">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <CardTitle className="text-base text-slate-950 dark:text-slate-50">{title}</CardTitle>
+            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{t('cumulativePassRateDescription')}</p>
+          </div>
+          {latest && (
+            <Badge variant="outline" className="border-blue-200 bg-white/80 text-blue-700 dark:border-blue-800 dark:bg-slate-950/70 dark:text-blue-300">
+              {latest.passRate}%
+            </Badge>
+          )}
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {data.length === 0 ? (
+          <EmptyChart />
+        ) : (
+          <>
+            <ResponsiveContainer width="100%" height={280}>
+              <AreaChart data={data} margin={{ top: 14, right: 8, left: -18, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="passRateGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor={COLORS.trend} stopOpacity={0.34} />
+                    <stop offset="95%" stopColor={COLORS.trend} stopOpacity={0.02} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="4 6" vertical={false} stroke="#dbeafe" />
+                <XAxis dataKey="date" tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: '#64748b' }} />
+                <YAxis domain={[0, 100]} tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: '#64748b' }} tickFormatter={(value) => `${value}%`} />
+                <Tooltip content={<ChartTooltip />} />
+                <Area type="monotone" dataKey="passRate" name={t('passRatePercent')} stroke={COLORS.trend} strokeWidth={3} fill="url(#passRateGradient)" activeDot={{ r: 6, strokeWidth: 2, stroke: '#fff' }} />
+              </AreaChart>
+            </ResponsiveContainer>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="rounded-xl bg-white/80 p-3 text-sm shadow-sm dark:bg-slate-950/60">
+                <div className="text-xs text-slate-500 dark:text-slate-400">{t('latestPassRate')}</div>
+                <div className="text-2xl font-black text-slate-950 dark:text-slate-50">{latest?.passRate ?? 0}%</div>
+              </div>
+              <div className="rounded-xl bg-white/80 p-3 text-sm shadow-sm dark:bg-slate-950/60">
+                <div className="text-xs text-slate-500 dark:text-slate-400">{t('trendChange')}</div>
+                <div className={`text-2xl font-black ${delta >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                  {delta >= 0 ? '+' : ''}{delta}%
+                </div>
+              </div>
+            </div>
+          </>
+        )}
+      </CardContent>
+    </Card>
   );
 }

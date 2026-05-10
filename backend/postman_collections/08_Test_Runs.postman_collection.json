@@ -152,7 +152,7 @@
       "request": {
         "method": "GET",
         "url": {
-          "raw": "{{baseUrl}}/test-runs?test_suite_id={{testSuiteId}}",
+          "raw": "{{baseUrl}}/test-runs?project_id={{testProjectId}}&search={{testRunSearch}}&status={{testRunStatus}}&priority={{testRunPriority}}&assigned_to={{assigneeId}}",
           "host": [
             "{{baseUrl}}"
           ],
@@ -161,12 +161,32 @@
           ],
           "query": [
             {
-              "key": "test_suite_id",
-              "value": "{{testSuiteId}}"
+              "key": "project_id",
+              "value": "{{testProjectId}}"
+            },
+            {
+              "key": "search",
+              "value": "{{testRunSearch}}",
+              "description": "Optional: search test runs by name or description"
+            },
+            {
+              "key": "status",
+              "value": "{{testRunStatus}}",
+              "description": "Optional: pending, running, passed, failed, skipped, blocked, completed"
+            },
+            {
+              "key": "priority",
+              "value": "{{testRunPriority}}",
+              "description": "Optional: low, medium, high, critical"
+            },
+            {
+              "key": "assigned_to",
+              "value": "{{assigneeId}}",
+              "description": "Optional: assigned user ID"
             }
           ]
         },
-        "description": "Get all test runs for a test suite"
+        "description": "Get test runs for a project with optional search, status, priority, and assignee filters"
       },
       "event": [
         {

@@ -404,6 +404,11 @@ export function TestCases() {
   
   // Test suite state
   const [currentTestSuiteId, setCurrentTestSuiteId] = useState<number | null>(null);
+  const [isTestSuiteLoading, setIsTestSuiteLoading] = useState(true);
+  const [isSuiteDialogOpen, setIsSuiteDialogOpen] = useState(false);
+  const [isCreatingSuite, setIsCreatingSuite] = useState(false);
+  const [suiteName, setSuiteName] = useState('');
+  const [suiteDescription, setSuiteDescription] = useState('');
   
   // Import dialog state
   const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
@@ -1259,9 +1264,13 @@ export function TestCases() {
 
   // Load test suite for the current project
   const loadTestSuite = async () => {
-    if (!currentProjectId) return;
+    if (!currentProjectId) {
+      setIsTestSuiteLoading(false);
+      return;
+    }
     
     try {
+      setIsTestSuiteLoading(true);
       const { testSuitesAPI } = await import('@/lib/api');
       const testSuites = await testSuitesAPI.getAll(currentProjectId);
       
@@ -1276,6 +1285,8 @@ export function TestCases() {
     } catch (error) {
       console.error('Failed to load test suite:', error);
       setCurrentTestSuiteId(null);
+    } finally {
+      setIsTestSuiteLoading(false);
     }
   };
 
@@ -2496,6 +2507,62 @@ export function TestCases() {
     }
   };
 
+  const handleCreateTestSuiteForProject = async () => {
+    const trimmedSuiteName = suiteName.trim();
+
+    if (!currentProjectId) {
+      toast({
+        title: t('error'),
+        description: t('noProjectSelected'),
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!trimmedSuiteName) {
+      toast({
+        title: t('validationError'),
+        description: t('pleaseEnterASuiteName'),
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      setIsCreatingSuite(true);
+
+      const createdSuite = await testSuitesAPI.create({
+        name: trimmedSuiteName,
+        description: suiteDescription.trim() || undefined,
+        project_id: currentProjectId,
+        status: 'active',
+      });
+
+      setCurrentTestSuiteId(createdSuite.id);
+      setSuiteName('');
+      setSuiteDescription('');
+      setIsSuiteDialogOpen(false);
+
+      toast({
+        title: t('success'),
+        description: t('testSuiteCreatedSuccessfully'),
+      });
+
+      await loadTestSuite();
+      await loadSections();
+      await loadTestCases();
+    } catch (error) {
+      console.error('Failed to create test suite:', error);
+      toast({
+        title: t('error'),
+        description: t('failedToCreateTestSuiteRetry'),
+        variant: "destructive",
+      });
+    } finally {
+      setIsCreatingSuite(false);
+    }
+  };
+
   const toggleSectionExpansion = (sectionId: string) => {
     setExpandedSections(prev => {
       const newSet = new Set(prev);
@@ -2757,7 +2824,71 @@ export function TestCases() {
             <Upload className={`h-4 w-4 ${isRTL ? 'ml-2' : 'mr-2'}`} />
             {t('importCSV')}
           </Button>
-          <Dialog open={isDialogOpen} onOpenChange={(open) => {
+          {isTestSuiteLoading ? (
+            <Button disabled>
+              {t('loading')}
+            </Button>
+          ) : !currentTestSuiteId ? (
+            <Dialog open={isSuiteDialogOpen} onOpenChange={setIsSuiteDialogOpen}>
+              <DialogTrigger asChild>
+                <Button>
+                  <Plus className={`h-4 w-4 ${isRTL ? 'ml-2' : 'mr-2'}`} />
+                  {t('createTestSuite')}
+                </Button>
+              </DialogTrigger>
+              <DialogContent isRTL={isRTL} className={`sm:max-w-[600px] ${isRTL ? 'font-vazir' : ''}`} dir={isRTL ? 'rtl' : 'ltr'}>
+                <DialogHeader>
+                  <DialogTitle>{t('createNewTestSuite')}</DialogTitle>
+                  <DialogDescription>
+                    {t('noTestSuiteFound')}
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="grid gap-4 py-4">
+                  <div className="grid grid-cols-4 items-center gap-4">
+                    <Label htmlFor="suite-name" className={`text-right ${isRTL ? 'text-left' : ''}`}>
+                      {t('suiteName')} <span className="text-red-500">*</span>
+                    </Label>
+                    <div className="col-span-3 space-y-1">
+                      <Input
+                        id="suite-name"
+                        value={suiteName}
+                        onChange={(event) => setSuiteName(event.target.value)}
+                        placeholder={t('enterSuiteName')}
+                        maxLength={200}
+                      />
+                      <div className="flex justify-between text-xs text-gray-500">
+                        <span>{t('enterSuiteName')}</span>
+                        <span>{suiteName.length}/200</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-4 items-start gap-4">
+                    <Label htmlFor="suite-description" className={`text-right ${isRTL ? 'text-left' : ''}`}>
+                      {t('suiteDescription')}
+                    </Label>
+                    <Textarea
+                      id="suite-description"
+                      value={suiteDescription}
+                      onChange={(event) => setSuiteDescription(event.target.value)}
+                      placeholder={t('enterSuiteDescription')}
+                      className="col-span-3"
+                      rows={3}
+                      maxLength={500}
+                    />
+                  </div>
+                </div>
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setIsSuiteDialogOpen(false)}>
+                    {t('cancel')}
+                  </Button>
+                  <Button onClick={handleCreateTestSuiteForProject} disabled={!suiteName.trim() || isCreatingSuite}>
+                    {isCreatingSuite ? t('creating') : t('createTestSuite')}
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+          ) : (
+            <Dialog open={isDialogOpen} onOpenChange={(open) => {
             if (!open) {
               // Check for unsaved changes before closing
               const hasChanges = 
@@ -3357,6 +3488,7 @@ export function TestCases() {
               </DialogFooter>
             </DialogContent>
           </Dialog>
+          )}
 
           {/* Unsaved Changes Confirmation Dialog */}
           <Dialog open={showUnsavedDialog} onOpenChange={setShowUnsavedDialog}>

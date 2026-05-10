@@ -64,7 +64,6 @@ export function TestCaseExecution() {
   const [isCreating, setIsCreating] = useState(false);
   const defectTitleInputRef = useRef<HTMLInputElement>(null);
   const [defectTouchedFields, setDefectTouchedFields] = useState<Record<string, boolean>>({});
-  const [showSuccessMessage, setShowSuccessMessage] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [users, setUsers] = useState<any[]>([]);
   const [allTestCases, setAllTestCases] = useState<any[]>([]);
@@ -365,6 +364,11 @@ export function TestCaseExecution() {
       };
 
       console.log('📤 Prepared execution data:', executionData);
+      const authToken = localStorage.getItem('token');
+      const requestHeaders: Record<string, string> = {
+        'Content-Type': 'application/json',
+        ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+      };
 
       // First, let's test if the backend is reachable
       console.log('🔍 Testing backend connection...');
@@ -374,9 +378,7 @@ export function TestCaseExecution() {
         
         const testResponse = await fetch(`${API_BASE_URL}/test-results`, {
           method: 'GET',
-          headers: {
-            'Content-Type': 'application/json',
-          },
+          headers: requestHeaders,
           mode: 'cors',
           signal: controller.signal
         });
@@ -405,14 +407,16 @@ export function TestCaseExecution() {
         
         const directResponse = await fetch(`${API_BASE_URL}/test-results?test_run_id=${parseInt(testRunId || '0')}&test_case_id=${parseInt(testCaseId || '0')}`, {
           method: 'GET',
-          headers: {
-            'Content-Type': 'application/json',
-          },
+          headers: requestHeaders,
           mode: 'cors',
           signal: controller.signal
         });
         
         clearTimeout(timeoutId);
+        if (!directResponse.ok) {
+          const errorText = await directResponse.text();
+          throw new Error(`Fetch existing result failed: ${directResponse.status} - ${errorText}`);
+        }
         const directData = await directResponse.json();
         console.log('✅ Direct fetch results:', directData);
         const existingResults = directData;
@@ -428,9 +432,7 @@ export function TestCaseExecution() {
           
           const updateResponse = await fetch(`${API_BASE_URL}/test-results/${existingResult.id}`, {
             method: 'PUT',
-            headers: {
-              'Content-Type': 'application/json',
-            },
+            headers: requestHeaders,
             mode: 'cors',
             signal: updateController.signal,
             body: JSON.stringify(executionData)
@@ -460,9 +462,7 @@ export function TestCaseExecution() {
           
           const createResponse = await fetch(`${API_BASE_URL}/test-results`, {
             method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
+            headers: requestHeaders,
             mode: 'cors',
             signal: createController.signal,
             body: requestBody
@@ -522,8 +522,11 @@ export function TestCaseExecution() {
       localStorage.setItem('testExecutions', JSON.stringify(updatedExecutions));
 
       console.log('🎉 === SAVE COMPLETED SUCCESSFULLY ===');
-      setShowSuccessMessage(true);
-      setTimeout(() => setShowSuccessMessage(false), 3000);
+      toast({
+        title: t('executionSaved'),
+        description: t('executionSavedDescription'),
+        variant: 'success',
+      });
     } catch (error) {
       console.error('💥 === SAVE FAILED ===');
       console.error('Error details:', error);
@@ -679,120 +682,129 @@ export function TestCaseExecution() {
   };
 
   const selectedStatus = statusOptions.find(opt => opt.value === executionStatus);
+  const testRunName = testRun?.name || t('loading');
+  const testCaseTitle = testCase?.title || t('loading');
+  const progressLabel = allTestCases.length > 0 && currentIndex >= 0
+    ? t('testCaseProgress', { current: currentIndex + 1, total: allTestCases.length })
+    : t('loadingTestCases');
 
   return (
     <div className="space-y-6">
-      {/* Success Message */}
-      {showSuccessMessage && (
-        <div className="bg-green-50 border border-green-200 text-green-800 px-4 py-3 rounded-lg flex items-center gap-2">
-          <CheckCircle className="h-5 w-5" />
-          <span className="font-medium">Success!</span>
-          <span>Execution saved successfully to backend!</span>
-        </div>
-      )}
-      
       {/* Header */}
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-4">
-        <div className="flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3 min-w-0 flex-1">
-            <Button 
-              variant="outline" 
+      <div className="relative overflow-hidden rounded-2xl border border-slate-200 bg-gradient-to-br from-white via-cyan-50 to-slate-100 p-5 text-slate-950 shadow-xl shadow-slate-200/70 dark:border-slate-800 dark:from-slate-950 dark:via-slate-900 dark:to-blue-950 dark:text-white dark:shadow-black/30 sm:p-6">
+        <div className="pointer-events-none absolute -top-24 h-56 w-56 rounded-full bg-cyan-300/40 blur-3xl dark:bg-cyan-400/20 ltr:right-10 rtl:left-10" />
+        <div className="pointer-events-none absolute -bottom-24 h-56 w-56 rounded-full bg-amber-200/40 blur-3xl dark:bg-amber-300/10 ltr:left-10 rtl:right-10" />
+
+        <div className="relative flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
+          <div className="min-w-0 flex-1 space-y-4">
+            <Button
+              variant="ghost"
               size="sm"
               onClick={() => navigate(`/projects/${projectId}/test-runs/${testRunId}`)}
-              className="flex-shrink-0"
+              className="w-fit bg-slate-900/5 text-slate-700 hover:bg-slate-900/10 hover:text-slate-950 dark:bg-white/10 dark:text-white dark:hover:bg-white/20 dark:hover:text-white"
             >
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              Back to Test Run
+              <ArrowLeft className={`h-4 w-4 ${isRTL ? 'ml-2 rotate-180' : 'mr-2'}`} />
+              {t('backToTestRun')}
             </Button>
-            <div className="min-w-0 flex-1">
-              <h1 className="text-lg font-bold text-gray-900 dark:text-white mb-2">Test Case Execution</h1>
-              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
-                <div className="flex items-center gap-1.5">
-                  <span className="text-gray-600 dark:text-gray-400 font-medium">Test Run:</span>
+
+            <div className="space-y-3">
+              <div className="flex flex-wrap items-center gap-3">
+                <Badge className="border border-cyan-200 bg-cyan-100/80 px-3 py-1 text-cyan-800 shadow-sm backdrop-blur dark:border-cyan-200/30 dark:bg-cyan-300/15 dark:text-cyan-50">
+                  {t('testCaseExecution')}
+                </Badge>
+                <Badge className="border border-slate-200 bg-white/80 px-3 py-1 text-slate-700 shadow-sm backdrop-blur dark:border-white/20 dark:bg-white/10 dark:text-white">
+                  {selectedStatus?.label || executionStatus}
+                </Badge>
+                <Badge className="border border-emerald-200 bg-emerald-100/80 px-3 py-1 text-emerald-800 shadow-sm backdrop-blur dark:border-emerald-200/30 dark:bg-emerald-300/15 dark:text-emerald-50">
+                  {progressLabel}
+                </Badge>
+              </div>
+
+              <div className="max-w-4xl space-y-2">
+                <button
+                  type="button"
+                  onClick={() => navigate(`/projects/${projectId}/test-cases/${testCaseId}`)}
+                  className="group inline-flex max-w-full items-center gap-2 text-left text-3xl font-black leading-tight tracking-tight text-slate-950 hover:text-cyan-700 dark:text-white dark:hover:text-cyan-200 sm:text-4xl"
+                  title={testCaseTitle}
+                >
+                  <span className="truncate">{testCaseTitle}</span>
+                  <Link className="h-4 w-4 flex-shrink-0 opacity-60 transition-opacity group-hover:opacity-100" />
+                </button>
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-sm leading-6 text-slate-600 dark:text-slate-200 sm:text-base">
+                  <span className="font-semibold text-slate-700 dark:text-slate-100">{t('testRunLabel')}:</span>
                   <button
+                    type="button"
                     onClick={() => navigate(`/projects/${projectId}/test-runs/${testRunId}`)}
-                    className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 hover:underline inline-flex items-center gap-1 font-medium"
+                    className="inline-flex max-w-full items-center gap-1.5 font-medium text-cyan-700 hover:text-cyan-900 hover:underline dark:text-cyan-200 dark:hover:text-cyan-100"
+                    title={testRunName}
                   >
-                    {testRun?.name || 'Loading...'}
-                    <Link className="h-3 w-3 flex-shrink-0" />
-                  </button>
-                </div>
-                <span className="text-gray-400">|</span>
-                <div className="flex items-center gap-1.5">
-                  <span className="text-gray-600 dark:text-gray-400 font-medium">Test Case:</span>
-                  <button
-                    onClick={() => navigate(`/projects/${projectId}/test-cases/${testCaseId}`)}
-                    className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 hover:underline inline-flex items-center gap-1 font-medium"
-                  >
-                    {testCase?.title || 'Loading...'}
-                    <Link className="h-3 w-3 flex-shrink-0" />
+                    <span className="truncate">{testRunName}</span>
+                    <Link className="h-3.5 w-3.5 flex-shrink-0" />
                   </button>
                 </div>
               </div>
-              {/* Progress indicator */}
-              <div className="flex items-center gap-3 mt-2">
-                {allTestCases.length > 0 && currentIndex >= 0 && (
-                  <>
-                    <span className="text-xs font-medium text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-gray-700 px-2.5 py-1 rounded-full">
-                      Test Case {currentIndex + 1} of {allTestCases.length}
-                    </span>
-                    <div className="flex gap-1">
-                      {allTestCases.map((_, index) => (
-                        <div
-                          key={index}
-                          className={`w-2 h-2 rounded-full transition-colors duration-200 ${
-                            index === currentIndex
-                              ? 'bg-blue-600 ring-2 ring-blue-200 dark:ring-blue-800'
-                              : index < currentIndex
-                              ? 'bg-green-500 dark:bg-green-600'
-                              : 'bg-gray-300 dark:bg-gray-600'
-                          }`}
-                        />
-                      ))}
-                    </div>
-                  </>
-                )}
-                {allTestCases.length === 0 && (
-                  <span className="text-xs text-gray-500 dark:text-gray-400">Loading test cases...</span>
-                )}
+
+              <div className="flex items-center gap-3 text-xs text-slate-600 dark:text-slate-300 sm:text-sm">
+                <span className="inline-flex items-center gap-2 rounded-full bg-white/75 px-3 py-1.5 shadow-sm ring-1 ring-slate-200/80 backdrop-blur dark:bg-white/10 dark:ring-white/10">
+                  <FileText className="h-4 w-4 text-cyan-600 dark:text-cyan-200" />
+                  {t('testCaseLabel')}: TC-{testCaseId}
+                </span>
+                <div className="hidden gap-1 sm:flex" aria-hidden="true">
+                  {allTestCases.map((_, index) => (
+                    <div
+                      key={index}
+                      className={`h-2 w-2 rounded-full transition-colors duration-200 ${
+                        index === currentIndex
+                          ? 'bg-cyan-600 ring-2 ring-cyan-200 dark:bg-cyan-300 dark:ring-cyan-800'
+                          : index < currentIndex
+                          ? 'bg-emerald-500 dark:bg-emerald-500'
+                          : 'bg-slate-300 dark:bg-slate-600'
+                      }`}
+                    />
+                  ))}
+                </div>
               </div>
             </div>
           </div>
-          <div className="flex items-center gap-2 flex-shrink-0">
-            <Button 
-              variant="outline"
-              size="sm"
-              onClick={handleEditTestCase}
-            >
-              <Edit className="h-4 w-4 mr-2" />
-              Edit
-            </Button>
-            <Button 
+
+          <div className="grid w-full gap-2 sm:grid-cols-2 xl:w-auto xl:min-w-[520px] xl:grid-cols-4">
+            <Button
               variant="outline"
               size="sm"
               onClick={handlePreviousTestCase}
               disabled={!hasPrevious}
+              className="h-11 justify-center rounded-xl border-slate-200 bg-white/80 text-slate-700 hover:bg-white hover:text-slate-950 disabled:bg-slate-100/70 dark:border-white/20 dark:bg-white/10 dark:text-white dark:hover:bg-white/20 dark:hover:text-white dark:disabled:bg-white/5"
             >
-              <ChevronLeft className="h-4 w-4 mr-2" />
-              Previous
+              <ChevronLeft className={`h-4 w-4 ${isRTL ? 'ml-2 rotate-180' : 'mr-2'}`} />
+              {t('previous')}
             </Button>
-            <Button 
+            <Button
               variant="outline"
               size="sm"
               onClick={handleNextTestCase}
               disabled={!hasNext}
+              className="h-11 justify-center rounded-xl border-slate-200 bg-white/80 text-slate-700 hover:bg-white hover:text-slate-950 disabled:bg-slate-100/70 dark:border-white/20 dark:bg-white/10 dark:text-white dark:hover:bg-white/20 dark:hover:text-white dark:disabled:bg-white/5"
             >
-              Next
-              <ChevronRight className="h-4 w-4 ml-2" />
+              {t('next')}
+              <ChevronRight className={`h-4 w-4 ${isRTL ? 'mr-2 rotate-180' : 'ml-2'}`} />
             </Button>
-            <Button 
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleEditTestCase}
+              className="h-11 justify-center rounded-xl border-slate-200 bg-white/80 text-slate-700 hover:bg-white hover:text-slate-950 dark:border-white/20 dark:bg-white/10 dark:text-white dark:hover:bg-white/20 dark:hover:text-white"
+            >
+              <Edit className={`h-4 w-4 ${isRTL ? 'ml-2' : 'mr-2'}`} />
+              {t('edit')}
+            </Button>
+            <Button
               onClick={handleSaveExecution}
               disabled={executionStatus === 'pending'}
-              className="bg-green-600 hover:bg-green-700"
+              className="h-11 justify-center rounded-xl bg-emerald-600 text-white hover:bg-emerald-700 disabled:bg-slate-300 dark:bg-emerald-400 dark:text-slate-950 dark:hover:bg-emerald-300 dark:disabled:bg-slate-700 dark:disabled:text-slate-400"
               size="sm"
             >
-              <Save className="h-4 w-4 mr-2" />
-              Save
+              <Save className={`h-4 w-4 ${isRTL ? 'ml-2' : 'mr-2'}`} />
+              {t('save')}
             </Button>
           </div>
         </div>
@@ -913,23 +925,38 @@ export function TestCaseExecution() {
           </Card>
 
           {/* Execution Form */}
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base">Execution Details</CardTitle>
+          <Card className="overflow-hidden border-slate-200/80 shadow-sm dark:border-slate-800">
+            <CardHeader className="border-b border-slate-100 bg-gradient-to-r from-slate-50 via-cyan-50/60 to-white pb-4 dark:border-slate-800 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div className="space-y-1">
+                  <CardTitle className="flex items-center gap-2 text-lg font-bold text-slate-950 dark:text-slate-50">
+                    <Save className="h-4 w-4 text-cyan-600 dark:text-cyan-300" />
+                    {t('executionDetails')}
+                  </CardTitle>
+                  <p className="text-sm text-slate-500 dark:text-slate-400">
+                    {t('executionDetailsDescription')}
+                  </p>
+                </div>
+                <Badge className="w-fit border border-cyan-200 bg-cyan-100/80 px-3 py-1 text-cyan-800 shadow-sm dark:border-cyan-200/30 dark:bg-cyan-300/15 dark:text-cyan-50">
+                  {selectedStatus?.label || executionStatus}
+                </Badge>
+              </div>
             </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <Label htmlFor="status" className="text-xs">Execution Status</Label>
+            <CardContent className="space-y-5 p-4 sm:p-5">
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="rounded-xl border border-slate-200 bg-white/80 p-3 shadow-sm dark:border-slate-800 dark:bg-slate-950/60">
+                  <Label htmlFor="status" className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                    {t('executionStatusLabel')}
+                  </Label>
                   <Select value={executionStatus} onValueChange={setExecutionStatus}>
-                    <SelectTrigger className="h-9 text-sm">
-                      <SelectValue placeholder="Select status" />
+                    <SelectTrigger className="mt-2 h-10 text-sm">
+                      <SelectValue placeholder={t('selectStatus')} />
                     </SelectTrigger>
                     <SelectContent>
                       {statusOptions.map((option) => (
                         <SelectItem key={option.value} value={option.value}>
                           <div className="flex items-center gap-2">
-                            <option.icon className={`h-3 w-3 ${option.color}`} />
+                            <option.icon className={`h-3.5 w-3.5 ${option.color}`} />
                             <span className="text-sm">{option.label}</span>
                           </div>
                         </SelectItem>
@@ -937,17 +964,19 @@ export function TestCaseExecution() {
                     </SelectContent>
                   </Select>
                 </div>
-                <div>
-                  <Label htmlFor="assignee" className="text-xs">Assignee</Label>
+                <div className="rounded-xl border border-slate-200 bg-white/80 p-3 shadow-sm dark:border-slate-800 dark:bg-slate-950/60">
+                  <Label htmlFor="assignee" className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                    {t('assigneeLabel')}
+                  </Label>
                   <Select value={assignee} onValueChange={setAssignee}>
-                    <SelectTrigger className="h-9 text-sm">
-                      <SelectValue placeholder="Select assignee" />
+                    <SelectTrigger className="mt-2 h-10 text-sm">
+                      <SelectValue placeholder={t('selectAssignee')} />
                     </SelectTrigger>
                     <SelectContent>
                       {currentUser && (
                         <SelectItem key="me" value={currentUser.id.toString()}>
                           <div className="flex items-center gap-2">
-                            <User className="h-3 w-3" />
+                            <User className="h-3.5 w-3.5" />
                             <span className="text-sm font-medium">
                               Me ({currentUser.username || currentUser.email || 'Unknown User'})
                             </span>
@@ -957,7 +986,7 @@ export function TestCaseExecution() {
                       {users.filter(u => u.id !== currentUser?.id).map((user) => (
                         <SelectItem key={user.id} value={user.id.toString()}>
                           <div className="flex items-center gap-2">
-                            <User className="h-3 w-3" />
+                            <User className="h-3.5 w-3.5" />
                             <span className="text-sm">
                               {user.full_name || user.username || user.email || `User ${user.id}`}
                             </span>
@@ -971,63 +1000,79 @@ export function TestCaseExecution() {
 
               {/* Show link fields only when failed or blocked */}
               {(executionStatus === 'failed' || executionStatus === 'blocked') && (
-                <div className="grid grid-cols-2 gap-3 p-3 bg-red-50 rounded-lg border border-red-200">
-                  <div>
-                    <Label htmlFor="defectLink" className="text-xs text-red-700">Defect Link</Label>
-                    <Input
-                      id="defectLink"
-                      value={defectLink}
-                      onChange={(e) => setDefectLink(e.target.value)}
-                      placeholder="Link to defect (e.g., DEF-001)"
-                      className="border-red-300 h-8 text-sm mt-1"
-                    />
+                <div className="rounded-xl border border-red-200 bg-gradient-to-br from-red-50 to-orange-50 p-4 shadow-sm dark:border-red-900/60 dark:from-red-950/30 dark:to-orange-950/20">
+                  <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-red-800 dark:text-red-200">
+                    <AlertTriangle className="h-4 w-4" />
+                    {t('failureContext')}
                   </div>
-                  <div>
-                    <Label htmlFor="customLink" className="text-xs text-red-700">Custom Link</Label>
-                    <Input
-                      id="customLink"
-                      value={customLink}
-                      onChange={(e) => setCustomLink(e.target.value)}
-                      placeholder="Additional link or reference"
-                      className="border-red-300 h-8 text-sm mt-1"
-                    />
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <div>
+                      <Label htmlFor="defectLink" className="text-xs font-semibold text-red-700 dark:text-red-200">
+                        {t('defectLinkLabel')}
+                      </Label>
+                      <Input
+                        id="defectLink"
+                        value={defectLink}
+                        onChange={(e) => setDefectLink(e.target.value)}
+                        placeholder={t('defectLinkPlaceholder')}
+                        className="mt-1 h-9 border-red-200 bg-white/90 text-sm dark:border-red-900/70 dark:bg-slate-950/60"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="customLink" className="text-xs font-semibold text-red-700 dark:text-red-200">
+                        {t('customLinkLabel')}
+                      </Label>
+                      <Input
+                        id="customLink"
+                        value={customLink}
+                        onChange={(e) => setCustomLink(e.target.value)}
+                        placeholder={t('customLinkPlaceholder')}
+                        className="mt-1 h-9 border-red-200 bg-white/90 text-sm dark:border-red-900/70 dark:bg-slate-950/60"
+                      />
+                    </div>
                   </div>
                 </div>
               )}
 
-              <div>
-                <Label htmlFor="notes" className="text-xs">Execution Notes</Label>
-                <Textarea
-                  id="notes"
-                  value={executionNotes}
-                  onChange={(e) => setExecutionNotes(e.target.value)}
-                  placeholder="Add notes about the test execution..."
-                  rows={3}
-                  className="text-sm mt-1"
-                />
-              </div>
+              <div className="grid gap-4 lg:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="notes" className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                    {t('executionNotesLabel')}
+                  </Label>
+                  <Textarea
+                    id="notes"
+                    value={executionNotes}
+                    onChange={(e) => setExecutionNotes(e.target.value)}
+                    placeholder={t('executionNotesPlaceholder')}
+                    rows={5}
+                    className="resize-none text-sm"
+                  />
+                </div>
 
-              <div>
-                <Label htmlFor="logs" className="text-xs">Execution Logs</Label>
-                <Textarea
-                  id="logs"
-                  value={executionLogs}
-                  onChange={(e) => setExecutionLogs(e.target.value)}
-                  placeholder="Add detailed logs or console output..."
-                  rows={4}
-                  className="font-mono text-xs mt-1"
-                />
+                <div className="space-y-2">
+                  <Label htmlFor="logs" className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                    {t('executionLogsLabel')}
+                  </Label>
+                  <Textarea
+                    id="logs"
+                    value={executionLogs}
+                    onChange={(e) => setExecutionLogs(e.target.value)}
+                    placeholder={t('executionLogsPlaceholder')}
+                    rows={5}
+                    className="resize-none font-mono text-xs"
+                  />
+                </div>
               </div>
 
               {/* Prominent Save Button */}
-              <div className="pt-3 border-t">
-                <Button 
+              <div className="border-t border-slate-100 pt-4 dark:border-slate-800">
+                <Button
                   onClick={handleSaveExecution}
                   disabled={executionStatus === 'pending'}
-                  className="w-full bg-green-600 hover:bg-green-700 text-white font-semibold py-2 text-sm"
+                  className="h-11 w-full rounded-xl bg-emerald-600 text-sm font-semibold text-white hover:bg-emerald-700 disabled:bg-slate-300 dark:bg-emerald-400 dark:text-slate-950 dark:hover:bg-emerald-300 dark:disabled:bg-slate-700 dark:disabled:text-slate-400"
                 >
-                  <Save className="h-4 w-4 mr-2" />
-                  Save Execution
+                  <Save className={`h-4 w-4 ${isRTL ? 'ml-2' : 'mr-2'}`} />
+                  {t('saveExecution')}
                 </Button>
               </div>
             </CardContent>

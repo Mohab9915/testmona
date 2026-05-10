@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
+import { Checkbox } from '@/components/ui/checkbox';
 import { 
   ArrowLeft, 
   CheckCircle, 
@@ -19,7 +20,12 @@ import {
   RefreshCw,
   PlayCircle,
   Plus,
-  Trash2
+  Trash2,
+  Search,
+  MessageSquare,
+  Edit,
+  Save,
+  X
 } from 'lucide-react';
 import { TestRunPieChart, TestRunBarChart, TestRunTrendChart } from '@/components/ui/chart';
 import { useTranslation } from '@/hooks/useTranslation';
@@ -48,13 +54,14 @@ interface TestRun {
 export function TestRunDetail() {
   const { id, projectId } = useParams<{ id: string; projectId: string }>();
   const navigate = useNavigate();
-  const { t } = useTranslation();
+  const { t, isRTL } = useTranslation();
   const [testRun, setTestRun] = useState<any>(null);
   const [testResults, setTestResults] = useState<any[]>([]);
   const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<string>('all');
+  const [resultSearchQuery, setResultSearchQuery] = useState('');
   const [chartFilter, setChartFilter] = useState<string>('all'); // New state for chart filtering
   const [isAddTestCasesOpen, setIsAddTestCasesOpen] = useState(false);
   const [selectedTestCasesForRemoval, setSelectedTestCasesForRemoval] = useState<number[]>([]);
@@ -69,26 +76,44 @@ export function TestRunDetail() {
       return { pieData: [], sectionData: [], trendData: [] };
     }
 
+    const normalizeResultStatus = (status: string) => {
+      const normalizedStatus = status.toLowerCase();
+      const statusMap: Record<string, 'pass' | 'fail' | 'block' | 'skip' | 'not_tested'> = {
+        pass: 'pass',
+        passed: 'pass',
+        fail: 'fail',
+        failed: 'fail',
+        block: 'block',
+        blocked: 'block',
+        skip: 'skip',
+        skipped: 'skip',
+        not_tested: 'not_tested',
+        pending: 'not_tested',
+      };
+
+      return statusMap[normalizedStatus] || 'not_tested';
+    };
+
     // Calculate status counts - normalize status values
     const statusCounts = testResults.reduce((acc: any, result) => {
-      const normalizedStatus = result.status.toLowerCase();
+      const normalizedStatus = normalizeResultStatus(result.status);
       acc[normalizedStatus] = (acc[normalizedStatus] || 0) + 1;
       return acc;
     }, {});
 
     // Pie chart data
     const pieData = [
-      { name: 'Passed', value: (statusCounts.pass || statusCounts.passed || 0), color: '#10b981' },
-      { name: 'Failed', value: (statusCounts.fail || statusCounts.failed || 0), color: '#ef4444' },
-      { name: 'Blocked', value: (statusCounts.block || statusCounts.blocked || 0), color: '#f59e0b' },
-      { name: 'Skipped', value: (statusCounts.skip || statusCounts.skipped || 0), color: '#6b7280' },
-      { name: 'Not Tested', value: (statusCounts.not_tested || 0), color: '#9ca3af' },
+      { key: 'pass', name: t('passed'), value: statusCounts.pass || 0, color: '#10b981' },
+      { key: 'fail', name: t('failed'), value: statusCounts.fail || 0, color: '#ef4444' },
+      { key: 'block', name: t('blocked'), value: statusCounts.block || 0, color: '#f59e0b' },
+      { key: 'skip', name: t('skipped'), value: statusCounts.skip || 0, color: '#64748b' },
+      { key: 'not_tested', name: t('notTested'), value: statusCounts.not_tested || 0, color: '#94a3b8' },
     ].filter(item => item.value > 0);
 
     // Bar chart data by section
     const sectionData = testResults.reduce((acc: any[], result) => {
       // Get section name from the test_case object
-      let sectionName = 'No Section';
+      let sectionName = t('noSection');
       
       // First try to get section from the nested section object (preferred)
       if (result.test_case?.section?.name) {
@@ -104,7 +129,7 @@ export function TestRunDetail() {
         }
       }
       
-      const normalizedStatus = result.status.toLowerCase();
+      const normalizedStatus = normalizeResultStatus(result.status);
       const existingSection = acc.find(item => item.name === sectionName);
       
       if (existingSection) {
@@ -113,10 +138,10 @@ export function TestRunDetail() {
       } else {
         acc.push({
           name: sectionName,
-          pass: normalizedStatus === 'pass' || normalizedStatus === 'passed' ? 1 : 0,
-          fail: normalizedStatus === 'fail' || normalizedStatus === 'failed' ? 1 : 0,
-          block: normalizedStatus === 'block' || normalizedStatus === 'blocked' ? 1 : 0,
-          skip: normalizedStatus === 'skip' || normalizedStatus === 'skipped' ? 1 : 0,
+          pass: normalizedStatus === 'pass' ? 1 : 0,
+          fail: normalizedStatus === 'fail' ? 1 : 0,
+          block: normalizedStatus === 'block' ? 1 : 0,
+          skip: normalizedStatus === 'skip' ? 1 : 0,
           not_tested: normalizedStatus === 'not_tested' ? 1 : 0,
           total: 1,
         });
@@ -129,15 +154,28 @@ export function TestRunDetail() {
       section.passRate = section.total > 0 ? Math.round((section.pass / section.total) * 100) : 0;
     });
 
-    // Trend data - use actual historical data if available, otherwise show current only
-    // For now, we'll show just the current pass rate as a single point
-    const trendData = [
-      { 
-        date: testRun?.created_at ? new Date(testRun.created_at).toLocaleDateString() : 'Current', 
-        passRate, 
-        totalTests 
-      },
-    ];
+    const sortedResults = [...testResults].sort((a, b) => {
+      const firstDate = new Date(a.executed_at || a.updated_at || a.created_at || testRun?.created_at || 0).getTime();
+      const secondDate = new Date(b.executed_at || b.updated_at || b.created_at || testRun?.created_at || 0).getTime();
+      return firstDate - secondDate;
+    });
+
+    let cumulativeTotal = 0;
+    let cumulativePassed = 0;
+    const trendData = sortedResults.map((result, index) => {
+      cumulativeTotal += 1;
+      if (normalizeResultStatus(result.status) === 'pass') {
+        cumulativePassed += 1;
+      }
+
+      const resultDate = result.executed_at || result.updated_at || result.created_at || testRun?.created_at;
+
+      return {
+        date: resultDate ? new Date(resultDate).toLocaleDateString() : `${t('result')} ${index + 1}`,
+        passRate: cumulativeTotal > 0 ? Math.round((cumulativePassed / cumulativeTotal) * 100) : 0,
+        totalTests: cumulativeTotal,
+      };
+    });
 
     return { pieData, sectionData, trendData };
   };  
@@ -396,8 +434,25 @@ export function TestRunDetail() {
   };
 
   const filteredResults = testResults.filter(result => {
-    if (filter === 'all') return true;
-    return result.status.toLowerCase() === filter.toLowerCase();
+    const matchesStatus = filter === 'all' || result.status.toLowerCase() === filter.toLowerCase();
+    const normalizedQuery = resultSearchQuery.trim().toLowerCase();
+
+    if (!normalizedQuery) return matchesStatus;
+
+    const searchableFields = [
+      result.test_case?.title,
+      result.test_case_id ? `tc-${result.test_case_id}` : '',
+      result.test_case?.section?.name,
+      result.test_case?.priority,
+      result.comments,
+      result.executor?.full_name,
+      result.executor?.username,
+      formatStatusLabel(result.status),
+    ];
+
+    return matchesStatus && searchableFields.some((field) =>
+      String(field || '').toLowerCase().includes(normalizedQuery)
+    );
   });
 
   const statusCounts = testResults.reduce((acc: any, result) => {
@@ -414,6 +469,16 @@ export function TestRunDetail() {
   const notTestedTests = statusCounts.not_tested || 0;
   const passRate = totalTests > 0 ? Math.round((passedTests / totalTests) * 100) : 0;
   const { pieData, sectionData, trendData } = prepareChartData();
+  const runDescription = testRun?.description?.trim() || t('noDescriptionProvided');
+  const formattedCreatedDate = testRun?.created_at
+    ? new Date(testRun.created_at).toLocaleDateString()
+    : t('notAvailableShort');
+  const formattedUpdatedDate = testRun?.updated_at
+    ? new Date(testRun.updated_at).toLocaleDateString()
+    : t('notAvailableShort');
+  const formattedRunStatus = testRun?.status
+    ? formatStatusLabel(testRun.status)
+    : t('notAvailableShort');
 
   // Handle adding/removing test cases
   const handleAddTestCases = async () => {
@@ -508,23 +573,40 @@ export function TestRunDetail() {
     setEditValues(prev => ({ ...prev, [resultId]: { ...prev[resultId], [field]: value } }));
   };
 
-  const handleSave = (resultId: string) => {
-    const result = testRun?.testResults.find(r => r.id === resultId);
-    if (result && editValues[resultId]) {
-      // Update the result (in real app, this would be an API call)
-      const updatedResult = { ...result, ...editValues[resultId] };
-      
-      // Update testRun state
-      if (testRun) {
-        const updatedTestResults = testRun.testResults.map(r => 
-          r.id === resultId ? updatedResult : r
-        );
+  const handleSave = async (resultId: string) => {
+    const result = testResults.find((item) => String(item.id) === String(resultId));
+    const pendingValues = editValues[resultId];
+
+    if (!result || !pendingValues) {
+      setEditingResult(null);
+      return;
+    }
+
+    try {
+      const payload = {
+        ...pendingValues,
+        executed_by: pendingValues.executed_by ? parseInt(pendingValues.executed_by, 10) : result.executed_by,
+      };
+      const updatedResult = await testResultsAPI.update(Number(resultId), payload);
+      const updatedTestResults = testResults.map((item) =>
+        String(item.id) === String(resultId) ? { ...item, ...updatedResult } : item
+      );
+
+      setTestResults(updatedTestResults);
+      if (testRun?.testResults) {
         setTestRun({ ...testRun, testResults: updatedTestResults });
       }
-      
-      console.log('Updated test result:', updatedResult);
+      setEditValues((prev) => {
+        const nextValues = { ...prev };
+        delete nextValues[resultId];
+        return nextValues;
+      });
+    } catch (err) {
+      console.error('Failed to update test result:', err);
+      setError('Failed to update test result');
+    } finally {
+      setEditingResult(null);
     }
-    setEditingResult(null);
   };
 
   // Handle View Reports and Export Results
@@ -540,7 +622,7 @@ export function TestRunDetail() {
     const headers = ['Test Case ID', 'Test Case Title', 'Section', 'Priority', 'Status', 'Executed By', 'Executed At', 'Duration (s)', 'Comments'];
     const csvContent = [
       headers.join(','),
-      ...testRun.testResults.map(result => [
+      ...testResults.map(result => [
         result.testCaseId,
         `"${result.testCaseTitle}"`,
         result.section || '',
@@ -622,46 +704,106 @@ export function TestRunDetail() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center space-x-4 min-w-0 flex-1">
-          <Button variant="ghost" size="sm" onClick={() => navigate(`/projects/${projectId}/test-runs`)}>
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Back to Test Runs
-          </Button>
-          <div className="min-w-0 flex-1">
-            <h1 className="text-lg font-semibold truncate" title={testRun.name}>
-              {testRun.name}
-            </h1>
-            <p className="text-sm text-gray-600 truncate" title={testRun.description}>
-              {testRun.description || 'No description'}
-            </p>
+      <div className="relative overflow-hidden rounded-2xl border border-slate-200 bg-gradient-to-br from-white via-cyan-50 to-slate-100 p-5 text-slate-950 shadow-xl shadow-slate-200/70 dark:border-slate-800 dark:from-slate-950 dark:via-slate-900 dark:to-blue-950 dark:text-white dark:shadow-black/30 sm:p-6">
+        <div className="pointer-events-none absolute -top-24 h-56 w-56 rounded-full bg-cyan-300/40 blur-3xl dark:bg-cyan-400/20 ltr:right-10 rtl:left-10" />
+        <div className="pointer-events-none absolute -bottom-24 h-56 w-56 rounded-full bg-amber-200/40 blur-3xl dark:bg-amber-300/10 ltr:left-10 rtl:right-10" />
+
+        <div className="relative flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
+          <div className="min-w-0 flex-1 space-y-4">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => navigate(`/projects/${projectId}/test-runs`)}
+              className="w-fit bg-slate-900/5 text-slate-700 hover:bg-slate-900/10 hover:text-slate-950 dark:bg-white/10 dark:text-white dark:hover:bg-white/20 dark:hover:text-white"
+            >
+              <ArrowLeft className={`h-4 w-4 ${isRTL ? 'ml-2 rotate-180' : 'mr-2'}`} />
+              {t('backToTestRuns')}
+            </Button>
+
+            <div className="space-y-3">
+              <div className="flex flex-wrap items-center gap-3">
+                <Badge className="border border-cyan-200 bg-cyan-100/80 px-3 py-1 text-cyan-800 shadow-sm backdrop-blur dark:border-cyan-200/30 dark:bg-cyan-300/15 dark:text-cyan-50">
+                  {t('runId')}: {testRun.id}
+                </Badge>
+                <Badge className="border border-slate-200 bg-white/80 px-3 py-1 text-slate-700 shadow-sm backdrop-blur dark:border-white/20 dark:bg-white/10 dark:text-white">
+                  {formattedRunStatus}
+                </Badge>
+                <Badge className="border border-emerald-200 bg-emerald-100/80 px-3 py-1 text-emerald-800 shadow-sm backdrop-blur dark:border-emerald-200/30 dark:bg-emerald-300/15 dark:text-emerald-50">
+                  {t('passRateWithValue', { value: passRate })}
+                </Badge>
+              </div>
+
+              <div className="max-w-4xl space-y-2">
+                <h1 className="text-3xl font-black leading-tight tracking-tight text-slate-950 dark:text-white sm:text-4xl" title={testRun.name}>
+                  {testRun.name}
+                </h1>
+                <p className="max-w-3xl text-sm leading-6 text-slate-600 dark:text-slate-200 sm:text-base" title={runDescription}>
+                  {runDescription}
+                </p>
+              </div>
+
+              <div className="flex flex-wrap gap-3 text-xs text-slate-600 dark:text-slate-300 sm:text-sm">
+                <span className="inline-flex items-center gap-2 rounded-full bg-white/75 px-3 py-1.5 shadow-sm ring-1 ring-slate-200/80 backdrop-blur dark:bg-white/10 dark:ring-white/10">
+                  <Calendar className="h-4 w-4 text-cyan-600 dark:text-cyan-200" />
+                  {t('createdLabel')}: {formattedCreatedDate}
+                </span>
+                <span className="inline-flex items-center gap-2 rounded-full bg-white/75 px-3 py-1.5 shadow-sm ring-1 ring-slate-200/80 backdrop-blur dark:bg-white/10 dark:ring-white/10">
+                  <RefreshCw className="h-4 w-4 text-cyan-600 dark:text-cyan-200" />
+                  {t('lastUpdated')}: {formattedUpdatedDate}
+                </span>
+                <span className="inline-flex items-center gap-2 rounded-full bg-white/75 px-3 py-1.5 shadow-sm ring-1 ring-slate-200/80 backdrop-blur dark:bg-white/10 dark:ring-white/10">
+                  <BarChart3 className="h-4 w-4 text-cyan-600 dark:text-cyan-200" />
+                  {t('totalTestsWithCount', { count: totalTests })}
+                </span>
+              </div>
+            </div>
           </div>
-        </div>
-        <div className="flex items-center space-x-2 flex-shrink-0">
-          <Button variant="outline" size="sm" onClick={() => setIsAddTestCasesOpen(true)}>
-            <Plus className="h-4 w-4 mr-2" />
-            Add Test Cases
-          </Button>
-          {selectedTestCasesForRemoval.length > 0 && (
-            <Button variant="destructive" size="sm" onClick={handleRemoveTestCases}>
-              <Trash2 className="h-4 w-4 mr-2" />
-              Remove Selected ({selectedTestCasesForRemoval.length})
+
+          <div className="grid w-full gap-2 sm:grid-cols-3 xl:w-auto xl:min-w-[520px]">
+            <Button
+              size="sm"
+              onClick={() => setIsAddTestCasesOpen(true)}
+              className="h-11 justify-center rounded-xl bg-slate-950 text-white hover:bg-slate-800 dark:bg-cyan-300 dark:text-slate-950 dark:hover:bg-cyan-200"
+            >
+              <Plus className={`h-4 w-4 ${isRTL ? 'ml-2' : 'mr-2'}`} />
+              {t('addTestCases')}
             </Button>
-          )}
-          <Button variant="outline" size="sm" onClick={handleExportResults}>
-            <Download className="h-4 w-4 mr-2" />
-            Export Results
-          </Button>
-          <Button variant="outline" size="sm" onClick={handleViewReports}>
-            <BarChart3 className="h-4 w-4 mr-2" />
-            View Report
-          </Button>
-          {testRun.status === 'completed' && (
-            <Button size="sm">
-              <RefreshCw className="h-4 w-4 mr-2" />
-              Re-run Test
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleExportResults}
+              className="h-11 justify-center rounded-xl border-slate-200 bg-white/80 text-slate-700 hover:bg-white hover:text-slate-950 dark:border-white/20 dark:bg-white/10 dark:text-white dark:hover:bg-white/20 dark:hover:text-white"
+            >
+              <Download className={`h-4 w-4 ${isRTL ? 'ml-2' : 'mr-2'}`} />
+              {t('exportResults')}
             </Button>
-          )}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleViewReports}
+              className="h-11 justify-center rounded-xl border-slate-200 bg-white/80 text-slate-700 hover:bg-white hover:text-slate-950 dark:border-white/20 dark:bg-white/10 dark:text-white dark:hover:bg-white/20 dark:hover:text-white"
+            >
+              <BarChart3 className={`h-4 w-4 ${isRTL ? 'ml-2' : 'mr-2'}`} />
+              {t('viewReport')}
+            </Button>
+            {selectedTestCasesForRemoval.length > 0 && (
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={handleRemoveTestCases}
+                className="h-11 rounded-xl sm:col-span-3"
+              >
+                <Trash2 className={`h-4 w-4 ${isRTL ? 'ml-2' : 'mr-2'}`} />
+                {t('removeSelectedCount', { count: selectedTestCasesForRemoval.length })}
+              </Button>
+            )}
+            {testRun.status === 'completed' && (
+              <Button size="sm" className="h-11 rounded-xl bg-emerald-600 text-white hover:bg-emerald-700 dark:bg-emerald-400 dark:text-slate-950 dark:hover:bg-emerald-300 sm:col-span-3">
+                <RefreshCw className={`h-4 w-4 ${isRTL ? 'ml-2' : 'mr-2'}`} />
+                {t('rerunTest')}
+              </Button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -780,203 +922,256 @@ export function TestRunDetail() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <TestRunPieChart 
           data={pieData} 
-          title="Test Results Distribution" 
+          title={t('testResultsDistribution')} 
           onChartClick={handleChartClick}
         />
         <TestRunBarChart 
           data={sectionData} 
-          title="Results by Section" 
+          title={t('resultsBySection')} 
           onChartClick={handleChartClick}
         />
-        <TestRunTrendChart data={trendData} title="Pass Rate Trend" />
+        <TestRunTrendChart data={trendData} title={t('passRateTrend')} />
       </div>
 
       {/* Test Results */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle>Test Results</CardTitle>
-            <div className="flex items-center space-x-2">
-              <select 
-                value={filter} 
-                onChange={(e) => setFilter(e.target.value)}
-                className="px-3 py-1 border border-gray-300 rounded-md text-sm"
-              >
-                <option value="all">All Tests ({totalTests})</option>
-                <option value="pass">Passed ({passedTests})</option>
-                <option value="fail">Failed ({failedTests})</option>
-                <option value="block">Blocked ({blockedTests})</option>
-                <option value="skip">Skipped ({skippedTests})</option>
-                <option value="not_tested">Not Tested ({notTestedTests})</option>
-              </select>
+      <Card className="overflow-hidden border-slate-200/80 shadow-sm dark:border-slate-800">
+        <CardHeader className="border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white dark:border-slate-800 dark:from-slate-950 dark:to-slate-900">
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+            <div className="space-y-2">
+              <div className="flex flex-wrap items-center gap-3">
+                <CardTitle className="text-xl font-bold text-slate-950 dark:text-slate-50">{t('testResultsTitle')}</CardTitle>
+                <Badge variant="outline" className="border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-800 dark:bg-blue-950/50 dark:text-blue-300">
+                  {t('filteredResultsCount', { shown: filteredResults.length, total: totalTests })}
+                </Badge>
+                {selectedTestCasesForRemoval.length > 0 && (
+                  <Badge variant="outline" className="border-red-200 bg-red-50 text-red-700 dark:border-red-800 dark:bg-red-950/50 dark:text-red-300">
+                    {t('selectedResultsCount', { count: selectedTestCasesForRemoval.length })}
+                  </Badge>
+                )}
+              </div>
+              <p className="text-sm text-slate-500 dark:text-slate-400">
+                {t('testResultsTableDescription')}
+              </p>
+            </div>
+
+            <div className="grid w-full gap-3 sm:grid-cols-2 xl:w-auto xl:min-w-[560px]">
+              <div className="relative">
+                <Search className={`absolute top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 ${isRTL ? 'right-3' : 'left-3'}`} />
+                <Input
+                  value={resultSearchQuery}
+                  onChange={(event) => setResultSearchQuery(event.target.value)}
+                  placeholder={t('searchTestResultsPlaceholder')}
+                  className={isRTL ? 'pr-9' : 'pl-9'}
+                />
+              </div>
+              <Select value={filter} onValueChange={setFilter}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">{t('allTestsCount', { count: totalTests })}</SelectItem>
+                  <SelectItem value="pass">{t('passedCount', { count: passedTests })}</SelectItem>
+                  <SelectItem value="fail">{t('failedCount', { count: failedTests })}</SelectItem>
+                  <SelectItem value="block">{t('blockedCount', { count: blockedTests })}</SelectItem>
+                  <SelectItem value="skip">{t('skippedCount', { count: skippedTests })}</SelectItem>
+                  <SelectItem value="not_tested">{t('notTestedCount', { count: notTestedTests })}</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
         </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-12">
-                  <input
-                    type="checkbox"
-                    checked={selectedTestCasesForRemoval.length === filteredResults.length}
-                    onChange={(e) => {
-                      if (e.target.checked) {
-                        setSelectedTestCasesForRemoval(filteredResults.map(r => r.id));
-                      } else {
-                        setSelectedTestCasesForRemoval([]);
-                      }
-                    }}
-                  />
-                </TableHead>
-                <TableHead>Test Case</TableHead>
-                <TableHead>Section</TableHead>
-                <TableHead>Priority</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Executed By</TableHead>
-                <TableHead>Actions</TableHead>
-                <TableHead>Executed At</TableHead>
-                <TableHead>Duration</TableHead>
-                <TableHead>Comments</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredResults.map((result) => (
-                <TableRow key={result.id}>
-                  <TableCell>
-                    <input
-                      type="checkbox"
-                      checked={selectedTestCasesForRemoval.includes(result.id)}
-                      onChange={() => handleSelectTestCaseForRemoval(result.id)}
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <div>
-                      <Button 
-                        variant="link" 
-                        className="p-0 h-auto font-medium text-left text-blue-600 hover:text-blue-800"
-                        onClick={() => {
-                          // Navigate to test case execution page
-                          if (result.test_case_id) {
-                            navigate(`/projects/${projectId}/test-runs/${id}/test-cases/${result.test_case_id}`);
+        <CardContent className="p-0">
+          {filteredResults.length === 0 ? (
+            <div className="flex flex-col items-center justify-center px-6 py-16 text-center">
+              <Search className="mb-3 h-10 w-10 text-slate-300" />
+              <h3 className="text-base font-semibold text-slate-800 dark:text-slate-100">{t('noMatchingTestResults')}</h3>
+              <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{t('tryDifferentResultSearch')}</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader className="sticky top-0 z-10 bg-slate-50 dark:bg-slate-900">
+                  <TableRow className="border-slate-200 dark:border-slate-800">
+                    <TableHead className="w-12">
+                      <Checkbox
+                        checked={filteredResults.length > 0 && selectedTestCasesForRemoval.length === filteredResults.length}
+                        onCheckedChange={(checked) => {
+                          if (checked) {
+                            setSelectedTestCasesForRemoval(filteredResults.map(r => r.id));
+                          } else {
+                            setSelectedTestCasesForRemoval([]);
                           }
                         }}
-                      >
-                        {result.test_case?.title || 'Unknown Test Case'}
-                      </Button>
-                      <div className="text-sm text-gray-500">{result.test_case_id ? `TC-${result.test_case_id}` : 'N/A'}</div>
-                    </div>
-                  </TableCell>
-                  <TableCell>{result.test_case?.section?.name || 'N/A'}</TableCell>
-                  <TableCell>
-                    <Badge className={getPriorityBadge(result.test_case?.priority || 'medium')}>
-                      {result.test_case?.priority || 'medium'}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    {editingResult === result.id ? (
-                      <Select 
-                        value={editValues[result.id]?.status || result.status} 
-                        onValueChange={(value) => handleEdit(result.id, 'status', value)}
-                      >
-                        <SelectTrigger className="w-32">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="passed">Passed</SelectItem>
-                          <SelectItem value="failed">Failed</SelectItem>
-                          <SelectItem value="blocked">Blocked</SelectItem>
-                          <SelectItem value="skipped">Skipped</SelectItem>
-                          <SelectItem value="in-progress">In Progress</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    ) : (
-                      <div className="flex items-center space-x-2">
-                        {getStatusIcon(result.status)}
-                        <Badge className={getStatusBadge(result.status)}>
-                          {formatStatusLabel(result.status)}
-                        </Badge>
-                      </div>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    {editingResult === result.id ? (
-                      <Select 
-                        value={editValues[result.id]?.executed_by || result.executed_by?.toString() || ''} 
-                        onValueChange={(value) => handleEdit(result.id, 'executed_by', value)}
-                      >
-                        <SelectTrigger className="w-40">
-                          <SelectValue placeholder="Select user" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {users.map((user) => (
-                            <SelectItem key={user.id} value={user.id.toString()}>
-                              {user.full_name || user.username}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    ) : (
-                      <div className="flex items-center space-x-2">
-                        <User className="h-4 w-4 text-gray-400" />
-                        <span>{result.executor?.full_name || result.executor?.username || 'Not executed'}</span>
-                      </div>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex space-x-2">
-                      <Button 
-                        size="sm" 
-                        variant="outline"
-                        onClick={() => {
-                          // Navigate to test case execution
-                          if (result.test_case_id) {
-                            navigate(`/projects/${projectId}/test-runs/${id}/test-cases/${result.test_case_id}`);
-                          }
-                        }}
-                      >
-                        <PlayCircle className="h-4 w-4 mr-1" />
-                        Execute
-                      </Button>
-                      {editingResult === result.id ? (
-                        <div className="flex space-x-2">
-                          <Button size="sm" onClick={() => handleSave(result.id)}>
-                            Save
-                          </Button>
-                          <Button size="sm" variant="outline" onClick={() => handleCancel(result.id)}>
-                            Cancel
-                          </Button>
-                        </div>
-                      ) : (
-                        <Button size="sm" variant="outline" onClick={() => setEditingResult(result.id)}>
-                          Edit
-                        </Button>
-                      )}
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center space-x-2">
-                      <Calendar className="h-4 w-4 text-gray-400" />
-                      <span>
-                        {result.executed_at 
-                          ? new Date(result.executed_at).toLocaleString()
-                          : 'Not executed'
-                        }
-                      </span>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    {result.execution_time ? `${result.execution_time}s` : '-'}
-                  </TableCell>
-                  <TableCell className="max-w-xs">
-                    <div className="truncate" title={result.comments}>
-                      {result.comments || '-'}
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+                        aria-label="Select all visible test results"
+                      />
+                    </TableHead>
+                    <TableHead className="min-w-[280px]">{t('testCase')}</TableHead>
+                    <TableHead className="min-w-[150px]">{t('section')}</TableHead>
+                    <TableHead>{t('priority')}</TableHead>
+                    <TableHead className="min-w-[170px]">{t('status')}</TableHead>
+                    <TableHead className="min-w-[180px]">{t('executedBy')}</TableHead>
+                    <TableHead className="min-w-[170px]">{t('executedAt')}</TableHead>
+                    <TableHead>{t('duration')}</TableHead>
+                    <TableHead className="min-w-[220px]">{t('comments')}</TableHead>
+                    <TableHead className="min-w-[180px] text-right">{t('actions')}</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredResults.map((result) => {
+                    const isEditing = editingResult === result.id;
+                    const testCaseTitle = result.test_case?.title || t('unknownTestCase');
+                    const sectionName = result.test_case?.section?.name || t('noSection');
+                    const executedBy = result.executor?.full_name || result.executor?.username || t('notExecuted');
+
+                    return (
+                      <TableRow key={result.id} className="group border-slate-100 transition-colors hover:bg-blue-50/40 dark:border-slate-800 dark:hover:bg-blue-950/20">
+                        <TableCell className="align-top pt-5">
+                          <Checkbox
+                            checked={selectedTestCasesForRemoval.includes(result.id)}
+                            onCheckedChange={() => handleSelectTestCaseForRemoval(result.id)}
+                            aria-label={`Select ${testCaseTitle}`}
+                          />
+                        </TableCell>
+                        <TableCell className="align-top">
+                          <div className="space-y-1">
+                            <Button
+                              variant="link"
+                              className="h-auto max-w-[260px] justify-start p-0 text-left font-semibold text-blue-700 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300"
+                              onClick={() => {
+                                if (result.test_case_id) {
+                                  navigate(`/projects/${projectId}/test-runs/${id}/test-cases/${result.test_case_id}`);
+                                }
+                              }}
+                              title={testCaseTitle}
+                            >
+                              <span className="truncate">{testCaseTitle}</span>
+                            </Button>
+                            <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+                              <span className="rounded-full bg-slate-100 px-2 py-0.5 font-medium text-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                                {result.test_case_id ? `TC-${result.test_case_id}` : 'N/A'}
+                              </span>
+                              {result.test_case?.test_type && <span>{result.test_case.test_type}</span>}
+                            </div>
+                          </div>
+                        </TableCell>
+                        <TableCell className="align-top">
+                          <span className="inline-flex max-w-[170px] items-center rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700 dark:bg-slate-800 dark:text-slate-300" title={sectionName}>
+                            <span className="truncate">{sectionName}</span>
+                          </span>
+                        </TableCell>
+                        <TableCell className="align-top">
+                          <Badge className={getPriorityBadge(result.test_case?.priority || 'medium')}>
+                            {result.test_case?.priority || 'medium'}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="align-top">
+                          {isEditing ? (
+                            <Select
+                              value={editValues[result.id]?.status || result.status}
+                              onValueChange={(value) => handleEdit(result.id, 'status', value)}
+                            >
+                              <SelectTrigger className="w-36">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="pass">{t('passed')}</SelectItem>
+                                <SelectItem value="fail">{t('failed')}</SelectItem>
+                                <SelectItem value="block">{t('blocked')}</SelectItem>
+                                <SelectItem value="skip">{t('skipped')}</SelectItem>
+                                <SelectItem value="not_tested">{t('notTested')}</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          ) : (
+                            <div className="flex items-center gap-2">
+                              {getStatusIcon(result.status)}
+                              <Badge className={getStatusBadge(result.status)}>
+                                {formatStatusLabel(result.status)}
+                              </Badge>
+                            </div>
+                          )}
+                        </TableCell>
+                        <TableCell className="align-top">
+                          {isEditing ? (
+                            <Select
+                              value={editValues[result.id]?.executed_by || result.executed_by?.toString() || ''}
+                              onValueChange={(value) => handleEdit(result.id, 'executed_by', value)}
+                            >
+                              <SelectTrigger className="w-44">
+                                <SelectValue placeholder={t('selectUser')} />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {users.map((user) => (
+                                  <SelectItem key={user.id} value={user.id.toString()}>
+                                    {user.full_name || user.username}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          ) : (
+                            <div className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300">
+                              <User className="h-4 w-4 shrink-0 text-slate-400" />
+                              <span className="max-w-[150px] truncate" title={executedBy}>{executedBy}</span>
+                            </div>
+                          )}
+                        </TableCell>
+                        <TableCell className="align-top">
+                          <div className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
+                            <Calendar className="h-4 w-4 shrink-0 text-slate-400" />
+                            <span className="max-w-[160px] truncate" title={result.executed_at ? new Date(result.executed_at).toLocaleString() : t('notExecuted')}>
+                              {result.executed_at ? new Date(result.executed_at).toLocaleString() : t('notExecuted')}
+                            </span>
+                          </div>
+                        </TableCell>
+                        <TableCell className="align-top">
+                          <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                            {result.execution_time ? `${result.execution_time}s` : '-'}
+                          </span>
+                        </TableCell>
+                        <TableCell className="align-top">
+                          <div className="flex max-w-[240px] items-start gap-2 text-sm text-slate-600 dark:text-slate-300" title={result.comments || ''}>
+                            <MessageSquare className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
+                            <span className="line-clamp-2">{result.comments || '-'}</span>
+                          </div>
+                        </TableCell>
+                        <TableCell className="align-top text-right">
+                          <div className="flex justify-end gap-2">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => {
+                                if (result.test_case_id) {
+                                  navigate(`/projects/${projectId}/test-runs/${id}/test-cases/${result.test_case_id}`);
+                                }
+                              }}
+                            >
+                              <PlayCircle className="h-4 w-4 mr-1" />
+                              {t('execute')}
+                            </Button>
+                            {isEditing ? (
+                              <>
+                                <Button size="sm" onClick={() => handleSave(result.id)}>
+                                  <Save className="h-4 w-4 mr-1" />
+                                  {t('save')}
+                                </Button>
+                                <Button size="sm" variant="ghost" onClick={() => handleCancel(result.id)}>
+                                  <X className="h-4 w-4" />
+                                </Button>
+                              </>
+                            ) : (
+                              <Button size="sm" variant="ghost" onClick={() => setEditingResult(result.id)}>
+                                <Edit className="h-4 w-4 mr-1" />
+                                {t('edit')}
+                              </Button>
+                            )}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+          )}
         </CardContent>
       </Card>
 
