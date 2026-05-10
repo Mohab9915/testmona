@@ -43,7 +43,7 @@ import {
   Ban,
   PauseCircle,
 } from 'lucide-react';
-import { testRunsAPI, testCasesAPI, sectionsAPI, usersAPI, testSuitesAPI, testResultsAPI, environmentsAPI } from '@/lib/api';
+import { testRunsAPI, testCasesAPI, sectionsAPI, usersAPI, testSuitesAPI, testResultsAPI, environmentsAPI, enumsAPI } from '@/lib/api';
 import { TestRun, TestCase } from '@/types';
 import { useTranslation } from '@/hooks/useTranslation';
 
@@ -71,6 +71,14 @@ interface Section {
   subsections?: Section[];
 }
 
+interface PriorityOption {
+  value: string;
+  label: string;
+  weight: number;
+  color?: string;
+  isDefault?: boolean;
+}
+
 export function TestRuns() {
   const navigate = useNavigate();
   const { projectId } = useParams<{ projectId?: string }>();
@@ -82,7 +90,7 @@ export function TestRuns() {
   const [environment, setEnvironment] = useState('');
   const [assignedTo, setAssignedTo] = useState('');
   const [estimatedDuration, setEstimatedDuration] = useState('');
-  const [priority, setPriority] = useState('medium');
+  const [priority, setPriority] = useState('');
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [showUnsavedDialog, setShowUnsavedDialog] = useState(false);
   const [touchedFields, setTouchedFields] = useState<Record<string, boolean>>({});
@@ -107,6 +115,7 @@ export function TestRuns() {
   const [itemsPerPage, setItemsPerPage] = useState(6);
   const [isLoading, setIsLoading] = useState(true);
   const [isCreating, setIsCreating] = useState(false);
+  const [isPrioritiesLoading, setIsPrioritiesLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   
   // Validate projectId from URL params
@@ -122,8 +131,13 @@ export function TestRuns() {
     const startIndex = (currentPage - 1) * itemsPerPage;
     return testRuns.slice(startIndex, startIndex + itemsPerPage);
   }, [testRuns, currentPage, itemsPerPage]);
+  const [priorityOptions, setPriorityOptions] = useState<PriorityOption[]>([]);
   const paginationStart = testRuns.length === 0 ? 0 : (currentPage - 1) * itemsPerPage + 1;
   const paginationEnd = Math.min(currentPage * itemsPerPage, testRuns.length);
+  const defaultPriorityValue = useMemo(
+    () => priorityOptions.find((option) => option.isDefault)?.value || priorityOptions[0]?.value || '',
+    [priorityOptions]
+  );
 
   const getStatusMeta = (status: TestRun['status']) => {
     const normalizedStatus = status || 'pending';
@@ -201,6 +215,53 @@ export function TestRuns() {
   useEffect(() => {
     setCurrentPage(1);
   }, [testRuns.length, itemsPerPage]);
+
+  useEffect(() => {
+    const loadPriorityOptions = async () => {
+      try {
+        setIsPrioritiesLoading(true);
+        const prioritiesData = await enumsAPI.getPriorities();
+        const apiPriorityOptions = (Array.isArray(prioritiesData) ? prioritiesData : [])
+          .filter((item: any) => item?.name)
+          .sort((a: any, b: any) => Number(b.value || 0) - Number(a.value || 0))
+          .map((item: any) => ({
+            value: String(item.name).toLowerCase(),
+            label: String(item.name),
+            weight: Number(item.value || 0),
+            color: item.color,
+            isDefault: Boolean(item.is_default),
+          }));
+
+        setPriorityOptions(apiPriorityOptions);
+
+        const defaultOption =
+          apiPriorityOptions.find((option) => option.isDefault) ||
+          apiPriorityOptions[0];
+
+        setPriority((currentPriority) =>
+          currentPriority && apiPriorityOptions.some((option) => option.value === currentPriority)
+            ? currentPriority
+            : defaultOption?.value || ''
+        );
+
+        setPriorityFilter((currentFilter) =>
+          currentFilter === 'all' || apiPriorityOptions.some((option) => option.value === currentFilter)
+            ? currentFilter
+            : 'all'
+        );
+      } catch (loadPriorityError) {
+        console.error('Failed to load priority options from API:', loadPriorityError);
+        setPriorityOptions([]);
+        setPriority('');
+        setPriorityFilter('all');
+      } finally {
+        setIsPrioritiesLoading(false);
+      }
+    };
+
+    loadPriorityOptions();
+  }, []);
+
   useEffect(() => {
     // Auto-focus on name input when dialog opens
     if (isCreateDialogOpen && runNameInputRef.current) {
@@ -217,11 +278,12 @@ export function TestRuns() {
       environment !== '' || 
       assignedTo !== '' || 
       estimatedDuration !== '' ||
+      priority !== defaultPriorityValue ||
       selectedTestCases.length > 0 ||
       selectedTestSuites.length > 0 ||
       selectedSections.length > 0
     );
-  }, [runName, runDescription, scheduledDate, environment, assignedTo, estimatedDuration, selectedTestCases, selectedTestSuites, selectedSections]);
+  }, [runName, runDescription, scheduledDate, environment, assignedTo, estimatedDuration, priority, defaultPriorityValue, selectedTestCases, selectedTestSuites, selectedSections]);
 
   useEffect(() => {
     // Validate projectId is a valid positive integer
@@ -257,10 +319,10 @@ export function TestRuns() {
           }
           throw err;
         }),
-        testCasesAPI.getAll().catch(() => []),
+        testCasesAPI.getAll(currentProjectId, undefined, undefined, 'id', 'asc', 0, 500).catch(() => []),
         testSuitesAPI.getAll(currentProjectId).catch(() => []),
         usersAPI.getAll().catch(() => []),
-        sectionsAPI.getAll(undefined, undefined, 0, 100).catch(() => []),
+        sectionsAPI.getByProject(currentProjectId).catch(() => []),
         environmentsAPI.getAll(currentProjectId).catch(() => []),
       ]);
       setTestRuns(testRunsData);
@@ -296,7 +358,7 @@ export function TestRuns() {
         scheduled_date: scheduledDate || undefined,
         assigned_to: assignedTo ? parseInt(assignedTo) : undefined,
         estimated_duration: estimatedDuration ? parseInt(estimatedDuration) : undefined,
-        priority: priority as any,
+        priority: priority || undefined,
       });
       
       // Create test results for each selected test case
@@ -322,7 +384,7 @@ export function TestRuns() {
       setEnvironment('');
       setAssignedTo('');
       setEstimatedDuration('');
-      setPriority('medium');
+      setPriority(defaultPriorityValue);
       setSelectedTestCases([]);
       setSelectedTestSuites([]);
       setSelectedSections([]);
@@ -352,7 +414,7 @@ export function TestRuns() {
         setEnvironment('');
         setAssignedTo('');
         setEstimatedDuration('');
-        setPriority('medium');
+        setPriority(defaultPriorityValue);
         setSelectedTestCases([]);
         setSelectedTestSuites([]);
         setSelectedSections([]);
@@ -371,7 +433,7 @@ export function TestRuns() {
       setEnvironment('');
       setAssignedTo('');
       setEstimatedDuration('');
-      setPriority('medium');
+      setPriority(defaultPriorityValue);
       setSelectedTestCases([]);
       setSelectedTestSuites([]);
       setSelectedSections([]);
@@ -512,20 +574,23 @@ export function TestRuns() {
     const isPartiallySelected = sectionTestCases.some(tc => selectedTestCases.includes(tc.id));
 
     return (
-      <div key={section.id} className="border-b">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 p-3" style={{ paddingLeft: `${level * 20 + 12}px` }}>
-          <div className="flex items-center gap-2">
+      <div key={section.id} className="border-b border-slate-200 last:border-b-0 dark:border-slate-800">
+        <div
+          className="flex flex-col gap-2 bg-white p-3 transition-colors hover:bg-slate-50 dark:bg-slate-900 dark:hover:bg-slate-800/60 sm:flex-row sm:items-center sm:justify-between"
+          style={{ paddingInlineStart: `${level * 20 + 12}px` }}
+        >
+          <div className="flex min-w-0 items-center gap-2">
             <Button
               type="button"
               variant="ghost"
               size="sm"
-              className="p-0 h-6 w-6 flex-shrink-0"
+              className="h-7 w-7 flex-shrink-0 rounded-lg p-0"
               onClick={() => toggleSectionExpansion(section.id.toString())}
             >
               {isExpanded ? (
-                <ChevronDown className="h-4 w-4" />
+                <ChevronDown className="h-4 w-4 text-slate-500" />
               ) : (
-                <ChevronRight className="h-4 w-4" />
+                <ChevronRight className={`h-4 w-4 text-slate-500 ${isRTL ? 'rotate-180' : ''}`} />
               )}
             </Button>
             <Checkbox
@@ -533,60 +598,62 @@ export function TestRuns() {
               onCheckedChange={() => toggleSectionSelection(section)}
               className={isPartiallySelected && !isAllSelected ? "data-[state=checked]:bg-blue-500 data-[state=checked]:border-blue-500" : ""}
             />
-            <Folder className="h-4 w-4 flex-shrink-0" />
-            <span className="font-medium truncate" title={section.name}>{section.name}</span>
-            <Badge variant="secondary" className="text-xs flex-shrink-0">
-              {sectionTestCases.length} cases
+            <Folder className="h-4 w-4 flex-shrink-0 text-blue-600 dark:text-blue-400" />
+            <span className="truncate text-sm font-semibold text-slate-900 dark:text-white" title={section.name}>{section.name}</span>
+            <Badge variant="secondary" className="flex-shrink-0 bg-slate-100 text-xs text-slate-700 dark:bg-slate-800 dark:text-slate-200">
+              {sectionTestCases.length} {t('cases')}
             </Badge>
           </div>
-          <div className="flex gap-2 flex-shrink-0">
+          <div className="flex flex-shrink-0 gap-2">
             <Button
               type="button"
               variant="ghost"
               size="sm"
               onClick={() => selectAllInSection(sectionTestCases)}
+              className="h-8 rounded-lg text-xs"
             >
-              Select All
+              {t('selectAll')}
             </Button>
             <Button
               type="button"
               variant="ghost"
               size="sm"
               onClick={() => deselectAllInSection(sectionTestCases)}
+              className="h-8 rounded-lg text-xs"
             >
-              Deselect All
+              {t('deselectAll')}
             </Button>
           </div>
         </div>
         
         {isExpanded && (
-          <div className="divide-y">
+          <div className="divide-y divide-slate-100 bg-white dark:divide-slate-800 dark:bg-slate-900">
             {sectionTestCases
               .filter(tc => tc.title?.toLowerCase().includes(searchQuery.toLowerCase()))
               .map((testCase) => (
-                <div
+                <label
                   key={testCase.id}
-                  className="flex items-center gap-3 p-3 hover:bg-gray-50 dark:hover:bg-gray-800"
-                  style={{ paddingLeft: `${(level + 1) * 20 + 12}px` }}
+                  className="flex cursor-pointer items-center gap-3 p-3 transition-colors hover:bg-blue-50/70 dark:hover:bg-blue-950/20"
+                  style={{ paddingInlineStart: `${(level + 1) * 20 + 12}px` }}
                 >
                   <Checkbox
                     checked={selectedTestCases.includes(testCase.id)}
                     onCheckedChange={() => toggleTestCaseSelection(testCase.id)}
                     className="flex-shrink-0"
                   />
-                  <FileText className="h-4 w-4 text-gray-400 flex-shrink-0" />
-                  <div className="flex-1 min-w-0 max-w-[200px] sm:max-w-[300px]">
-                    <div className="font-medium truncate text-sm" title={testCase.title}>{testCase.title}</div>
+                  <FileText className="h-4 w-4 flex-shrink-0 text-slate-400" />
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-sm font-medium text-slate-900 dark:text-white" title={testCase.title}>{testCase.title}</div>
                     {testCase.description && (
-                      <div className="text-xs text-gray-500 truncate" title={testCase.description}>
+                      <div className="truncate text-xs text-slate-500 dark:text-slate-400" title={testCase.description}>
                         {testCase.description.length > 80 ? `${testCase.description.substring(0, 80)}...` : testCase.description}
                       </div>
                     )}
                   </div>
-                  <Badge variant="outline" className="text-xs flex-shrink-0">
-                    {testCase.priority}
+                  <Badge variant="outline" className="flex-shrink-0 border-slate-200 text-xs dark:border-slate-700">
+                    {t(testCase.priority)}
                   </Badge>
-                </div>
+                </label>
               ))}
           </div>
         )}
@@ -612,57 +679,66 @@ export function TestRuns() {
               {t('createTestRun')}
             </Button>
           </DialogTrigger>
-          <DialogContent isRTL={isRTL} className={`max-w-[95vw] sm:max-w-[900px] max-h-[90vh] overflow-y-auto ${isRTL ? 'rtl' : 'ltr'}`} onKeyDown={handleKeyDown}>
-            <DialogHeader>
-              <DialogTitle>{t('createNewTestRun')}</DialogTitle>
-              <DialogDescription>
-                {t('createTestRunDescription')}
-              </DialogDescription>
+          <DialogContent isRTL={isRTL} className={`max-h-[92vh] overflow-hidden p-0 sm:max-w-[1100px] ${isRTL ? 'rtl' : 'ltr'}`} onKeyDown={handleKeyDown}>
+            <div className="max-h-[92vh] overflow-y-auto bg-slate-50 dark:bg-slate-950">
+            <DialogHeader className="border-b border-slate-200 bg-white px-6 py-5 dark:border-slate-800 dark:bg-slate-900">
+              <div className="flex items-start gap-3">
+                <div className="rounded-2xl bg-blue-600 p-3 text-white shadow-lg shadow-blue-600/20">
+                  <PlayCircle className="h-5 w-5" />
+                </div>
+                <div className="space-y-1">
+                  <DialogTitle className="text-2xl font-bold text-slate-950 dark:text-white">{t('createNewTestRun')}</DialogTitle>
+                  <DialogDescription className="max-w-3xl text-sm leading-6 text-slate-600 dark:text-slate-400">
+                    {t('createTestRunDescription')}
+                  </DialogDescription>
+                </div>
+              </div>
             </DialogHeader>
-            <div className="grid gap-6 py-4">
+            <div className="grid gap-5 p-6 lg:grid-cols-2">
               {/* Basic Information */}
-              <div className="space-y-4">
-                <h3 className="text-lg font-semibold flex items-center gap-2">
-                  <Target className="h-5 w-5" />
+              <div className="space-y-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+                <h3 className="flex items-center gap-2 text-lg font-semibold text-slate-950 dark:text-white">
+                  <Target className="h-5 w-5 text-blue-600 dark:text-blue-400" />
                   {t('basicInformation')}
                 </h3>
                 
-                <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-4">
-                  <Label htmlFor="runName" className={`sm:text-right ${isRTL ? 'text-left' : ''}`}>
+                <div className="space-y-2">
+                  <Label htmlFor="runName" className="text-sm font-semibold text-slate-700 dark:text-slate-200">
                     {t('runName')} *
                   </Label>
-                  <div className="sm:col-span-3 space-y-1">
+                  <div className="space-y-1">
                     <Input
                       ref={runNameInputRef}
                       id="runName"
                       value={runName}
                       onChange={(e) => setRunName(e.target.value)}
                       onBlur={() => setTouchedFields({...touchedFields, runName: true})}
-                      className={touchedFields.runName && runName.trim() === '' ? 'border-red-300 focus:border-red-500' : ''}
+                      className={`h-12 rounded-xl bg-white text-base dark:bg-slate-950 ${touchedFields.runName && runName.trim() === '' ? 'border-red-300 focus-visible:ring-red-500' : 'border-slate-200 dark:border-slate-700'}`}
                       placeholder={t('enterRunName')}
                       maxLength={200}
                     />
-                    <div className="flex justify-between text-xs text-gray-500">
+                    <div className="flex justify-between gap-3 text-xs text-slate-500">
                       <span>{t('enterRunName')}</span>
                       <span>{runName.length}/200</span>
                     </div>
                   </div>
                 </div>
                 
-                <div className="grid grid-cols-1 sm:grid-cols-4 items-start gap-4">
-                  <Label htmlFor="runDescription" className={`sm:text-right pt-2 ${isRTL ? 'text-left' : ''}`}>
+                <div className="space-y-2">
+                  <Label htmlFor="runDescription" className="text-sm font-semibold text-slate-700 dark:text-slate-200">
                     {t('runDescriptionLabel')}
                   </Label>
-                  <div className="sm:col-span-3 space-y-1">
+                  <div className="space-y-1">
                     <Textarea
                       id="runDescription"
                       value={runDescription}
                       onChange={(e) => setRunDescription(e.target.value)}
                       placeholder={t('enterRunDescription')}
-                      rows={3}
+                      rows={5}
                       maxLength={1000}
+                      className="rounded-xl border-slate-200 bg-white text-sm dark:border-slate-700 dark:bg-slate-950"
                     />
-                    <div className="flex justify-between text-xs text-gray-500">
+                    <div className="flex justify-between gap-3 text-xs text-slate-500">
                       <span>{t('enterRunDescription')}</span>
                       <span>{runDescription.length}/1000</span>
                     </div>
@@ -671,14 +747,14 @@ export function TestRuns() {
               </div>
 
               {/* Scheduling and Assignment */}
-              <div className="space-y-4">
-                <h3 className="text-lg font-semibold flex items-center gap-2">
-                  <Calendar className="h-5 w-5" />
+              <div className="space-y-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+                <h3 className="flex items-center gap-2 text-lg font-semibold text-slate-950 dark:text-white">
+                  <Calendar className="h-5 w-5 text-blue-600 dark:text-blue-400" />
                   {t('schedulingAssignment')}
                 </h3>
                 
-                <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-4">
-                  <Label htmlFor="scheduledDate" className={`sm:text-right ${isRTL ? 'text-left' : ''}`}>
+                <div className="space-y-2">
+                  <Label htmlFor="scheduledDate" className="text-sm font-semibold text-slate-700 dark:text-slate-200">
                     {t('scheduledDate')}
                   </Label>
                   <Input
@@ -686,16 +762,16 @@ export function TestRuns() {
                     type="datetime-local"
                     value={scheduledDate}
                     onChange={(e) => setScheduledDate(e.target.value)}
-                    className="sm:col-span-3"
+                    className="h-11 rounded-xl border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-950"
                   />
                 </div>
                 
-                <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-4">
-                  <Label htmlFor="assignedTo" className={`sm:text-right ${isRTL ? 'text-left' : ''}`}>
+                <div className="space-y-2">
+                  <Label htmlFor="assignedTo" className="text-sm font-semibold text-slate-700 dark:text-slate-200">
                     {t('assignedToLabel')}
                   </Label>
                   <Select value={assignedTo} onValueChange={setAssignedTo}>
-                    <SelectTrigger className="sm:col-span-3">
+                    <SelectTrigger className="h-11 rounded-xl border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-950">
                       <SelectValue placeholder={t('selectAssignee')} />
                     </SelectTrigger>
                     <SelectContent>
@@ -709,8 +785,8 @@ export function TestRuns() {
                   </Select>
                 </div>
                 
-                <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-4">
-                  <Label htmlFor="estimatedDuration" className={`sm:text-right ${isRTL ? 'text-left' : ''}`}>
+                <div className="space-y-2">
+                  <Label htmlFor="estimatedDuration" className="text-sm font-semibold text-slate-700 dark:text-slate-200">
                     {t('estimatedDuration')}
                   </Label>
                   <Input
@@ -718,25 +794,25 @@ export function TestRuns() {
                     type="number"
                     value={estimatedDuration}
                     onChange={(e) => setEstimatedDuration(e.target.value)}
-                    className="sm:col-span-3"
+                    className="h-11 rounded-xl border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-950"
                     placeholder={t('estimatedDurationPlaceholder')}
                   />
                 </div>
               </div>
 
               {/* Test Configuration */}
-              <div className="space-y-4">
-                <h3 className="text-lg font-semibold flex items-center gap-2">
-                  <Target className="h-5 w-5" />
+              <div className="space-y-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+                <h3 className="flex items-center gap-2 text-lg font-semibold text-slate-950 dark:text-white">
+                  <Target className="h-5 w-5 text-blue-600 dark:text-blue-400" />
                   {t('testConfiguration')}
                 </h3>
                 
-                <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-4">
-                  <Label htmlFor="environment" className={`sm:text-right ${isRTL ? 'text-left' : ''}`}>
+                <div className="space-y-2">
+                  <Label htmlFor="environment" className="text-sm font-semibold text-slate-700 dark:text-slate-200">
                     {t('environmentLabel')}
                   </Label>
                   <Select value={environment} onValueChange={setEnvironment}>
-                    <SelectTrigger className="sm:col-span-3">
+                    <SelectTrigger className="h-11 rounded-xl border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-950">
                       <SelectValue placeholder={t('selectTestEnvironment')} />
                     </SelectTrigger>
                     <SelectContent>
@@ -749,105 +825,130 @@ export function TestRuns() {
                   </Select>
                 </div>
                 
-                <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-4">
-                  <Label htmlFor="priority" className={`sm:text-right ${isRTL ? 'text-left' : ''}`}>
+                <div className="space-y-2">
+                  <Label htmlFor="priority" className="text-sm font-semibold text-slate-700 dark:text-slate-200">
                     {t('priority')}
                   </Label>
-                  <Select value={priority} onValueChange={setPriority}>
-                    <SelectTrigger className="sm:col-span-3">
+                  <Select value={priority} onValueChange={setPriority} disabled={isPrioritiesLoading || priorityOptions.length === 0}>
+                    <SelectTrigger className="h-11 rounded-xl border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-950">
                       <SelectValue placeholder={t('selectPriority')} />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="low">{t('low')}</SelectItem>
-                      <SelectItem value="medium">{t('medium')}</SelectItem>
-                      <SelectItem value="high">{t('high')}</SelectItem>
-                      <SelectItem value="critical">{t('critical')}</SelectItem>
+                      {priorityOptions.length === 0 ? (
+                        <SelectItem value="no-priorities" disabled>
+                          {isPrioritiesLoading ? t('loading') : t('noData')}
+                        </SelectItem>
+                      ) : (
+                        priorityOptions.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {option.label}
+                          </SelectItem>
+                        ))
+                      )}
                     </SelectContent>
                   </Select>
                 </div>
               </div>
               
               {/* Test Case Selection */}
-              <div className="space-y-2">
-                <h3 className="text-sm font-semibold flex items-center gap-1.5">
-                  <FileText className="h-3.5 w-3.5" />
-                  {t('testCaseSelection')}
-                </h3>
+              <div className="space-y-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900 lg:col-span-2">
+                <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_9rem] sm:items-start" dir={isRTL ? 'rtl' : 'ltr'}>
+                  <div className="min-w-0" dir={isRTL ? 'rtl' : 'ltr'}>
+                    <h3 className="flex items-center gap-2 text-lg font-semibold text-slate-950 dark:text-white" style={{ justifyContent: 'flex-start' }}>
+                      <FileText className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                      {t('testCaseSelection')}
+                    </h3>
+                    <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                      {t('createTestRunDescription')}
+                    </p>
+                  </div>
+                  <div className="flex justify-start sm:justify-end">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setSelectedTestCases([]);
+                        setSelectedTestSuites([]);
+                        setSelectedSections([]);
+                      }}
+                      className={`rounded-xl ${selectedTestCases.length === 0 ? 'invisible pointer-events-none' : ''}`}
+                      tabIndex={selectedTestCases.length === 0 ? -1 : 0}
+                      aria-hidden={selectedTestCases.length === 0}
+                    >
+                      {t('clearAll')}
+                    </Button>
+                  </div>
+                </div>
                 
                 {/* Search */}
                 <div className="relative">
-                  <Search className={`absolute ${isRTL ? 'right-2.5' : 'left-2.5'} top-1/2 transform -translate-y-1/2 h-3.5 w-3.5 text-gray-400`} />
+                  <Search className={`absolute top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 ${isRTL ? 'right-3' : 'left-3'}`} />
                   <Input
+                    dir={isRTL ? 'rtl' : 'ltr'}
                     placeholder={t('searchTestCases')}
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className={`pl-9 h-8 text-xs ${isRTL ? 'pr-9 pl-3' : ''}`}
+                    className="h-11 rounded-xl border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-950"
+                    style={{ paddingInlineStart: '2.75rem' }}
                   />
                 </div>
 
                 {/* Selection Summary */}
-                <div className="p-2 bg-blue-50 dark:bg-blue-900/20 rounded border border-blue-200 dark:border-blue-800">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-medium text-blue-900 dark:text-blue-100">
-                      {selectedTestCases.length} test case{selectedTestCases.length !== 1 ? 's' : ''} selected
+                <div className="rounded-2xl border border-blue-100 bg-blue-50 p-4 dark:border-blue-900/40 dark:bg-blue-950/30">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <span className="text-sm font-semibold text-blue-900 dark:text-blue-100">
+                      {t('selectedCount', { count: selectedTestCases.length })}
                     </span>
-                    {selectedTestCases.length > 0 && (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => {
-                          setSelectedTestCases([]);
-                          setSelectedTestSuites([]);
-                          setSelectedSections([]);
-                        }}
-                        className="h-6 text-[10px] px-2 text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
-                      >
-                        {t('clearAll')}
-                      </Button>
-                    )}
+                    <span className="text-xs font-medium text-blue-700 dark:text-blue-200">
+                      {testCases.length} {t('total')}
+                    </span>
                   </div>
                   {(selectedTestSuites.length > 0 || selectedSections.length > 0) && (
-                    <div className="text-[10px] text-blue-700 dark:text-blue-300 mt-1 space-y-0.5">
+                    <div className="mt-2 flex flex-wrap gap-2 text-xs text-blue-700 dark:text-blue-300">
                       {selectedTestSuites.length > 0 && (
-                        <div>{t('testSuitesSelected', { count: selectedTestSuites.length })}</div>
+                        <Badge variant="outline" className="border-blue-200 bg-white/70 text-blue-700 dark:border-blue-800 dark:bg-blue-950/40 dark:text-blue-200">
+                          {t('testSuitesSelected', { count: selectedTestSuites.length })}
+                        </Badge>
                       )}
                       {selectedSections.length > 0 && (
-                        <div>{t('sectionsSelected', { count: selectedSections.length })}</div>
+                        <Badge variant="outline" className="border-blue-200 bg-white/70 text-blue-700 dark:border-blue-800 dark:bg-blue-950/40 dark:text-blue-200">
+                          {t('sectionsSelected', { count: selectedSections.length })}
+                        </Badge>
                       )}
                     </div>
                   )}
                 </div>
 
                 {/* Hierarchical Selection with improved height and scrolling */}
-                <div className="border rounded overflow-hidden">
-                  <div className="sticky top-0 bg-gray-50 dark:bg-gray-800 z-10 px-2.5 py-1.5 border-b">
-                    <div className="flex items-center justify-between text-[10px]">
-                      <span className="text-gray-600 dark:text-gray-300 flex items-center gap-1">
+                <div className="overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-800">
+                  <div className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-950">
+                    <div className="flex items-center justify-between gap-3 text-xs">
+                      <span className="flex items-center gap-1 text-slate-600 dark:text-slate-300">
                         <span className="hidden sm:inline">{t('hoverToSeeDescriptions')}</span>
                         <span className="sm:hidden">{t('tapToSelect')}</span>
                       </span>
-                      <span className="text-gray-500 dark:text-gray-400 font-medium">
+                      <span className="font-semibold text-slate-500 dark:text-slate-400">
                         {selectedTestCases.length} {t('selected')}
                       </span>
                     </div>
                   </div>
                   
                   {/* Scrollable content area with max height */}
-                  <div className="max-h-[400px] overflow-y-auto">
+                  <div className="max-h-[430px] overflow-y-auto bg-white dark:bg-slate-900">
                     {/* Show loading state for large datasets */}
                     {testCases.length > 1000 && (
-                      <div className="p-2 bg-yellow-50 dark:bg-yellow-900/20 border-b border-yellow-200 dark:border-yellow-800">
-                        <p className="text-[10px] text-yellow-800 dark:text-yellow-200">
-                          ⚠️ Large dataset ({testCases.length} test cases). Use search to filter results.
+                      <div className="border-b border-amber-200 bg-amber-50 p-3 dark:border-amber-900/50 dark:bg-amber-950/30">
+                        <p className="text-xs font-medium text-amber-800 dark:text-amber-200">
+                          {testCases.length} {t('total')} · {t('searchTestCases')}
                         </p>
                       </div>
                     )}
                     
                     {/* Sections */}
                     {hierarchicalSections.length > 0 && (
-                      <div className="border-b">
-                        <div className="px-2.5 py-1.5 bg-gray-50 dark:bg-gray-800 font-medium text-xs">
+                      <div className="border-b border-slate-200 dark:border-slate-800">
+                        <div className="bg-slate-50 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:bg-slate-950 dark:text-slate-400">
                           {t('sectionsSubsections')}
                         </div>
                         {hierarchicalSections.map(section => renderSection(section))}
@@ -856,8 +957,8 @@ export function TestRuns() {
 
                     {/* Test Suites */}
                     {testSuites.length > 0 && (
-                      <div className="border-b">
-                        <div className="px-2.5 py-1.5 bg-gray-50 dark:bg-gray-800 font-medium text-xs">
+                      <div className="border-b border-slate-200 dark:border-slate-800">
+                        <div className="bg-slate-50 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:bg-slate-950 dark:text-slate-400">
                           {t('testSuitesLabel')}
                         </div>
                         {testSuites.map((suite) => {
@@ -875,69 +976,70 @@ export function TestRuns() {
                           const isPartiallySelected = suiteTestCases.some(tc => selectedTestCases.includes(tc.id));
 
                           return (
-                            <div key={suite.id} className="border-b last:border-b-0">
-                              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1.5 px-2.5 py-1.5">
-                                <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                            <div key={suite.id} className="border-b border-slate-200 last:border-b-0 dark:border-slate-800">
+                              <div className="flex flex-col gap-2 bg-white px-4 py-3 transition-colors hover:bg-slate-50 dark:bg-slate-900 dark:hover:bg-slate-800/60 sm:flex-row sm:items-center sm:justify-between">
+                                <div className="flex min-w-0 flex-1 items-center gap-2">
                                   <Checkbox
                                     checked={isAllSelected}
                                     onCheckedChange={() => toggleTestSuiteSelection(suite.id)}
                                     className={`h-3.5 w-3.5 ${isPartiallySelected && !isAllSelected ? "data-[state=checked]:bg-blue-500 data-[state=checked]:border-blue-500" : ""}`}
                                   />
-                                  <Folder className="h-3.5 w-3.5 flex-shrink-0 text-gray-500" />
-                                  <span className="font-medium text-xs truncate" title={suite.name}>{suite.name}</span>
-                                  <Badge variant="secondary" className="text-[10px] flex-shrink-0 h-4 px-1.5">
+                                  <Folder className="h-4 w-4 flex-shrink-0 text-blue-600 dark:text-blue-400" />
+                                  <span className="truncate text-sm font-semibold text-slate-900 dark:text-white" title={suite.name}>{suite.name}</span>
+                                  <Badge variant="secondary" className="h-5 flex-shrink-0 bg-slate-100 px-2 text-xs text-slate-700 dark:bg-slate-800 dark:text-slate-200">
                                     {suiteTestCases.length}
                                   </Badge>
                                 </div>
-                                <div className="flex gap-1 flex-shrink-0 ml-5 sm:ml-0">
+                                <div className="flex flex-shrink-0 gap-2">
                                   <Button
                                     type="button"
                                     variant="ghost"
                                     size="sm"
                                     onClick={() => selectAllInSection(suiteTestCases)}
-                                    className="h-6 text-[10px] px-1.5"
+                                    className="h-8 rounded-lg text-xs"
                                   >
-                                    Select All
+                                    {t('selectAll')}
                                   </Button>
                                   <Button
                                     type="button"
                                     variant="ghost"
                                     size="sm"
                                     onClick={() => deselectAllInSection(suiteTestCases)}
-                                    className="h-6 text-[10px] px-1.5"
+                                    className="h-8 rounded-lg text-xs"
                                   >
-                                    Deselect All
+                                    {t('deselectAll')}
                                   </Button>
                                 </div>
                               </div>
                             
                               {/* Only show first 50 test cases per suite if not searching, otherwise show all matches */}
-                              <div className="divide-y">
+                              <div className="divide-y divide-slate-100 bg-white dark:divide-slate-800 dark:bg-slate-900">
                                 {filteredSuiteTestCases
                                   .slice(0, searchQuery ? undefined : 50)
                                   .map((testCase) => (
-                                    <div key={testCase.id} className="flex items-center gap-1.5 px-2.5 py-1.5 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
+                                    <label key={testCase.id} className="flex cursor-pointer items-center gap-3 px-4 py-2.5 transition-colors hover:bg-blue-50/70 dark:hover:bg-blue-950/20">
                                       <Checkbox
                                         checked={selectedTestCases.includes(testCase.id)}
                                         onCheckedChange={() => toggleTestCaseSelection(testCase.id)}
-                                        className="flex-shrink-0 ml-5 h-3.5 w-3.5"
+                                        className="flex-shrink-0"
                                       />
+                                      <FileText className="h-4 w-4 flex-shrink-0 text-slate-400" />
                                       <div className="flex-1 min-w-0">
-                                        <span className="text-xs font-medium truncate block" title={testCase.title}>{testCase.title}</span>
+                                        <span className="block truncate text-sm font-medium text-slate-900 dark:text-white" title={testCase.title}>{testCase.title}</span>
                                         {testCase.description && (
-                                          <p className="text-[10px] text-gray-500 dark:text-gray-400 truncate" title={testCase.description}>
+                                          <p className="truncate text-xs text-slate-500 dark:text-slate-400" title={testCase.description}>
                                             {testCase.description.length > 60 ? `${testCase.description.substring(0, 60)}...` : testCase.description}
                                           </p>
                                         )}
                                       </div>
-                                      <Badge variant="outline" className="text-[10px] flex-shrink-0 h-4 px-1.5">
-                                        {testCase.priority}
+                                      <Badge variant="outline" className="flex-shrink-0 border-slate-200 text-xs dark:border-slate-700">
+                                        {t(testCase.priority)}
                                       </Badge>
-                                    </div>
+                                    </label>
                                   ))}
                                 {!searchQuery && filteredSuiteTestCases.length > 50 && (
-                                  <div className="px-2.5 py-1.5 text-[10px] text-center text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800/50">
-                                    Showing 50 of {filteredSuiteTestCases.length} test cases. Use search to find specific cases.
+                                  <div className="bg-slate-50 px-4 py-2 text-center text-xs text-slate-500 dark:bg-slate-950 dark:text-slate-400">
+                                    {t('showingTestCasesRange', { start: 1, end: 50, total: filteredSuiteTestCases.length })}
                                   </div>
                                 )}
                               </div>
@@ -950,33 +1052,34 @@ export function TestRuns() {
                     {/* Uncategorized Test Cases */}
                     {testCases.filter(tc => !tc.test_suite_id && !(tc as any).section_id).length > 0 && (
                       <div>
-                        <div className="px-2.5 py-1.5 bg-gray-50 dark:bg-gray-800 font-medium text-xs">
+                        <div className="bg-slate-50 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:bg-slate-950 dark:text-slate-400">
                           {t('uncategorizedTestCases')}
                         </div>
-                        <div className="divide-y">
+                        <div className="divide-y divide-slate-100 bg-white dark:divide-slate-800 dark:bg-slate-900">
                           {testCases
                             .filter(tc => !tc.test_suite_id && !(tc as any).section_id)
                             .filter(tc => tc.title?.toLowerCase().includes(searchQuery.toLowerCase()))
                             .slice(0, searchQuery ? undefined : 50)
                             .map((testCase) => (
-                              <div key={testCase.id} className="flex items-center gap-1.5 px-2.5 py-1.5 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
+                              <label key={testCase.id} className="flex cursor-pointer items-center gap-3 px-4 py-2.5 transition-colors hover:bg-blue-50/70 dark:hover:bg-blue-950/20">
                                 <Checkbox
                                   checked={selectedTestCases.includes(testCase.id)}
                                   onCheckedChange={() => toggleTestCaseSelection(testCase.id)}
-                                  className="flex-shrink-0 h-3.5 w-3.5"
+                                  className="flex-shrink-0"
                                 />
+                                <FileText className="h-4 w-4 flex-shrink-0 text-slate-400" />
                                 <div className="flex-1 min-w-0">
-                                  <span className="text-xs font-medium truncate block" title={testCase.title}>{testCase.title}</span>
+                                  <span className="block truncate text-sm font-medium text-slate-900 dark:text-white" title={testCase.title}>{testCase.title}</span>
                                   {testCase.description && (
-                                    <p className="text-[10px] text-gray-500 dark:text-gray-400 truncate" title={testCase.description}>
+                                    <p className="truncate text-xs text-slate-500 dark:text-slate-400" title={testCase.description}>
                                       {testCase.description.length > 60 ? `${testCase.description.substring(0, 60)}...` : testCase.description}
                                     </p>
                                   )}
                                 </div>
-                                <Badge variant="outline" className="text-[10px] flex-shrink-0 h-4 px-1.5">
-                                  {testCase.priority}
+                                <Badge variant="outline" className="flex-shrink-0 border-slate-200 text-xs dark:border-slate-700">
+                                  {t(testCase.priority)}
                                 </Badge>
-                              </div>
+                              </label>
                             ))}
                         </div>
                       </div>
@@ -987,32 +1090,39 @@ export function TestRuns() {
             </div>
             
             {error && (
-              <div className="text-sm text-red-600 text-center">
+              <div className="mx-6 mb-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-200">
                 {error}
               </div>
             )}
             
-            <DialogFooter className="flex-col sm:flex-row gap-2">
-              <div className="text-xs text-gray-500 mb-2 sm:mb-0 sm:mr-auto">
+            <DialogFooter
+              className="sticky bottom-0 grid grid-cols-1 gap-3 border-t border-slate-200 bg-white/95 px-6 py-4 backdrop-blur dark:border-slate-800 dark:bg-slate-900/95 sm:grid-cols-[minmax(0,1fr)_auto]"
+              dir={isRTL ? 'rtl' : 'ltr'}
+            >
+              <div className="rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-500 dark:bg-slate-950/70 dark:text-slate-400" style={{ textAlign: isRTL ? 'right' : 'left' }}>
                 {t('toSubmit')}
               </div>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => handleDialogClose(false)}
-              >
-                {t('cancel')}
-              </Button>
-              <Button
-                type="submit"
-                onClick={handleCreateTestRun}
-                disabled={!runName.trim() || selectedTestCases.length === 0 || isCreating}
-                className="transition-all duration-200"
-              >
-                {isCreating && <Loader2 className={`h-4 w-4 animate-spin ${isRTL ? 'ml-2' : 'mr-2'}`} />}
-                {isCreating ? t('creating') : `${t('createTestRun')} (${selectedTestCases.length} ${t('cases')})`}
-              </Button>
+              <div className="flex flex-col-reverse gap-2 sm:flex-row" style={{ justifyContent: isRTL ? 'flex-start' : 'flex-end' }}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => handleDialogClose(false)}
+                  className="rounded-xl"
+                >
+                  {t('cancel')}
+                </Button>
+                <Button
+                  type="submit"
+                  onClick={handleCreateTestRun}
+                  disabled={!runName.trim() || selectedTestCases.length === 0 || !priority || isPrioritiesLoading || isCreating}
+                  className="rounded-xl bg-blue-600 shadow-lg shadow-blue-600/20 hover:bg-blue-700"
+                >
+                  {isCreating && <Loader2 className={`h-4 w-4 animate-spin ${isRTL ? 'ml-2' : 'mr-2'}`} />}
+                  {isCreating ? t('creating') : `${t('createTestRun')} (${selectedTestCases.length} ${t('cases')})`}
+                </Button>
+              </div>
             </DialogFooter>
+            </div>
           </DialogContent>
         </Dialog>
 
@@ -1078,16 +1188,17 @@ export function TestRuns() {
 
             <div className="space-y-2">
               <Label className="text-sm font-medium text-slate-700 dark:text-slate-200">{t('priority')}</Label>
-              <Select value={priorityFilter} onValueChange={setPriorityFilter}>
+              <Select value={priorityFilter} onValueChange={setPriorityFilter} disabled={isPrioritiesLoading}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">{t('allPriorities')}</SelectItem>
-                  <SelectItem value="low">{t('low')}</SelectItem>
-                  <SelectItem value="medium">{t('medium')}</SelectItem>
-                  <SelectItem value="high">{t('high')}</SelectItem>
-                  <SelectItem value="critical">{t('critical')}</SelectItem>
+                  {priorityOptions.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
