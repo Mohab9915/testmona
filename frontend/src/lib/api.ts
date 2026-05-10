@@ -291,6 +291,15 @@ export const sectionsAPI = {
     const response = await api.get(`/projects/${projectId}/sections/hierarchy`);
     return response.data;
   },
+  getByProject: async (projectId: number, skip = 0, limit = 500) => {
+    const params = new URLSearchParams({
+      project_id: projectId.toString(),
+      skip: skip.toString(),
+      limit: limit.toString(),
+    });
+    const response = await api.get(`/sections/?${params}`);
+    return response.data;
+  },
   getSectionDetails: async (sectionId: number) => {
     const response = await api.get(`/sections/${sectionId}/details`);
     return response.data;
