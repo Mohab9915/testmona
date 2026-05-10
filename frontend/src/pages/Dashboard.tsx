@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { FileText, TestTube, PlayCircle, TrendingUp, Users, Bug, FileCheck, Target, ExternalLink, AlertTriangle, Flag, Calendar, Loader2 } from 'lucide-react';
+import { FileText, TestTube, PlayCircle, TrendingUp, Users, Bug, FileCheck, Target, ExternalLink, AlertTriangle, Flag, Calendar, Loader2, CheckCircle } from 'lucide-react';
 import { useTranslation } from '@/hooks/useTranslation';
 import { auditAPI, analyticsAPI } from '@/lib/api';
 import { useProjectStore } from '@/stores/projectStore';
@@ -36,6 +36,69 @@ const StatCard = ({ title, value, icon: Icon, color, trend, onClick }: StatCardP
     </CardContent>
   </Card>
 );
+
+const ACTIVITY_LABELS: Record<string, string> = {
+  create: 'Create',
+  update: 'Update',
+  delete: 'Delete',
+  execute: 'Execute',
+  login: 'Login',
+  logout: 'Logout',
+};
+
+const STATUS_LABELS: Record<string, string> = {
+  not_tested: 'Not Tested',
+  in_progress: 'In Progress',
+  pending: 'Pending',
+  pass: 'Passed',
+  passed: 'Passed',
+  fail: 'Failed',
+  failed: 'Failed',
+  block: 'Blocked',
+  blocked: 'Blocked',
+  skip: 'Skipped',
+  skipped: 'Skipped',
+  completed: 'Completed',
+};
+
+const ENTITY_LABELS: Record<string, string> = {
+  test_case: 'test case',
+  test_run: 'test run',
+  test_suite: 'test suite',
+  test_result: 'test result',
+  user: 'user',
+  project: 'project',
+  defect: 'defect',
+};
+
+const formatActivityToken = (value?: string) => {
+  if (!value) return '';
+  const normalized = value.toLowerCase();
+  return ACTIVITY_LABELS[normalized] || STATUS_LABELS[normalized] || value.replace(/[-_]/g, ' ');
+};
+
+const formatActivityDescription = (description?: string) => {
+  if (!description) return '';
+  return Object.entries(STATUS_LABELS).reduce((text, [token, label]) => {
+    return text.replace(new RegExp(`\b${token}\b`, 'gi'), label);
+  }, description);
+};
+
+const ActivityIcon = ({ activity }: { activity: any }) => {
+  const action = activity.action?.toLowerCase();
+  const entityType = activity.entity_type?.toLowerCase();
+
+  if (action === 'execute' || entityType === 'test_result') {
+    return <CheckCircle className="h-[18px] w-[18px] text-emerald-600 dark:text-emerald-400" />;
+  }
+  if (entityType === 'test_case') return <FileText className="h-[18px] w-[18px] text-blue-600 dark:text-blue-400" />;
+  if (entityType === 'test_run') return <PlayCircle className="h-[18px] w-[18px] text-yellow-600 dark:text-yellow-400" />;
+  if (entityType === 'test_suite') return <Target className="h-[18px] w-[18px] text-orange-600 dark:text-orange-400" />;
+  if (entityType === 'user') return <Users className="h-[18px] w-[18px] text-purple-600 dark:text-purple-400" />;
+  if (entityType === 'project') return <FileCheck className="h-[18px] w-[18px] text-indigo-600 dark:text-indigo-400" />;
+  if (entityType === 'defect') return <Bug className="h-[18px] w-[18px] text-red-600 dark:text-red-400" />;
+  return <Calendar className="h-[18px] w-[18px] text-gray-600 dark:text-gray-400" />;
+};
 
 export function Dashboard() {
   const { t, isRTL } = useTranslation();
@@ -324,19 +387,13 @@ export function Dashboard() {
                   onClick={() => handleActivityClick(activity)}
                 >
                   <div className="flex-shrink-0 w-9 h-9 rounded-lg flex items-center justify-center bg-gray-100 dark:bg-gray-800 group-hover:scale-105 transition-transform">
-                    {activity.entity_type === 'test_case' && <FileText className="h-[18px] w-[18px] text-blue-600 dark:text-blue-400" />}
-                    {activity.entity_type === 'test_run' && <PlayCircle className="h-[18px] w-[18px] text-yellow-600 dark:text-yellow-400" />}
-                    {activity.entity_type === 'test_suite' && <Target className="h-[18px] w-[18px] text-orange-600 dark:text-orange-400" />}
-                    {activity.entity_type === 'user' && <Users className="h-[18px] w-[18px] text-purple-600 dark:text-purple-400" />}
-                    {activity.entity_type === 'project' && <FileCheck className="h-[18px] w-[18px] text-indigo-600 dark:text-indigo-400" />}
-                    {activity.entity_type === 'defect' && <Bug className="h-[18px] w-[18px] text-red-600 dark:text-red-400" />}
-                    {!activity.entity_type && <Calendar className="h-[18px] w-[18px] text-gray-600 dark:text-gray-400" />}
+                    <ActivityIcon activity={activity} />
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm text-gray-900 dark:text-white font-medium leading-snug">
-                      <span className="capitalize">{activity.action?.replace('_', ' ') || t('unknown')}</span>
-                      {activity.entity_type && <span className="text-gray-600 dark:text-gray-400 font-normal"> {activity.entity_type.replace('_', ' ')}</span>}
-                      {activity.description && <span className="text-gray-600 dark:text-gray-400 font-normal">: {activity.description}</span>}
+                      <span>{formatActivityToken(activity.action) || t('unknown')}</span>
+                      {activity.entity_type && <span className="text-gray-600 dark:text-gray-400 font-normal"> {ENTITY_LABELS[activity.entity_type] || activity.entity_type.replace(/[-_]/g, ' ')}</span>}
+                      {activity.description && <span className="text-gray-600 dark:text-gray-400 font-normal">: {formatActivityDescription(activity.description)}</span>}
                     </p>
                     <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
                       {activity.created_at ? new Date(activity.created_at).toLocaleString() : t('unknownTime')}
