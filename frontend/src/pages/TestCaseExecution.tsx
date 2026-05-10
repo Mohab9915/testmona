@@ -65,6 +65,7 @@ export function TestCaseExecution() {
   const defectTitleInputRef = useRef<HTMLInputElement>(null);
   const [defectTouchedFields, setDefectTouchedFields] = useState<Record<string, boolean>>({});
   const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [users, setUsers] = useState<any[]>([]);
   const [allTestCases, setAllTestCases] = useState<any[]>([]);
   const [testCase, setTestCase] = useState<any>(null);
@@ -86,40 +87,78 @@ export function TestCaseExecution() {
   // Load test case and test run data
   useEffect(() => {
     const loadTestData = async () => {
+      if (!projectId || !testRunId || !testCaseId) {
+        setLoadError(t('failedToLoadTestCaseOrTestRun'));
+        setIsLoading(false);
+        return;
+      }
+
       try {
-        if (testCaseId) {
-          const caseData = await testCasesAPI.getById(parseInt(testCaseId));
-          setTestCase(caseData);
-          
-          // If multistep, fetch the steps
-          if (caseData.is_multistep) {
-            try {
-              const steps = await testCasesAPI.getSteps(parseInt(testCaseId));
-              setTestSteps(steps);
-            } catch (stepsError) {
-              console.error('Failed to fetch test steps:', stepsError);
-              setTestSteps([]);
-            }
-          } else {
+        setIsLoading(true);
+        setLoadError(null);
+
+        const currentProjectId = parseInt(projectId);
+        const currentTestRunId = parseInt(testRunId);
+        const currentTestCaseId = parseInt(testCaseId);
+
+        if ([currentProjectId, currentTestRunId, currentTestCaseId].some(Number.isNaN)) {
+          setLoadError(t('failedToLoadTestCaseOrTestRun'));
+          return;
+        }
+
+        const [caseData, runData, runCaseResults] = await Promise.all([
+          testCasesAPI.getById(currentTestCaseId),
+          testRunsAPI.getById(currentTestRunId),
+          testResultsAPI.getAll(currentTestRunId, currentTestCaseId),
+        ]);
+
+        const runProjectId = Number(runData.project_id);
+        const testCaseProjectId = caseData.project_id == null ? null : Number(caseData.project_id);
+        const isTestCaseInRun = runCaseResults.some((result: any) =>
+          Number(result.test_run_id) === currentTestRunId && Number(result.test_case_id) === currentTestCaseId
+        );
+
+        if (
+          runProjectId !== currentProjectId ||
+          !isTestCaseInRun ||
+          (testCaseProjectId !== null && testCaseProjectId !== currentProjectId)
+        ) {
+          setTestCase(null);
+          setTestRun(null);
+          setTestSteps([]);
+          setExecutionHistory([]);
+          setLoadError(t('testCaseOrRunNotFoundInProject'));
+          return;
+        }
+
+        setTestCase(caseData);
+        setTestRun(runData);
+
+        // If multistep, fetch the steps
+        if (caseData.is_multistep) {
+          try {
+            const steps = await testCasesAPI.getSteps(currentTestCaseId);
+            setTestSteps(steps);
+          } catch (stepsError) {
+            console.error('Failed to fetch test steps:', stepsError);
             setTestSteps([]);
           }
-          
-          // Load execution history - handle auth errors gracefully
-          try {
-            const history = await testCasesAPI.getExecutionHistory(parseInt(testCaseId), 50);
-            setExecutionHistory(history);
-          } catch (historyError: any) {
-            console.error('Failed to load execution history:', historyError);
-            // Don't show error toast for history - it's not critical
-            setExecutionHistory([]);
-          }
+        } else {
+          setTestSteps([]);
         }
-        if (testRunId) {
-          const runData = await testRunsAPI.getById(parseInt(testRunId));
-          setTestRun(runData);
+
+        // Load execution history - handle auth errors gracefully
+        try {
+          const history = await testCasesAPI.getExecutionHistory(currentTestCaseId, 50);
+          setExecutionHistory(history);
+        } catch (historyError: any) {
+          console.error('Failed to load execution history:', historyError);
+          // Don't show error toast for history - it's not critical
+          setExecutionHistory([]);
         }
       } catch (error) {
         console.error('Failed to load test data:', error);
+        setLoadError(t('failedToLoadTestCaseOrTestRun'));
         toast({
           title: t('error'),
           description: t('failedToLoadTestCaseOrTestRun'),
@@ -129,9 +168,9 @@ export function TestCaseExecution() {
         setIsLoading(false);
       }
     };
-    
+
     loadTestData();
-  }, [testCaseId, testRunId]);
+  }, [projectId, testCaseId, testRunId]);
 
   // Auto-focus on defect title input when dialog opens
   useEffect(() => {
@@ -143,7 +182,7 @@ export function TestCaseExecution() {
   // Track unsaved changes
   useEffect(() => {
     setHasUnsavedChanges(
-      newDefect.title.trim() !== '' || 
+      newDefect.title.trim() !== '' ||
       newDefect.description.trim() !== ''
     );
   }, [newDefect.title, newDefect.description]);
@@ -157,12 +196,12 @@ export function TestCaseExecution() {
         console.log('👥 Loaded users:', allUsers);
         console.log('👤 Current user:', currentUser);
         setUsers(allUsers);
-        
+
         // Set current user as default assignee if not already set
         if (currentUser && !assignee) {
           setAssignee(currentUser.id.toString());
         }
-        
+
         // Load test cases from test run
         if (testRunId) {
           const results = await testResultsAPI.getAll(parseInt(testRunId));
@@ -185,7 +224,7 @@ export function TestCaseExecution() {
         }
       }
     };
-    
+
     loadInitialData();
   }, [testRunId, currentUser, assignee]);
 
@@ -193,23 +232,23 @@ export function TestCaseExecution() {
   useEffect(() => {
     const loadExistingExecution = async () => {
       if (!testRunId || !testCaseId) return;
-      
+
       setIsLoading(true);
       try {
         console.log('🔍 Loading existing execution for test case:', testCaseId);
         const existingResults = await testResultsAPI.getAll(
-          parseInt(testRunId), 
+          parseInt(testRunId),
           parseInt(testCaseId)
         );
-        
+
         if (existingResults.length > 0) {
           const result = existingResults[0];
           console.log('✅ Found existing execution:', result);
-          
+
           // Map status values
           const statusMap: { [key: string]: string } = {
             'passed': 'passed',
-            'pass': 'passed', 
+            'pass': 'passed',
             'failed': 'failed',
             'fail': 'failed',
             'blocked': 'blocked',
@@ -218,12 +257,12 @@ export function TestCaseExecution() {
             'skip': 'skipped',
             'pending': 'pending'
           };
-          
+
           const mappedStatus = statusMap[result.status] || 'pending';
           setExecutionStatus(mappedStatus);
           setExecutionNotes(result.actual_result || result.comments || '');
           setAssignee(result.executed_by?.toString() || '');
-          
+
           console.log('✅ Loaded existing status:', mappedStatus);
         } else {
           console.log('📝 No existing execution found, starting fresh');
@@ -235,7 +274,7 @@ export function TestCaseExecution() {
         setIsLoading(false);
       }
     };
-    
+
     loadExistingExecution();
   }, [testRunId, testCaseId]);
 
@@ -243,16 +282,16 @@ export function TestCaseExecution() {
   useEffect(() => {
     const loadExistingDefects = async () => {
       if (!projectId || !testCaseId) return;
-      
+
       try {
         console.log('🔍 Loading existing defects for test case:', testCaseId);
         const allDefects = await defectsAPI.getAll(parseInt(projectId));
-        
+
         // Filter defects for this test case
-        const testCaseDefects = allDefects.filter(defect => 
+        const testCaseDefects = allDefects.filter(defect =>
           defect.test_case_id === parseInt(testCaseId || '0')
         );
-        
+
         setDefects(testCaseDefects);
         console.log(`✅ Loaded ${testCaseDefects.length} defects for test case`);
       } catch (error) {
@@ -260,7 +299,7 @@ export function TestCaseExecution() {
         setDefects([]);
       }
     };
-    
+
     loadExistingDefects();
   }, [projectId, testCaseId]);
 
@@ -292,6 +331,16 @@ export function TestCaseExecution() {
     return statusOption ? statusOption.color : 'text-gray-600';
   };
 
+  const getExecutionStatusBadgeClass = (status: string) => {
+    const statusMap: Record<string, string> = {
+      pending: 'border border-slate-200 bg-slate-100 text-slate-700 dark:border-slate-700 dark:bg-slate-800/70 dark:text-slate-300',
+      passed: 'border border-emerald-200 bg-emerald-100 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300',
+      failed: 'border border-red-200 bg-red-100 text-red-800 dark:border-red-800 dark:bg-red-900/30 dark:text-red-300',
+      blocked: 'border border-orange-200 bg-orange-100 text-orange-800 dark:border-orange-800 dark:bg-orange-900/30 dark:text-orange-300',
+    };
+    return statusMap[status] || statusMap.pending;
+  };
+
   const formatStatusLabel = (status: string) => {
     const normalizedStatus = status.toLowerCase();
     const labels: Record<string, string> = {
@@ -305,8 +354,12 @@ export function TestCaseExecution() {
       skip: 'Skip',
       skipped: 'Skipped',
       pending: 'Pending',
+      in_progress: 'In Progress',
+      running: 'Running',
+      completed: 'Completed',
+      cancelled: 'Cancelled',
     };
-    return labels[normalizedStatus] || status.replace('-', ' ').replace('_', ' ');
+    return labels[normalizedStatus] || status.replace(/[-_]/g, ' ');
   };
 
   const getPriorityBadgeVariant = (priority: string) => {
@@ -321,7 +374,7 @@ export function TestCaseExecution() {
 
   const handleSaveExecution = async () => {
     console.log('🔥 handleSaveExecution called!');
-    
+
     try {
       // Log the current state before saving
       console.log('=== SAVING EXECUTION ===');
@@ -375,14 +428,14 @@ export function TestCaseExecution() {
       try {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
-        
+
         const testResponse = await fetch(`${API_BASE_URL}/test-results`, {
           method: 'GET',
           headers: requestHeaders,
           mode: 'cors',
           signal: controller.signal
         });
-        
+
         clearTimeout(timeoutId);
         console.log('✅ Backend test response status:', testResponse.status);
         if (!testResponse.ok) {
@@ -396,22 +449,22 @@ export function TestCaseExecution() {
 
       // Check if a test result already exists for this test case and test run
       console.log('🔍 Checking for existing results...');
-      
+
       let savedResult: any = null;
-      
+
       // Try direct fetch first to see if axios is the issue
       console.log('🔍 Testing direct fetch...');
       try {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
-        
+
         const directResponse = await fetch(`${API_BASE_URL}/test-results?test_run_id=${parseInt(testRunId || '0')}&test_case_id=${parseInt(testCaseId || '0')}`, {
           method: 'GET',
           headers: requestHeaders,
           mode: 'cors',
           signal: controller.signal
         });
-        
+
         clearTimeout(timeoutId);
         if (!directResponse.ok) {
           const errorText = await directResponse.text();
@@ -420,16 +473,16 @@ export function TestCaseExecution() {
         const directData = await directResponse.json();
         console.log('✅ Direct fetch results:', directData);
         const existingResults = directData;
-        
+
         if (existingResults.length > 0) {
           // Update existing result using direct fetch
           console.log('🔄 Updating existing result with direct fetch...');
           const existingResult = existingResults[0];
           console.log('📤 Sending UPDATE request:', existingResult.id, executionData);
-          
+
           const updateController = new AbortController();
           const updateTimeoutId = setTimeout(() => updateController.abort(), 10000);
-          
+
           const updateResponse = await fetch(`${API_BASE_URL}/test-results/${existingResult.id}`, {
             method: 'PUT',
             headers: requestHeaders,
@@ -437,29 +490,29 @@ export function TestCaseExecution() {
             signal: updateController.signal,
             body: JSON.stringify(executionData)
           });
-          
+
           clearTimeout(updateTimeoutId);
-          
+
           if (!updateResponse.ok) {
             const errorText = await updateResponse.text();
             console.error('❌ Error response body:', errorText);
             throw new Error(`Update failed: ${updateResponse.status} - ${errorText}`);
           }
-          
+
           savedResult = await updateResponse.json();
           console.log('✅ Updated existing test result:', savedResult);
         } else {
           // Create new result using direct fetch
           console.log('➕ Creating new result with direct fetch...');
           console.log('📤 Sending CREATE request:', executionData);
-          
+
           const requestBody = JSON.stringify(executionData);
           console.log('📤 Request body JSON:', requestBody);
           console.log('📤 Request body length:', requestBody.length);
-          
+
           const createController = new AbortController();
           const createTimeoutId = setTimeout(() => createController.abort(), 10000);
-          
+
           const createResponse = await fetch(`${API_BASE_URL}/test-results`, {
             method: 'POST',
             headers: requestHeaders,
@@ -467,30 +520,30 @@ export function TestCaseExecution() {
             signal: createController.signal,
             body: requestBody
           });
-          
+
           clearTimeout(createTimeoutId);
-          
+
           console.log('📤 Response status:', createResponse.status);
           console.log('📤 Response headers:', createResponse.headers);
-          
+
           if (!createResponse.ok) {
             const errorText = await createResponse.text();
             console.error('❌ Error response body:', errorText);
             throw new Error(`Create failed: ${createResponse.status} - ${errorText}`);
           }
-          
+
           savedResult = await createResponse.json();
           console.log('✅ Created new test result:', savedResult);
         }
-        
+
         // Also test with axios API for comparison
         console.log('🔍 Testing axios API...');
         const axiosResults = await testResultsAPI.getAll(
-          parseInt(testRunId || '0'), 
+          parseInt(testRunId || '0'),
           parseInt(testCaseId || '0')
         );
         console.log('📋 Axios results found:', axiosResults);
-        
+
       } catch (fetchError) {
         console.error('❌ Direct fetch failed:', fetchError);
         throw fetchError;
@@ -530,7 +583,7 @@ export function TestCaseExecution() {
     } catch (error) {
       console.error('💥 === SAVE FAILED ===');
       console.error('Error details:', error);
-      
+
       if (error instanceof Error) {
         if (error.message.includes('Network Error')) {
           alert('Network error: Cannot connect to backend server. Please ensure the backend is running on ' + API_BASE_URL);
@@ -549,10 +602,10 @@ export function TestCaseExecution() {
 
   const handleCreateDefect = async () => {
     // Check for duplicate title
-    const isDuplicate = defects.some(d => 
+    const isDuplicate = defects.some(d =>
       d.title.toLowerCase().trim() === newDefect.title.toLowerCase().trim()
     );
-    
+
     if (isDuplicate) {
       toast({
         title: t('duplicateDefect'),
@@ -561,7 +614,7 @@ export function TestCaseExecution() {
       });
       return;
     }
-    
+
     try {
       setIsCreating(true);
       // Create defect via API
@@ -576,15 +629,15 @@ export function TestCaseExecution() {
         project_id: parseInt(projectId || '0'),
         reported_by: currentUser?.id || 1,
       };
-      
+
       const createdDefect = await defectsAPI.create(defectData);
-      
+
       // Add to local state
       setDefects([...defects, createdDefect]);
       setNewDefect({ title: '', description: '', severity: 'medium', priority: 'high' });
       setHasUnsavedChanges(false);
       setIsDefectDialogOpen(false);
-      
+
       toast({
         title: t('success'),
         description: t('defectReportedSuccessfully'),
@@ -682,11 +735,25 @@ export function TestCaseExecution() {
   };
 
   const selectedStatus = statusOptions.find(opt => opt.value === executionStatus);
+  const executionStatusBadgeClass = getExecutionStatusBadgeClass(executionStatus);
   const testRunName = testRun?.name || t('loading');
   const testCaseTitle = testCase?.title || t('loading');
   const progressLabel = allTestCases.length > 0 && currentIndex >= 0
     ? t('testCaseProgress', { current: currentIndex + 1, total: allTestCases.length })
     : t('loadingTestCases');
+
+  if (loadError) {
+    return (
+      <div className="space-y-4 py-12 text-center">
+        <AlertTriangle className="mx-auto h-12 w-12 text-red-500" />
+        <h2 className="text-2xl font-bold">{loadError}</h2>
+        <Button variant="outline" onClick={() => navigate(`/projects/${projectId}/test-runs`)}>
+          <ArrowLeft className={`h-4 w-4 ${isRTL ? 'ml-2 rotate-180' : 'mr-2'}`} />
+          {t('backToTestRuns')}
+        </Button>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -712,7 +779,7 @@ export function TestCaseExecution() {
                 <Badge className="border border-cyan-200 bg-cyan-100/80 px-3 py-1 text-cyan-800 shadow-sm backdrop-blur dark:border-cyan-200/30 dark:bg-cyan-300/15 dark:text-cyan-50">
                   {t('testCaseExecution')}
                 </Badge>
-                <Badge className="border border-slate-200 bg-white/80 px-3 py-1 text-slate-700 shadow-sm backdrop-blur dark:border-white/20 dark:bg-white/10 dark:text-white">
+                <Badge className={`${executionStatusBadgeClass} px-3 py-1 shadow-sm backdrop-blur`}>
                   {selectedStatus?.label || executionStatus}
                 </Badge>
                 <Badge className="border border-emerald-200 bg-emerald-100/80 px-3 py-1 text-emerald-800 shadow-sm backdrop-blur dark:border-emerald-200/30 dark:bg-emerald-300/15 dark:text-emerald-50">
@@ -827,7 +894,7 @@ export function TestCaseExecution() {
                     <h3 className="font-semibold text-sm">{testCase.title}</h3>
                     <p className="text-gray-600 text-xs mt-1">{testCase.description || 'No description provided'}</p>
                   </div>
-                  
+
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <Label className="text-xs font-medium text-gray-700">Priority</Label>
@@ -937,7 +1004,7 @@ export function TestCaseExecution() {
                     {t('executionDetailsDescription')}
                   </p>
                 </div>
-                <Badge className="w-fit border border-cyan-200 bg-cyan-100/80 px-3 py-1 text-cyan-800 shadow-sm dark:border-cyan-200/30 dark:bg-cyan-300/15 dark:text-cyan-50">
+                <Badge className={`w-fit ${executionStatusBadgeClass} px-3 py-1 shadow-sm`}>
                   {selectedStatus?.label || executionStatus}
                 </Badge>
               </div>
@@ -1012,6 +1079,15 @@ export function TestCaseExecution() {
                       </Label>
                       <Input
                         id="defectLink"
+                        name="defect-url"
+                        type="url"
+                        inputMode="url"
+                        autoComplete="off"
+                        autoCorrect="off"
+                        autoCapitalize="none"
+                        spellCheck={false}
+                        data-lpignore="true"
+                        data-1p-ignore="true"
                         value={defectLink}
                         onChange={(e) => setDefectLink(e.target.value)}
                         placeholder={t('defectLinkPlaceholder')}
@@ -1024,6 +1100,15 @@ export function TestCaseExecution() {
                       </Label>
                       <Input
                         id="customLink"
+                        name="custom-url"
+                        type="url"
+                        inputMode="url"
+                        autoComplete="off"
+                        autoCorrect="off"
+                        autoCapitalize="none"
+                        spellCheck={false}
+                        data-lpignore="true"
+                        data-1p-ignore="true"
                         value={customLink}
                         onChange={(e) => setCustomLink(e.target.value)}
                         placeholder={t('customLinkPlaceholder')}
@@ -1045,7 +1130,7 @@ export function TestCaseExecution() {
                     onChange={(e) => setExecutionNotes(e.target.value)}
                     placeholder={t('executionNotesPlaceholder')}
                     rows={5}
-                    className="resize-none text-sm"
+                    className="h-36 min-h-36 resize-none text-sm"
                   />
                 </div>
 
@@ -1059,7 +1144,7 @@ export function TestCaseExecution() {
                     onChange={(e) => setExecutionLogs(e.target.value)}
                     placeholder={t('executionLogsPlaceholder')}
                     rows={5}
-                    className="resize-none font-mono text-xs"
+                    className="h-36 min-h-36 resize-none font-mono text-xs"
                   />
                 </div>
               </div>
@@ -1086,8 +1171,8 @@ export function TestCaseExecution() {
                   <Bug className="h-4 w-4" />
                   Defects Found ({defects.length})
                 </CardTitle>
-                <Button 
-                  variant="outline" 
+                <Button
+                  variant="outline"
                   size="sm"
                   onClick={() => setIsDefectDialogOpen(true)}
                   className="h-8 text-xs"
@@ -1153,32 +1238,32 @@ export function TestCaseExecution() {
               <CardTitle className="text-base">Quick Actions</CardTitle>
             </CardHeader>
             <CardContent className="space-y-2">
-              <Button 
-                variant="outline" 
+              <Button
+                variant="outline"
                 className="w-full justify-start h-8 text-xs"
                 onClick={() => setExecutionStatus('passed')}
               >
                 <CheckCircle className="h-3 w-3 mr-2 text-green-600" />
                 Mark as Passed
               </Button>
-              <Button 
-                variant="outline" 
+              <Button
+                variant="outline"
                 className="w-full justify-start h-8 text-xs"
                 onClick={() => setExecutionStatus('failed')}
               >
                 <XCircle className="h-3 w-3 mr-2 text-red-600" />
                 Mark as Failed
               </Button>
-              <Button 
-                variant="outline" 
+              <Button
+                variant="outline"
                 className="w-full justify-start h-8 text-xs"
                 onClick={() => setIsDefectDialogOpen(true)}
               >
                 <Bug className="h-3 w-3 mr-2 text-orange-600" />
                 Report Defect
               </Button>
-              <Button 
-                variant="outline" 
+              <Button
+                variant="outline"
                 className="w-full justify-start h-8 text-xs"
                 onClick={() => setExecutionStatus('blocked')}
               >

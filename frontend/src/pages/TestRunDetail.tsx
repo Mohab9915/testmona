@@ -179,37 +179,58 @@ export function TestRunDetail() {
 
     return { pieData, sectionData, trendData };
   };  
+  const normalizeRunStatus = (status?: string | null) => (status || '').toLowerCase().replace(/[-\s]/g, '_');
+
+  const isResultComplete = (status?: string | null) => {
+    const normalizedStatus = normalizeRunStatus(status);
+    return Boolean(normalizedStatus) && normalizedStatus !== 'not_tested' && normalizedStatus !== 'pending';
+  };
+
+  const getDerivedRunStatusPayload = (runData: any, resultsData: any[]) => {
+    const currentStatus = normalizeRunStatus(runData.status);
+    const hasResults = resultsData.length > 0;
+    const allCompleted = hasResults && resultsData.every((result: any) => isResultComplete(result.status));
+    const targetStatus = !hasResults ? 'pending' : allCompleted ? 'completed' : 'in_progress';
+
+    const completedAtIsConsistent = targetStatus === 'completed' ? Boolean(runData.completed_at) : !runData.completed_at;
+    if (currentStatus === targetStatus && completedAtIsConsistent) {
+      return null;
+    }
+
+    return {
+      status: targetStatus,
+      completed_at: targetStatus === 'completed' ? (runData.completed_at || new Date().toISOString()) : null,
+    };
+  };
+
+  const syncTestRunStatus = async (runData: any, resultsData: any[]) => {
+    const statusPayload = getDerivedRunStatusPayload(runData, resultsData);
+    if (!statusPayload || !id) {
+      return runData;
+    }
+
+    await testRunsAPI.update(parseInt(id), statusPayload);
+    return testRunsAPI.getById(parseInt(id));
+  };
+
   // Function to check and update test run status
   const checkAndUpdateStatus = async () => {
-    if (!id) return;
+    if (!id || !projectId) return;
     
     try {
-      const testResultsData = await testResultsAPI.getAll(parseInt(id));
       const testRunData = await testRunsAPI.getById(parseInt(id));
-      
-      const currentStatus = testRunData.status?.toLowerCase().replace('-', '_');
-      if (currentStatus !== 'completed' && testResultsData.length > 0) {
-        const allCompleted = testResultsData.every((result: any) => {
-          const status = result.status.toLowerCase();
-          return status !== 'not_tested' && status !== 'pending';
-        });
-        
-        if (allCompleted) {
-          await testRunsAPI.update(parseInt(id), {
-            status: 'completed',
-            completed_at: new Date().toISOString()
-          });
-          
-          // Reload test run to get updated status
-          const updatedTestRun = await testRunsAPI.getById(parseInt(id));
-          setTestRun(updatedTestRun);
-          setTestResults(testResultsData);
-        } else {
-          setTestResults(testResultsData);
-        }
-      } else {
-        setTestResults(testResultsData);
+      const currentProjectId = parseInt(projectId);
+      if (Number.isNaN(currentProjectId) || Number(testRunData.project_id) !== currentProjectId) {
+        setTestRun(null);
+        setTestResults([]);
+        setError(t('testRunNotFoundInProject'));
+        return;
       }
+
+      const testResultsData = await testResultsAPI.getAll(parseInt(id));
+      const updatedTestRun = await syncTestRunStatus(testRunData, testResultsData);
+      setTestRun(updatedTestRun);
+      setTestResults(testResultsData);
     } catch (error) {
       console.error('Failed to check/update status:', error);
     }
@@ -229,6 +250,14 @@ export function TestRunDetail() {
         
         // Load test run data
         const testRunData = await testRunsAPI.getById(parseInt(id));
+        const currentProjectId = parseInt(projectId);
+        if (Number.isNaN(currentProjectId) || Number(testRunData.project_id) !== currentProjectId) {
+          setTestRun(null);
+          setTestResults([]);
+          setUsers([]);
+          setError(t('testRunNotFoundInProject'));
+          return;
+        }
         
         // Load test results for this test run
         const testResultsData = await testResultsAPI.getAll(parseInt(id));
@@ -236,51 +265,10 @@ export function TestRunDetail() {
         // Load users for dropdown
         const usersData = await usersAPI.getAll();
         
-        setTestRun(testRunData);
+        const syncedTestRun = await syncTestRunStatus(testRunData, testResultsData);
+        setTestRun(syncedTestRun);
         setTestResults(testResultsData);
         setUsers(usersData);
-        
-        // Auto-update test run status if all tests are completed
-        console.log('🔍 Checking test run status:', testRunData.status);
-        console.log('📊 Test results count:', testResultsData.length);
-        
-        const currentStatus = testRunData.status?.toLowerCase().replace('-', '_');
-        if (currentStatus !== 'completed' && testResultsData.length > 0) {
-          console.log('✅ Test run not completed, checking if all tests are done...');
-          
-          const allCompleted = testResultsData.every((result: any) => {
-            const status = result.status.toLowerCase();
-            const isCompleted = status !== 'not_tested' && status !== 'pending';
-            console.log(`  Test ${result.test_case_id}: ${status} - ${isCompleted ? 'completed' : 'not completed'}`);
-            return isCompleted;
-          });
-          
-          console.log('🎯 All tests completed?', allCompleted);
-          
-          if (allCompleted) {
-            console.log('🚀 Updating test run status to completed...');
-            
-            try {
-              await testRunsAPI.update(parseInt(id), {
-                status: 'completed',
-                completed_at: new Date().toISOString()
-              });
-              
-              console.log('✅ Test run status updated successfully');
-              
-              // Reload test run to get updated status
-              const updatedTestRun = await testRunsAPI.getById(parseInt(id));
-              setTestRun(updatedTestRun);
-              console.log('📥 Reloaded test run:', updatedTestRun);
-            } catch (updateError) {
-              console.error('❌ Failed to auto-update test run status:', updateError);
-            }
-          } else {
-            console.log('⏳ Not all tests are completed yet');
-          }
-        } else {
-          console.log('ℹ️ Test run already completed or no test results');
-        }
       } catch (err) {
         console.error('Failed to load test run data:', err);
         setError('Failed to load test run data');
@@ -368,22 +356,30 @@ export function TestRunDetail() {
     loadAvailableTestCases();
   }, [isAddTestCasesOpen, projectId, testResults]);
 
+  const normalizeStatusKey = (status?: string) => (status || '').toLowerCase().replace(/[-\s]/g, '_');
+
   const getStatusIcon = (status: string) => {
-    const normalizedStatus = status.toLowerCase();
+    const normalizedStatus = normalizeStatusKey(status);
     switch (normalizedStatus) {
       case 'pass':
       case 'passed':
+      case 'completed':
         return <CheckCircle className="h-4 w-4 text-green-600" />;
       case 'fail':
       case 'failed':
+      case 'cancelled':
         return <XCircle className="h-4 w-4 text-red-600" />;
       case 'block':
       case 'blocked':
         return <AlertCircle className="h-4 w-4 text-orange-600" />;
+      case 'running':
+      case 'in_progress':
+        return <PlayCircle className="h-4 w-4 text-blue-600" />;
       case 'skip':
       case 'skipped':
         return <Clock className="h-4 w-4 text-gray-600" />;
       case 'pending':
+      case 'not_tested':
         return <Clock className="h-4 w-4 text-gray-400" />;
       default:
         return <Clock className="h-4 w-4 text-gray-600" />;
@@ -391,19 +387,24 @@ export function TestRunDetail() {
   };
 
   const getStatusBadge = (status: string) => {
-    const normalizedStatus = status.toLowerCase();
+    const normalizedStatus = normalizeStatusKey(status);
     const variants: Record<string, string> = {
-      pass: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400',
-      passed: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400',
-      fail: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400',
-      failed: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400',
-      block: 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400',
-      blocked: 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400',
-      skip: 'bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-400',
-      skipped: 'bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-400',
-      pending: 'bg-gray-100 text-gray-600 dark:bg-gray-800/50 dark:text-gray-400',
+      pass: 'border border-green-200 bg-green-100 text-green-800 dark:border-green-800 dark:bg-green-900/30 dark:text-green-300',
+      passed: 'border border-green-200 bg-green-100 text-green-800 dark:border-green-800 dark:bg-green-900/30 dark:text-green-300',
+      completed: 'border border-emerald-200 bg-emerald-100 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300',
+      fail: 'border border-red-200 bg-red-100 text-red-800 dark:border-red-800 dark:bg-red-900/30 dark:text-red-300',
+      failed: 'border border-red-200 bg-red-100 text-red-800 dark:border-red-800 dark:bg-red-900/30 dark:text-red-300',
+      cancelled: 'border border-red-200 bg-red-100 text-red-800 dark:border-red-800 dark:bg-red-900/30 dark:text-red-300',
+      block: 'border border-orange-200 bg-orange-100 text-orange-800 dark:border-orange-800 dark:bg-orange-900/30 dark:text-orange-300',
+      blocked: 'border border-orange-200 bg-orange-100 text-orange-800 dark:border-orange-800 dark:bg-orange-900/30 dark:text-orange-300',
+      running: 'border border-blue-200 bg-blue-100 text-blue-800 dark:border-blue-800 dark:bg-blue-900/30 dark:text-blue-300',
+      in_progress: 'border border-blue-200 bg-blue-100 text-blue-800 dark:border-blue-800 dark:bg-blue-900/30 dark:text-blue-300',
+      skip: 'border border-slate-200 bg-slate-100 text-slate-800 dark:border-slate-700 dark:bg-slate-800/70 dark:text-slate-300',
+      skipped: 'border border-slate-200 bg-slate-100 text-slate-800 dark:border-slate-700 dark:bg-slate-800/70 dark:text-slate-300',
+      pending: 'border border-slate-200 bg-slate-100 text-slate-600 dark:border-slate-700 dark:bg-slate-800/70 dark:text-slate-400',
+      not_tested: 'border border-slate-200 bg-slate-100 text-slate-600 dark:border-slate-700 dark:bg-slate-800/70 dark:text-slate-400',
     };
-    return variants[normalizedStatus] || 'bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-400';
+    return variants[normalizedStatus] || 'border border-slate-200 bg-slate-100 text-slate-800 dark:border-slate-700 dark:bg-slate-800/70 dark:text-slate-300';
   };
 
   const formatStatusLabel = (status: string) => {
@@ -419,8 +420,12 @@ export function TestRunDetail() {
       skip: 'Skip',
       skipped: 'Skipped',
       pending: 'Pending',
+      in_progress: 'In Progress',
+      running: 'Running',
+      completed: 'Completed',
+      cancelled: 'Cancelled',
     };
-    return labels[normalizedStatus] || status.replace('-', ' ').replace('_', ' ');
+    return labels[normalizedStatus] || status.replace(/[-_]/g, ' ');
   };
 
   const getPriorityBadge = (priority: string) => {
@@ -434,7 +439,9 @@ export function TestRunDetail() {
   };
 
   const filteredResults = testResults.filter(result => {
-    const matchesStatus = filter === 'all' || result.status.toLowerCase() === filter.toLowerCase();
+    const resultStatus = normalizeRunStatus(result.status) || 'not_tested';
+    const selectedStatus = normalizeRunStatus(filter);
+    const matchesStatus = filter === 'all' || resultStatus === selectedStatus;
     const normalizedQuery = resultSearchQuery.trim().toLowerCase();
 
     if (!normalizedQuery) return matchesStatus;
@@ -456,7 +463,7 @@ export function TestRunDetail() {
   });
 
   const statusCounts = testResults.reduce((acc: any, result) => {
-    const normalizedStatus = result.status.toLowerCase();
+    const normalizedStatus = normalizeRunStatus(result.status) || 'not_tested';
     acc[normalizedStatus] = (acc[normalizedStatus] || 0) + 1;
     return acc;
   }, {});
@@ -466,7 +473,7 @@ export function TestRunDetail() {
   const failedTests = (statusCounts.fail || 0) + (statusCounts.failed || 0);
   const blockedTests = (statusCounts.block || 0) + (statusCounts.blocked || 0);
   const skippedTests = (statusCounts.skip || 0) + (statusCounts.skipped || 0);
-  const notTestedTests = statusCounts.not_tested || 0;
+  const notTestedTests = (statusCounts.not_tested || 0) + (statusCounts.pending || 0);
   const passRate = totalTests > 0 ? Math.round((passedTests / totalTests) * 100) : 0;
   const { pieData, sectionData, trendData } = prepareChartData();
   const runDescription = testRun?.description?.trim() || t('noDescriptionProvided');
@@ -504,7 +511,11 @@ export function TestRunDetail() {
       
       // Reload test results
       const updatedTestResults = await testResultsAPI.getAll(parseInt(id!));
+      const updatedTestRun = testRun ? await syncTestRunStatus(testRun, updatedTestResults) : null;
       setTestResults(updatedTestResults);
+      if (updatedTestRun) {
+        setTestRun(updatedTestRun);
+      }
       
       setIsAddTestCasesOpen(false);
       setSelectedTestCasesToAdd([]);
@@ -526,7 +537,11 @@ export function TestRunDetail() {
       
       // Reload test results
       const updatedTestResults = await testResultsAPI.getAll(parseInt(id!));
+      const updatedTestRun = testRun ? await syncTestRunStatus(testRun, updatedTestResults) : null;
       setTestResults(updatedTestResults);
+      if (updatedTestRun) {
+        setTestRun(updatedTestRun);
+      }
       
       setSelectedTestCasesForRemoval([]);
     } catch (err) {
@@ -592,8 +607,11 @@ export function TestRunDetail() {
         String(item.id) === String(resultId) ? { ...item, ...updatedResult } : item
       );
 
+      const updatedTestRun = testRun ? await syncTestRunStatus(testRun, updatedTestResults) : null;
       setTestResults(updatedTestResults);
-      if (testRun?.testResults) {
+      if (updatedTestRun) {
+        setTestRun({ ...updatedTestRun, testResults: updatedTestResults });
+      } else if (testRun?.testResults) {
         setTestRun({ ...testRun, testResults: updatedTestResults });
       }
       setEditValues((prev) => {
@@ -691,10 +709,10 @@ export function TestRunDetail() {
         </div>
         <div className="text-center py-12">
           <h2 className="text-2xl font-semibold text-gray-900 mb-2">
-            {error || 'Test Run Not Found'}
+            {error || t('testRunNotFound')}
           </h2>
           <p className="text-gray-600">
-            {error || 'The test run you\'re looking for doesn\'t exist.'}
+            {error || t('testRunNotFoundDescription')}
           </p>
         </div>
       </div>
@@ -725,7 +743,7 @@ export function TestRunDetail() {
                 <Badge className="border border-cyan-200 bg-cyan-100/80 px-3 py-1 text-cyan-800 shadow-sm backdrop-blur dark:border-cyan-200/30 dark:bg-cyan-300/15 dark:text-cyan-50">
                   {t('runId')}: {testRun.id}
                 </Badge>
-                <Badge className="border border-slate-200 bg-white/80 px-3 py-1 text-slate-700 shadow-sm backdrop-blur dark:border-white/20 dark:bg-white/10 dark:text-white">
+                <Badge className={`${getStatusBadge(testRun.status)} px-3 py-1 shadow-sm backdrop-blur`}>
                   {formattedRunStatus}
                 </Badge>
                 <Badge className="border border-emerald-200 bg-emerald-100/80 px-3 py-1 text-emerald-800 shadow-sm backdrop-blur dark:border-emerald-200/30 dark:bg-emerald-300/15 dark:text-emerald-50">
@@ -844,7 +862,7 @@ export function TestRunDetail() {
             {getStatusIcon(testRun.status)}
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold capitalize">{testRun.status.replace('-', ' ')}</div>
+            <div className="text-2xl font-bold">{formattedRunStatus}</div>
             <p className="text-xs text-gray-500">
               {testRun.status === 'completed' 
                 ? `Completed at ${testRun.completed_at ? new Date(testRun.completed_at).toLocaleString() : 'N/A'}`
