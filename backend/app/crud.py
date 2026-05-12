@@ -1,9 +1,12 @@
 from sqlalchemy.orm import Session, joinedload, noload, selectinload
-from sqlalchemy import or_, text
+from sqlalchemy.orm.attributes import set_committed_value
+from sqlalchemy import func, or_, text
 from typing import List, Optional
 from datetime import datetime, timedelta
+import re
 from . import schemas
-from .models import Project, TestSuite, TestCase, TestCaseStep, TestRun, TestResult, User, CustomFieldDefinition, CustomFieldValue, JiraIntegration, JiraIssue, Requirement, Defect, TestPlan, Milestone, TraceabilityMatrix, CoverageReport, Notification, TestCaseSection, SharedStep, GlobalParameter, TestMindmap, ImpactAnalysis, ExecutionEnvironment, ExecutionLog, TestSchedule, ExecutionEngine, TestRunEnvironment, DefectComment, DefectAttachment, DefectHistory, DefectWorkflow, DefectTemplate, IssueTrackerIntegration, SyncLog, KPIData, TestStepResult, ShareableReport, RootCauseAnalysis, DashboardWidget, TestCaseRevision, RequirementStatus, Priority, TestTypeDefinition, PriorityDefinition, SharedStepTemplate, TestExecutionSettings, NotificationSettings, AutomationSettings, SystemSettings, OnboardingChecklist
+from .services.execution_timing import apply_test_result_execution_timing
+from .models import Project, TestSuite, TestCase, TestCaseStep, TestRun, TestResult, User, CustomFieldDefinition, CustomFieldValue, CustomFieldType, JiraIntegration, JiraIssue, Requirement, Defect, TestPlan, Milestone, TraceabilityMatrix, CoverageReport, Notification, TestCaseSection, SharedStep, GlobalParameter, TestMindmap, ImpactAnalysis, ExecutionEnvironment, ExecutionLog, TestSchedule, ExecutionEngine, TestRunEnvironment, DefectComment, DefectAttachment, DefectHistory, DefectWorkflow, DefectTemplate, IssueTrackerIntegration, SyncLog, KPIData, TestStepResult, ShareableReport, RootCauseAnalysis, DashboardWidget, TestCaseRevision, RequirementStatus, Priority, TestTypeDefinition, PriorityDefinition, SharedStepTemplate, TestExecutionSettings, NotificationSettings, AutomationSettings, SystemSettings, OnboardingChecklist
 from .schemas import (
     ProjectCreate, ProjectUpdate,
     TestSuiteCreate, TestSuiteUpdate,
@@ -222,7 +225,8 @@ def get_test_case(db: Session, test_case_id: int):
     return db.query(TestCase).options(
         joinedload(TestCase.test_suite).joinedload(TestSuite.project),
         joinedload(TestCase.section),
-        joinedload(TestCase.creator)
+        joinedload(TestCase.creator),
+        selectinload(TestCase.custom_field_values)
     ).filter(TestCase.id == test_case_id).first()
 
 
@@ -231,7 +235,9 @@ def get_test_cases(db: Session, test_suite_id: Optional[int] = None, section_id:
     
     query = db.query(TestCase).options(
         joinedload(TestCase.test_suite).joinedload(TestSuite.project),
-        joinedload(TestCase.section)
+        joinedload(TestCase.section),
+        joinedload(TestCase.creator),
+        selectinload(TestCase.custom_field_values)
     )
     if test_suite_id:
         query = query.filter(TestCase.test_suite_id == test_suite_id)
@@ -259,8 +265,8 @@ def create_test_case(db: Session, test_case: TestCaseCreate, created_by: int):
     # Create test steps if provided (multi-step support)
     if test_steps_data and len(test_steps_data) > 0:
         for step_data in test_steps_data:
-            step_data.test_case_id = db_test_case.id
-            db_step = TestCaseStep(**step_data.model_dump())
+            step_dict = step_data.model_dump(exclude={'test_case_id'})
+            db_step = TestCaseStep(**step_dict, test_case_id=db_test_case.id)
             db.add(db_step)
         safe_commit(db)
         db.refresh(db_test_case)
@@ -296,7 +302,11 @@ def get_test_case_step(db: Session, step_id: int):
 
 
 def create_test_case_step(db: Session, step: schemas.TestCaseStepCreate):
-    db_step = TestCaseStep(**step.model_dump())
+    step_dict = step.model_dump()
+    if not step_dict.get('test_case_id'):
+        raise ValueError('test_case_id is required when creating a standalone test case step')
+
+    db_step = TestCaseStep(**step_dict)
     db.add(db_step)
     safe_commit(db)
     db.refresh(db_step)
@@ -310,8 +320,8 @@ def create_test_case_steps(db: Session, test_case_id: int, steps: List[schemas.T
     # Create new steps
     db_steps = []
     for step_data in steps:
-        step_data.test_case_id = test_case_id
-        db_step = TestCaseStep(**step_data.model_dump())
+        step_dict = step_data.model_dump(exclude={'test_case_id'})
+        db_step = TestCaseStep(**step_dict, test_case_id=test_case_id)
         db.add(db_step)
         db_steps.append(db_step)
     
@@ -469,6 +479,7 @@ def get_test_result(db: Session, test_result_id: int):
 def get_test_results(db: Session, test_run_id: Optional[int] = None, test_case_id: Optional[int] = None, skip: int = 0, limit: int = 100):
     query = db.query(TestResult).options(
         joinedload(TestResult.test_case).joinedload(TestCase.section),
+        joinedload(TestResult.test_case).selectinload(TestCase.custom_field_values),
         joinedload(TestResult.executor)
     ).filter(
         TestResult.test_case_id.isnot(None),
@@ -482,7 +493,9 @@ def get_test_results(db: Session, test_run_id: Optional[int] = None, test_case_i
 
 
 def create_test_result(db: Session, test_result: TestResultCreate):
-    db_test_result = TestResult(**test_result.model_dump())
+    test_result_data = test_result.model_dump()
+    db_test_result = TestResult(**test_result_data)
+    apply_test_result_execution_timing(db_test_result, test_result_data)
     db.add(db_test_result)
     safe_commit(db)
     db.refresh(db_test_result)
@@ -492,8 +505,10 @@ def create_test_result(db: Session, test_result: TestResultCreate):
 def update_test_result(db: Session, test_result_id: int, test_result: TestResultUpdate):
     db_test_result = db.query(TestResult).filter(TestResult.id == test_result_id).first()
     if db_test_result:
-        for key, value in test_result.model_dump(exclude_unset=True).items():
+        test_result_data = test_result.model_dump(exclude_unset=True)
+        for key, value in test_result_data.items():
             setattr(db_test_result, key, value)
+        apply_test_result_execution_timing(db_test_result, test_result_data)
         safe_commit(db)
         db.refresh(db_test_result)
     return db_test_result
@@ -716,15 +731,24 @@ def get_custom_field_values(db: Session, test_case_id: Optional[int] = None, fie
     return query.all()
 
 
-def validate_custom_field_value(value: str, field_definition: CustomFieldDefinition) -> Optional[str]:
+def validate_custom_field_value(value: Optional[str], field_definition: CustomFieldDefinition) -> Optional[str]:
     """
     Validate a custom field value against its definition's validation rules.
     Returns error message if validation fails, None if valid.
     """
-    if not value and not field_definition.is_required:
+    value_str = "" if value is None else str(value)
+    normalized_value = value_str.strip()
+
+    # For boolean fields, "true"/"false" are both valid explicit values.
+    if field_definition.field_type == CustomFieldType.BOOLEAN:
+        if normalized_value == "":
+            return None if not field_definition.is_required else f"Field '{field_definition.name}' is required"
+        if normalized_value.lower() not in {"true", "false"}:
+            return f"Field '{field_definition.name}' must be either true or false"
         return None
-    
-    value_str = str(value) if value is not None else ""
+
+    if normalized_value == "":
+        return None if not field_definition.is_required else f"Field '{field_definition.name}' is required"
     
     # Apply validation rules
     if field_definition.validation_rules:
@@ -886,13 +910,16 @@ def update_custom_field_value(db: Session, value_id: int, value: CustomFieldValu
     if not field_definition:
         raise ValueError(f"Custom field definition with id {db_value.field_definition_id} does not exist")
     
+    value_data = value.model_dump(exclude_unset=True)
+    new_test_case_id = value_data.get("test_case_id")
+
     # If updating test_case_id, verify project match
-    if value.test_case_id is not None and value.test_case_id != db_value.test_case_id:
+    if new_test_case_id is not None and new_test_case_id != db_value.test_case_id:
         from .models import TestCase
-        test_case = db.query(TestCase).filter(TestCase.id == value.test_case_id).first()
+        test_case = db.query(TestCase).filter(TestCase.id == new_test_case_id).first()
         
         if not test_case:
-            raise ValueError(f"Test case with id {value.test_case_id} does not exist")
+            raise ValueError(f"Test case with id {new_test_case_id} does not exist")
         
         # Verify field definition belongs to the same project as the new test case
         if field_definition.project_id != test_case.project_id:
@@ -902,12 +929,12 @@ def update_custom_field_value(db: Session, value_id: int, value: CustomFieldValu
             )
     
     # Validate new value against field definition rules
-    if value.value is not None:
-        validation_error = validate_custom_field_value(value.value, field_definition)
+    if "value" in value_data:
+        validation_error = validate_custom_field_value(value_data.get("value"), field_definition)
         if validation_error:
             raise ValueError(validation_error)
     
-    for key, val in value.model_dump(exclude_unset=True).items():
+    for key, val in value_data.items():
         setattr(db_value, key, val)
     safe_commit(db)
     db.refresh(db_value)
@@ -917,7 +944,7 @@ def update_custom_field_value(db: Session, value_id: int, value: CustomFieldValu
         from .services.audit_service import get_audit_service
         from .schemas_audit import AuditTrailCreate
         audit_service = get_audit_service(db)
-        changes = ', '.join([f"{k}={v}" for k, v in value.model_dump(exclude_unset=True).items()])
+        changes = ', '.join([f"{k}={v}" for k, v in value_data.items()])
         audit_data = AuditTrailCreate(
             user_id=user_id,
             action="update",
@@ -2542,6 +2569,11 @@ def get_user_invitation_by_token(db: Session, token: str):
     return db.query(UserInvitation).filter(UserInvitation.token == token, UserInvitation.is_used == False).first()
 
 
+def get_user_invitation(db: Session, invitation_id: int):
+    from .models import UserInvitation
+    return db.query(UserInvitation).filter(UserInvitation.id == invitation_id).first()
+
+
 def get_user_invitations(db: Session, skip: int = 0, limit: int = 100):
     from .models import UserInvitation
     return db.query(UserInvitation).offset(skip).limit(limit).all()
@@ -2630,12 +2662,49 @@ def create_test_case_revision(db: Session, revision: TestCaseRevisionCreate):
 # Test Management Settings CRUD functions
 
 # Test Type Definition CRUD
+def _normalize_definition_name(value: Optional[str]) -> str:
+    return (value or "").strip().lower().replace("_", " ").replace("-", " ")
+
+
+def _apply_test_type_usage_counts(db: Session, definitions: List[TestTypeDefinition]) -> List[TestTypeDefinition]:
+    if not definitions:
+        return definitions
+
+    usage_rows = (
+        db.query(TestCase.test_type, func.count(TestCase.id))
+        .filter(TestCase.test_type.isnot(None))
+        .group_by(TestCase.test_type)
+        .all()
+    )
+    usage_by_name = {
+        _normalize_definition_name(test_type): count
+        for test_type, count in usage_rows
+        if _normalize_definition_name(test_type)
+    }
+
+    for definition in definitions:
+        set_committed_value(definition, "usage_count", usage_by_name.get(_normalize_definition_name(definition.name), 0))
+
+    return definitions
+
+
 def get_test_type_definitions(db: Session, skip: int = 0, limit: int = 100):
-    return db.query(TestTypeDefinition).filter(TestTypeDefinition.is_active == True).offset(skip).limit(limit).all()
+    definitions = (
+        db.query(TestTypeDefinition)
+        .filter(TestTypeDefinition.is_active == True)
+        .order_by(TestTypeDefinition.name)
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
+    return _apply_test_type_usage_counts(db, definitions)
 
 
 def get_test_type_definition(db: Session, test_type_id: int):
-    return db.query(TestTypeDefinition).filter(TestTypeDefinition.id == test_type_id).first()
+    definition = db.query(TestTypeDefinition).filter(TestTypeDefinition.id == test_type_id).first()
+    if definition:
+        _apply_test_type_usage_counts(db, [definition])
+    return definition
 
 
 def create_test_type_definition(db: Session, test_type: TestTypeDefinitionCreate):

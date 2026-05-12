@@ -1,7 +1,7 @@
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.orm import Session
-from app import crud_defect_management, models, schemas, crud_rbac
+from app import crud, crud_defect_management, models, schemas, crud_rbac
 from app.database import get_db
 from app.auth import get_current_user
 from app.rbac import require_permission
@@ -595,8 +595,12 @@ def sync_defect_with_external(
     logger.info(f"Sync attempt: User {current_user.id} syncing defect {defect.defect_id} with {integration.tracker_type} integration {integration.id}")
     
     try:
+        app_name_setting = crud.get_system_setting(db, key="app_name")
+        app_name = app_name_setting.value.strip() if app_name_setting and app_name_setting.value else "TestMona"
+
         defect_dict = {
             'defect_id': defect.defect_id,
+            'app_name': app_name,
             'title': defect.title,
             'description': defect.description,
             'severity': defect.severity,

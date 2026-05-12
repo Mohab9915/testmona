@@ -6,10 +6,119 @@ from fastapi import Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List
 import json
+import logging
+import re
+from urllib.parse import urlparse
 
 from .. import crud, schemas, auth, rbac
 from ..database import get_db
 from ..auth import get_current_active_user, check_password_change_required
+
+logger = logging.getLogger(__name__)
+
+DEFAULT_PUBLIC_SETTINGS = {
+    "signup_enabled": {
+        "value": "true",
+        "description": "Whether public registration is enabled",
+    },
+    "app_name": {
+        "value": "TestMona",
+        "description": "Application display name",
+    },
+    "app_logo_url": {
+        "value": "",
+        "description": "Application logo URL",
+    },
+    "organization_name": {
+        "value": "",
+        "description": "Organization display name",
+    },
+    "support_email": {
+        "value": "",
+        "description": "Public support email address",
+    },
+}
+
+APP_NAME_MAX_LENGTH = 80
+APP_LOGO_URL_MAX_LENGTH = 500
+ORGANIZATION_NAME_MAX_LENGTH = 120
+SUPPORT_EMAIL_MAX_LENGTH = 254
+ALLOWED_PASSWORD_COMPLEXITIES = {"low", "medium", "high"}
+EMAIL_PATTERN = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
+
+
+def validate_system_setting_value(key: str, value: str | None) -> str | None:
+    """Validate and normalize known system setting values."""
+    if key == "app_name" and value is None:
+        raise HTTPException(status_code=400, detail="Application name is required")
+
+    normalized_value = value.strip() if value is not None else None
+
+    if key == "app_name":
+        if not normalized_value:
+            raise HTTPException(status_code=400, detail="Application name is required")
+        if len(normalized_value) > APP_NAME_MAX_LENGTH:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Application name must be {APP_NAME_MAX_LENGTH} characters or fewer",
+            )
+        return normalized_value
+
+    if key == "app_logo_url":
+        if not normalized_value:
+            return ""
+        if len(normalized_value) > APP_LOGO_URL_MAX_LENGTH:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Logo URL must be {APP_LOGO_URL_MAX_LENGTH} characters or fewer",
+            )
+        parsed_url = urlparse(normalized_value)
+        if parsed_url.scheme not in {"http", "https"} or not parsed_url.netloc:
+            raise HTTPException(status_code=400, detail="Logo URL must be a valid HTTP or HTTPS URL")
+        return normalized_value
+
+    if key == "organization_name":
+        if not normalized_value:
+            return ""
+        if len(normalized_value) > ORGANIZATION_NAME_MAX_LENGTH:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Organization name must be {ORGANIZATION_NAME_MAX_LENGTH} characters or fewer",
+            )
+        return normalized_value
+
+    if key == "support_email":
+        if not normalized_value:
+            return ""
+        if len(normalized_value) > SUPPORT_EMAIL_MAX_LENGTH or not EMAIL_PATTERN.match(normalized_value):
+            raise HTTPException(status_code=400, detail="Support email must be a valid email address")
+        return normalized_value
+
+    if key in {"maintenance_mode", "signup_enabled", "debug_logging"}:
+        if normalized_value not in {"true", "false"}:
+            raise HTTPException(status_code=400, detail=f"{key} must be true or false")
+        return normalized_value
+
+    if key == "session_timeout":
+        try:
+            timeout_minutes = int(normalized_value or "")
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail="Session timeout must be a number") from exc
+        if timeout_minutes < 1 or timeout_minutes > 1440:
+            raise HTTPException(status_code=400, detail="Session timeout must be between 1 and 1440 minutes")
+        return str(timeout_minutes)
+
+    if key == "password_complexity":
+        if normalized_value not in ALLOWED_PASSWORD_COMPLEXITIES:
+            raise HTTPException(status_code=400, detail="Password complexity must be low, medium, or high")
+        return normalized_value
+
+    if key == "default_timezone":
+        if not normalized_value or len(normalized_value) > 80:
+            raise HTTPException(status_code=400, detail="Default timezone is required and must be 80 characters or fewer")
+        return normalized_value
+
+    return value
 
 
 def register_system_settings_routes(app):
@@ -23,7 +132,7 @@ def register_system_settings_routes(app):
         """Get a system setting that is publicly accessible (no auth required).
         
         SECURITY: Only settings that are safe for public consumption should be accessible here.
-        Currently allowed: signup_enabled (to show/hide signup button on login page)
+        Currently allowed: signup_enabled (to show/hide signup button), public branding settings
         
         Do NOT add settings that could:
         - Reveal system configuration details
@@ -39,7 +148,7 @@ def register_system_settings_routes(app):
         - 404 responses prevent setting enumeration
         """
         # Only allow specific public settings - whitelist approach for security
-        public_settings = ['signup_enabled']
+        public_settings = set(DEFAULT_PUBLIC_SETTINGS.keys())
         
         # Validate key format to prevent path traversal or injection
         if not key or not isinstance(key, str) or not key.replace('_', '').replace('-', '').isalnum():
@@ -53,11 +162,10 @@ def register_system_settings_routes(app):
         if setting is None:
             # Return default value without writing to database (GET must be idempotent)
             # The setting should be created during database initialization/seeding
-            if key == 'signup_enabled':
+            if key in DEFAULT_PUBLIC_SETTINGS:
                 return {
-                    "key": "signup_enabled",
-                    "value": "true",
-                    "description": "Whether public registration is enabled"
+                    "key": key,
+                    **DEFAULT_PUBLIC_SETTINGS[key],
                 }
             raise HTTPException(status_code=404, detail="Setting not found")
         
@@ -134,6 +242,8 @@ def register_system_settings_routes(app):
         
         if not is_admin and not current_user.is_superuser:
             raise HTTPException(status_code=403, detail="Not authorized to create system settings")
+
+        setting.value = validate_system_setting_value(setting.key, setting.value)
         
         db_setting = crud.create_system_setting(db=db, setting=setting)
         if db_setting is None:
@@ -155,7 +265,7 @@ def register_system_settings_routes(app):
             )
             audit_service.create_audit_trail(audit_data)
         except Exception as e:
-            print(f"Failed to create audit trail for system setting creation: {e}")
+            logger.exception("Failed to create audit trail for system setting creation: %s", e)
         
         return db_setting
 
@@ -364,6 +474,9 @@ def register_system_settings_routes(app):
         
         if not is_admin and not current_user.is_superuser:
             raise HTTPException(status_code=403, detail="Not authorized to update system settings")
+
+        if "value" in setting.model_fields_set:
+            setting.value = validate_system_setting_value(key, setting.value)
         
         # Get old value before update
         old_setting = crud.get_system_setting(db, key)

@@ -1,6 +1,6 @@
 """
 Sync service for handling defect synchronization with external issue trackers.
-Maps TestMona defects to GitHub/GitLab/Jira/Azure DevOps/Linear/Asana issues and handles bidirectional sync.
+Maps application defects to GitHub/GitLab/Jira/Azure DevOps/Linear/Asana issues and handles bidirectional sync.
 """
 from typing import Dict, Any, Optional, List
 from datetime import datetime
@@ -15,6 +15,7 @@ from .asana_client import AsanaClient
 
 class SyncService:
     """Service for syncing defects with external issue trackers."""
+    DEFAULT_APP_NAME = "TestMona"
     
     @staticmethod
     def sanitize_text(text: Optional[str]) -> str:
@@ -48,14 +49,26 @@ class SyncService:
             text = text[:max_length] + "\n\n[...truncated due to length limit]"
         
         return text
+
+    @staticmethod
+    def get_app_name(defect: Dict[str, Any]) -> str:
+        """Return the configured app name for external sync references."""
+        return SyncService.sanitize_text(defect.get('app_name') or SyncService.DEFAULT_APP_NAME)
+
+    @staticmethod
+    def build_sync_reference(defect: Dict[str, Any]) -> str:
+        """Build the footer used to identify synced defects in external systems."""
+        app_name = SyncService.get_app_name(defect)
+        defect_id = SyncService.sanitize_text(defect.get('defect_id', 'N/A'))
+        return f"\n---\n*Synced from {app_name} - Defect ID: {defect_id}*"
     
     @staticmethod
     def map_defect_to_github(defect: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Map a TestMona defect to a GitHub issue format.
+        Map an application defect to a GitHub issue format.
         
         Args:
-            defect: TestMona defect data
+            defect: application defect data
             
         Returns:
             Dict with GitHub issue data
@@ -91,8 +104,7 @@ class SyncService:
         if defect.get('root_cause'):
             description_parts.append(f"**Root Cause:**\n{SyncService.sanitize_text(defect['root_cause'])}")
         
-        # Add TestMona reference
-        description_parts.append(f"\n---\n*Synced from TestMona - Defect ID: {SyncService.sanitize_text(defect.get('defect_id', 'N/A'))}*")
+        description_parts.append(SyncService.build_sync_reference(defect))
         
         body = '\n'.join(description_parts)
         
@@ -128,10 +140,10 @@ class SyncService:
     @staticmethod
     def map_defect_to_gitlab(defect: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Map a TestMona defect to a GitLab issue format.
+        Map an application defect to a GitLab issue format.
         
         Args:
-            defect: TestMona defect data
+            defect: application defect data
             
         Returns:
             Dict with GitLab issue data
@@ -160,8 +172,7 @@ class SyncService:
         if defect.get('root_cause'):
             description_parts.append(f"## Root Cause\n{SyncService.sanitize_text(defect['root_cause'])}\n")
         
-        # Add TestMona reference
-        description_parts.append(f"\n---\n*Synced from TestMona - Defect ID: {SyncService.sanitize_text(defect.get('defect_id', 'N/A'))}*")
+        description_parts.append(SyncService.build_sync_reference(defect))
         
         description = '\n'.join(description_parts)
         
@@ -194,10 +205,10 @@ class SyncService:
     @staticmethod
     def map_defect_to_jira(defect: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Map a TestMona defect to a Jira issue format.
+        Map an application defect to a Jira issue format.
         
         Args:
-            defect: TestMona defect data
+            defect: application defect data
             
         Returns:
             Dict with Jira issue data
@@ -235,8 +246,7 @@ class SyncService:
         if defect.get('root_cause'):
             description_parts.append(f"**Root Cause:**\n{SyncService.sanitize_text(defect['root_cause'])}")
         
-        # Add TestMona reference
-        description_parts.append(f"\n---\n*Synced from TestMona - Defect ID: {SyncService.sanitize_text(defect.get('defect_id', 'N/A'))}*")
+        description_parts.append(SyncService.build_sync_reference(defect))
         
         description = '\n'.join(description_parts)
         
@@ -259,7 +269,7 @@ class SyncService:
     @staticmethod
     def map_jira_to_defect(issue: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Map a Jira issue to TestMona defect format.
+        Map a Jira issue to an application defect format.
         
         Args:
             issue: Jira issue data
@@ -321,10 +331,10 @@ class SyncService:
     @staticmethod
     def map_defect_to_azure_devops(defect: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Map a TestMona defect to an Azure DevOps work item format.
+        Map an application defect to an Azure DevOps work item format.
         
         Args:
-            defect: TestMona defect data
+            defect: application defect data
             
         Returns:
             Dict with Azure DevOps work item data
@@ -362,8 +372,7 @@ class SyncService:
         if defect.get('root_cause'):
             description_parts.append(f"**Root Cause:**\n{SyncService.sanitize_text(defect['root_cause'])}")
         
-        # Add TestMona reference
-        description_parts.append(f"\n---\n*Synced from TestMona - Defect ID: {SyncService.sanitize_text(defect.get('defect_id', 'N/A'))}*")
+        description_parts.append(SyncService.build_sync_reference(defect))
         
         description = '\n'.join(description_parts)
         
@@ -386,10 +395,10 @@ class SyncService:
     @staticmethod
     def map_defect_to_linear(defect: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Map a TestMona defect to a Linear issue format.
+        Map an application defect to a Linear issue format.
         
         Args:
-            defect: TestMona defect data
+            defect: application defect data
             
         Returns:
             Dict with Linear issue data
@@ -427,8 +436,7 @@ class SyncService:
         if defect.get('root_cause'):
             description_parts.append(f"**Root Cause:**\n{SyncService.sanitize_text(defect['root_cause'])}")
         
-        # Add TestMona reference
-        description_parts.append(f"\n---\n*Synced from TestMona - Defect ID: {SyncService.sanitize_text(defect.get('defect_id', 'N/A'))}*")
+        description_parts.append(SyncService.build_sync_reference(defect))
         
         description = '\n'.join(description_parts)
         
@@ -451,10 +459,10 @@ class SyncService:
     @staticmethod
     def map_defect_to_asana(defect: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Map a TestMona defect to an Asana task format.
+        Map an application defect to an Asana task format.
         
         Args:
-            defect: TestMona defect data
+            defect: application defect data
             
         Returns:
             Dict with Asana task data
@@ -492,8 +500,7 @@ class SyncService:
         if defect.get('root_cause'):
             description_parts.append(f"**Root Cause:**\n{SyncService.sanitize_text(defect['root_cause'])}")
         
-        # Add TestMona reference
-        description_parts.append(f"\n---\n*Synced from TestMona - Defect ID: {SyncService.sanitize_text(defect.get('defect_id', 'N/A'))}*")
+        description_parts.append(SyncService.build_sync_reference(defect))
         
         notes = '\n'.join(description_parts)
         
@@ -532,7 +539,7 @@ class SyncService:
             else:
                 tags.append(label_name)
         
-        # Map GitHub state to TestMona status
+        # Map GitHub state to the local defect status
         github_state = issue.get('state', 'open')
         if not status:
             if github_state == 'open':
@@ -542,7 +549,7 @@ class SyncService:
         
         return {
             'title': issue.get('title'),
-            'description': issue.get('body', '').split('---')[0].strip(),  # Get content before TestMona reference
+            'description': issue.get('body', '').split('---')[0].strip(),  # Get content before sync reference
             'severity': severity or 'medium',
             'priority': priority or 'medium',
             'status': status,
@@ -555,13 +562,13 @@ class SyncService:
     @staticmethod
     def map_gitlab_to_defect(issue: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Map a GitLab issue to TestMona defect format.
+        Map a GitLab issue to the local defect format.
         
         Args:
             issue: GitLab issue data
             
         Returns:
-            Dict with TestMona defect data
+            Dict with local defect data
         """
         # Extract labels
         labels = issue.get('labels', [])
@@ -580,7 +587,7 @@ class SyncService:
             else:
                 tags.append(label)
         
-        # Map GitLab state to TestMona status
+        # Map GitLab state to the local defect status
         gitlab_state = issue.get('state', 'opened')
         if not status:
             if gitlab_state == 'opened':
@@ -590,7 +597,7 @@ class SyncService:
         
         return {
             'title': issue.get('title'),
-            'description': issue.get('description', '').split('---')[0].strip(),  # Get content before TestMona reference
+            'description': issue.get('description', '').split('---')[0].strip(),  # Get content before sync reference
             'severity': severity or 'medium',
             'priority': priority or 'medium',
             'status': status,
@@ -779,7 +786,7 @@ class SyncService:
         Sync a defect to an external issue tracker.
         
         Args:
-            defect: TestMona defect data
+            defect: application defect data
             integration: Integration configuration
             action: Sync action ('create' or 'update')
             

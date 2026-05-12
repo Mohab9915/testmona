@@ -63,7 +63,9 @@ def register_common_routes(app):
                 {
                     "name": ttd.name,
                     "description": ttd.description,
-                    "is_default": ttd.is_default
+                    "color": ttd.color,
+                    "icon": ttd.icon,
+                    "is_default": ttd.name.strip().lower() == "manual"
                 }
                 for ttd in test_type_definitions
             ]

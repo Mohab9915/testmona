@@ -3,7 +3,7 @@ Test management routes for test suites, sections, cases, runs, results, and step
 """
 
 from fastapi import Depends, HTTPException, Query
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload, selectinload
 from typing import List, Optional
 from sqlalchemy import desc, case, func, cast, Date
 from datetime import datetime, timedelta
@@ -389,7 +389,7 @@ def register_test_management_routes(app):
         return {"message": "Test case section deleted successfully"}
 
     # Test Case Endpoints
-    @app.post("/test-cases", response_model=schemas.TestCase)
+    @app.post("/test-cases", response_model=schemas.TestCaseWithRelations)
     def create_test_case(
         test_case: schemas.TestCaseCreate, 
         db: Session = Depends(get_db),
@@ -450,7 +450,12 @@ def register_test_management_routes(app):
         
         # If project_id is provided, filter test cases by project
         if project_id:
-            query = db.query(models.TestCase).join(models.TestSuite).filter(
+            query = db.query(models.TestCase).options(
+                joinedload(models.TestCase.test_suite).joinedload(models.TestSuite.project),
+                joinedload(models.TestCase.section),
+                joinedload(models.TestCase.creator),
+                selectinload(models.TestCase.custom_field_values)
+            ).join(models.TestSuite).filter(
                 models.TestSuite.project_id == project_id
             )
             if test_suite_id:
@@ -530,7 +535,7 @@ def register_test_management_routes(app):
             count = query.count()
         return {"count": count}
 
-    @app.get("/test-cases/{test_case_id}", response_model=schemas.TestCase)
+    @app.get("/test-cases/{test_case_id}", response_model=schemas.TestCaseWithRelations)
     def read_test_case(test_case_id: int, db: Session = Depends(get_db), current_user: schemas.User = Depends(get_current_active_user)):
         db_test_case = crud.get_test_case(db, test_case_id=test_case_id)
         if db_test_case is None:
@@ -545,7 +550,7 @@ def register_test_management_routes(app):
         
         return db_test_case
 
-    @app.put("/test-cases/{test_case_id}", response_model=schemas.TestCase)
+    @app.put("/test-cases/{test_case_id}", response_model=schemas.TestCaseWithRelations)
     def update_test_case(
         test_case_id: int,
         test_case: schemas.TestCaseUpdate,
@@ -706,7 +711,7 @@ def register_test_management_routes(app):
         current_user: models.User = Depends(get_current_user)
     ):
         """Get revision history for a test case (admin and manager only)"""
-        from sqlalchemy.orm import joinedload
+        from sqlalchemy.orm import joinedload, selectinload
         
         # Check if user is admin or manager (handle both string and enum)
         user_role = str(current_user.role).upper()
@@ -976,8 +981,8 @@ def register_test_management_routes(app):
         if not rbac.has_permission(current_user, "write", test_suite.project_id, db):
             raise HTTPException(status_code=403, detail="Insufficient permissions")
         
-        # Update test case to mark as multistep
-        crud.update_test_case(db, test_case_id, schemas.TestCaseUpdate(is_multistep=True))
+        if steps:
+            crud.update_test_case(db, test_case_id, schemas.TestCaseUpdate(is_multistep=True))
         
         return crud.create_test_case_steps(db, test_case_id=test_case_id, steps=steps)
 
@@ -1513,16 +1518,30 @@ def register_test_management_routes(app):
     @app.get("/test-cases/{test_case_id}/execution-history")
     def get_test_case_execution_history(
         test_case_id: int,
-        limit: int = 50,
+        limit: int = Query(50, ge=1, le=200),
         db: Session = Depends(get_db),
         current_user: schemas.User = Depends(get_current_active_user)
     ):
         """Get execution history for a specific test case across all test runs"""
-        
-        # Get all test results for this test case, ordered by most recent first
-        # Use created_at as fallback if executed_at is null
-        # Use COALESCE to handle NULL executed_at values
-        history = db.query(TestResult).filter(
+
+        test_case = db.query(TestCase).filter(
+            TestCase.id == test_case_id,
+            TestCase.is_deleted == False
+        ).first()
+        if not test_case:
+            raise HTTPException(status_code=404, detail="Test case not found")
+
+        suite = db.query(models.TestSuite).filter(models.TestSuite.id == test_case.test_suite_id).first()
+        if not suite:
+            raise HTTPException(status_code=404, detail="Test suite not found for this test case")
+
+        if not rbac.has_permission(current_user, "read", suite.project_id, db):
+            raise HTTPException(status_code=403, detail="Not authorized to access this test case")
+
+        history = db.query(TestResult).options(
+            joinedload(TestResult.test_run).joinedload(TestRun.project),
+            joinedload(TestResult.executor),
+        ).filter(
             TestResult.test_case_id == test_case_id
         ).order_by(
             desc(case(
@@ -1530,25 +1549,34 @@ def register_test_management_routes(app):
                 else_=TestResult.created_at
             ))
         ).limit(limit).all()
-        
-        # Enrich with test run and user information
+
         result = []
         for item in history:
-            test_run = db.query(TestRun).filter(TestRun.id == item.test_run_id).first()
-            executed_by_user = None
-            if item.executed_by:
-                executed_by_user = db.query(User).filter(User.id == item.executed_by).first()
-            
+            test_run = item.test_run
+            executed_by_user = item.executor
+
             result.append({
                 "id": item.id,
                 "test_run_id": item.test_run_id,
                 "test_run_name": test_run.name if test_run else None,
+                "test_run_status": test_run.status if test_run else None,
+                "test_run_priority": test_run.priority if test_run else None,
+                "test_run_created_at": test_run.created_at if test_run else None,
+                "test_run_started_at": test_run.started_at if test_run else None,
+                "test_run_completed_at": test_run.completed_at if test_run else None,
+                "project_id": test_run.project_id if test_run else None,
+                "project_name": test_run.project.name if test_run and test_run.project else None,
                 "status": item.status.value if hasattr(item.status, 'value') else item.status,
                 "executed_by": executed_by_user.username if executed_by_user else None,
+                "executed_by_full_name": executed_by_user.full_name if executed_by_user else None,
+                "executed_by_email": executed_by_user.email if executed_by_user else None,
                 "executed_by_id": item.executed_by,
                 "executed_at": item.executed_at or item.created_at,
+                "created_at": item.created_at,
+                "updated_at": item.updated_at,
                 "comments": item.comments,
                 "actual_result": item.actual_result,
+                "execution_started_at": item.execution_started_at,
                 "execution_time": item.execution_time,
             })
         

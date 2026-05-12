@@ -41,7 +41,7 @@ class GitHubClient(BaseClient):
         return {
             'Authorization': f'token {self.token}',
             'Accept': 'application/vnd.github.v3+json',
-            'User-Agent': 'TestMona/1.0'
+            'User-Agent': 'TestManagement/1.0'
         }
     
     def get_rate_limit_status_code(self) -> int:

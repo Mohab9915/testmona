@@ -223,7 +223,7 @@ class TestCaseBase(BaseModel):
 
 class TestCaseCreate(TestCaseBase):
     test_suite_id: int
-    test_steps: Optional[List['TestCaseStepCreate']] = None  # Multi-step support
+    test_steps: Optional[List['TestCaseStepCreate']] = None  # Multi-step support; test_case_id is assigned by the API
 
     @model_validator(mode='before')
     @classmethod
@@ -269,6 +269,7 @@ class TestCaseUpdate(BaseModel):
 class TestCase(TestCaseBase):
     id: int
     test_suite_id: int
+    created_by: Optional[int] = None
     created_at: datetime
     updated_at: Optional[datetime] = None
 
@@ -287,7 +288,7 @@ class TestCaseStepBase(BaseModel):
 
 
 class TestCaseStepCreate(TestCaseStepBase):
-    test_case_id: int
+    test_case_id: Optional[int] = None
 
 
 class TestCaseStepUpdate(BaseModel):
@@ -331,11 +332,13 @@ class TestCaseSectionNested(BaseModel):
 class TestCaseWithRelations(TestCaseBase):
     id: int
     test_suite_id: int
+    created_by: Optional[int] = None
     created_at: datetime
     updated_at: Optional[datetime] = None
     test_suite: Optional[TestSuiteNested] = None
     section: Optional[TestCaseSectionNested] = None
     test_steps: List[TestCaseStep] = []
+    custom_field_values: List['CustomFieldValue'] = []
     creator: Optional['User'] = None
 
     class Config:
@@ -403,7 +406,8 @@ class TestResultBase(BaseModel):
     status: str
     actual_result: Optional[str] = None
     comments: Optional[str] = None
-    execution_time: Optional[float] = None
+    execution_time: Optional[float] = Field(None, ge=0, description="Elapsed execution time in seconds")
+    execution_started_at: Optional[datetime] = None
     executed_by: Optional[int] = None
 
 
@@ -416,7 +420,8 @@ class TestResultUpdate(BaseModel):
     status: Optional[str] = None
     actual_result: Optional[str] = None
     comments: Optional[str] = None
-    execution_time: Optional[float] = None
+    execution_time: Optional[float] = Field(None, ge=0, description="Elapsed execution time in seconds")
+    execution_started_at: Optional[datetime] = None
     executed_by: Optional[int] = None
 
 
@@ -636,7 +641,7 @@ class User(UserBase):
 class UserInvitationBase(BaseModel):
     email: EmailStr
     role: str = "TESTER"
-    project_ids: Optional[List[int]] = []
+    project_ids: Optional[List[int]] = Field(default_factory=list, json_schema_extra={"default": []})
 
 
 class UserInvitationCreate(UserInvitationBase):
@@ -651,6 +656,15 @@ class UserInvitation(UserInvitationBase):
     accepted_at: Optional[datetime] = None
     is_used: bool
     created_at: datetime
+
+    @field_validator('project_ids', mode='before')
+    @classmethod
+    def deserialize_project_ids(cls, value: Any) -> List[int]:
+        if value in (None, ''):
+            return []
+        if isinstance(value, str):
+            return [int(project_id.strip()) for project_id in value.split(',') if project_id.strip()]
+        return value
 
     class Config:
         from_attributes = True
@@ -1167,6 +1181,7 @@ class CustomFieldValueCreate(CustomFieldValueBase):
 
 
 class CustomFieldValueUpdate(BaseModel):
+    test_case_id: Optional[int] = None
     value: Optional[str] = None
 
     @model_validator(mode='before')
@@ -1267,21 +1282,53 @@ class JiraIssue(JiraIssueBase):
 
 
 class TestTypeDefinitionBase(BaseModel):
-    name: str
-    description: Optional[str] = None
+    name: str = Field(..., min_length=1, max_length=100)
+    description: Optional[str] = Field(None, max_length=1000)
     color: str = "#3B82F6"
-    icon: str = "🖱️"
+    icon: str = Field("🖱️", min_length=1, max_length=10)
     is_active: bool = True
+
+    @field_validator('name')
+    @classmethod
+    def validate_test_type_name(cls, value: str) -> str:
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError('Test type name is required')
+        return cleaned
+
+    @field_validator('color')
+    @classmethod
+    def validate_test_type_color(cls, value: str) -> str:
+        if not re.fullmatch(r"#[0-9A-Fa-f]{6}", value):
+            raise ValueError('Color must be a valid hex color')
+        return value
 
 class TestTypeDefinitionCreate(TestTypeDefinitionBase):
     created_by: int
 
 class TestTypeDefinitionUpdate(BaseModel):
-    name: Optional[str] = None
-    description: Optional[str] = None
+    name: Optional[str] = Field(None, min_length=1, max_length=100)
+    description: Optional[str] = Field(None, max_length=1000)
     color: Optional[str] = None
-    icon: Optional[str] = None
+    icon: Optional[str] = Field(None, min_length=1, max_length=10)
     is_active: Optional[bool] = None
+
+    @field_validator('name')
+    @classmethod
+    def validate_test_type_update_name(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return value
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError('Test type name is required')
+        return cleaned
+
+    @field_validator('color')
+    @classmethod
+    def validate_test_type_update_color(cls, value: Optional[str]) -> Optional[str]:
+        if value is not None and not re.fullmatch(r"#[0-9A-Fa-f]{6}", value):
+            raise ValueError('Color must be a valid hex color')
+        return value
 
 class TestTypeDefinition(TestTypeDefinitionBase):
     id: int
@@ -1292,23 +1339,55 @@ class TestTypeDefinition(TestTypeDefinitionBase):
 
 
 class PriorityDefinitionBase(BaseModel):
-    name: str
-    value: int
+    name: str = Field(..., min_length=1, max_length=100)
+    value: int = Field(..., ge=1, le=10)
     color: str = "#F59E0B"
-    description: Optional[str] = None
+    description: Optional[str] = Field(None, max_length=1000)
     is_default: bool = False
     is_active: bool = True
+
+    @field_validator('name')
+    @classmethod
+    def validate_priority_name(cls, value: str) -> str:
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError('Priority name is required')
+        return cleaned
+
+    @field_validator('color')
+    @classmethod
+    def validate_priority_color(cls, value: str) -> str:
+        if not re.fullmatch(r"#[0-9A-Fa-f]{6}", value):
+            raise ValueError('Color must be a valid hex color')
+        return value
 
 class PriorityDefinitionCreate(PriorityDefinitionBase):
     created_by: int
 
 class PriorityDefinitionUpdate(BaseModel):
-    name: Optional[str] = None
-    value: Optional[int] = None
+    name: Optional[str] = Field(None, min_length=1, max_length=100)
+    value: Optional[int] = Field(None, ge=1, le=10)
     color: Optional[str] = None
-    description: Optional[str] = None
+    description: Optional[str] = Field(None, max_length=1000)
     is_default: Optional[bool] = None
     is_active: Optional[bool] = None
+
+    @field_validator('name')
+    @classmethod
+    def validate_priority_update_name(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return value
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError('Priority name is required')
+        return cleaned
+
+    @field_validator('color')
+    @classmethod
+    def validate_priority_update_color(cls, value: Optional[str]) -> Optional[str]:
+        if value is not None and not re.fullmatch(r"#[0-9A-Fa-f]{6}", value):
+            raise ValueError('Color must be a valid hex color')
+        return value
 
 class PriorityDefinition(PriorityDefinitionBase):
     id: int

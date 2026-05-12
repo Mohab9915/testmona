@@ -641,6 +641,7 @@ class TestResult(Base):
     actual_result = Column(Text)
     comments = Column(Text)
     execution_time = Column(Float)
+    execution_started_at = Column(DateTime(timezone=True))
     executed_at = Column(DateTime(timezone=True), server_default=func.now())
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
