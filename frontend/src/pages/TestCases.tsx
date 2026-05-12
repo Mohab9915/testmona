@@ -1,7 +1,7 @@
 import { useState, useRef, useMemo, useEffect, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { api, testCasesAPI, testSuitesAPI, sectionsAPI, importExportAPI, userPreferencesAPI, requirementsAPI } from '@/lib/api';
+import { api, testCasesAPI, testSuitesAPI, sectionsAPI, importExportAPI, userPreferencesAPI, requirementsAPI, testRunsAPI, testResultsAPI } from '@/lib/api';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -2448,14 +2448,40 @@ export function TestCases() {
     }
   };
 
-  const handleBulkExecute = () => {
+  const handleBulkExecute = async () => {
     if (selectedTestCases.length === 0) return;
     
-    // Navigate to test execution page with selected test cases
     if (projectId) {
-      // Create a comma-separated list of test case IDs
-      const testCaseIds = selectedTestCases.join(',');
-      navigate(`/projects/${projectId}/test-execution?testCases=${testCaseIds}`);
+      try {
+        // Create a new test run for the selected test cases
+        const newRun = await testRunsAPI.create({
+          name: `Bulk Execution - ${selectedTestCases.length} test cases`,
+          description: `Execution run for ${selectedTestCases.length} selected test cases`,
+          project_id: parseInt(projectId),
+          status: 'in_progress',
+          priority: 'medium',
+        });
+
+        // Create test results for all selected test cases
+        const testCaseId = selectedTestCases[0]; // Start with the first test case
+        await testResultsAPI.create({
+          test_run_id: newRun.id,
+          test_case_id: testCaseId,
+          status: 'pending',
+          actual_result: '',
+          comments: '',
+        });
+
+        // Navigate to execute the first test case
+        navigate(`/projects/${projectId}/test-runs/${newRun.id}/test-cases/${testCaseId}`);
+      } catch (error) {
+        console.error('Failed to create test run for bulk execution:', error);
+        toast({
+          title: t('error'),
+          description: t('failedToCreateRunForExecution'),
+          variant: "destructive",
+        });
+      }
     } else {
       toast({
         title: t('error'),
@@ -2506,7 +2532,11 @@ export function TestCases() {
   };
 
   const handleExecute = (testCase: TestCase) => {
-    alert(`Executing test case: ${testCase.title}`);
+    if (projectId) {
+      navigate(`/projects/${projectId}/test-cases/${testCase.id}/execute`);
+    } else {
+      navigate(`/test-cases/${testCase.id}/execute`);
+    }
   };
 
   // Helper function to translate field names
