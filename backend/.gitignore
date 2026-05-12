@@ -222,7 +222,7 @@ test_notifications.py
 simple_test.py
 
 # Docker
-.dockerignore
+!.dockerignore
 
 # Environment files
 .env.local
