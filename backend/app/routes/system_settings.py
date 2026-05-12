@@ -37,6 +37,10 @@ DEFAULT_PUBLIC_SETTINGS = {
         "value": "",
         "description": "Public support email address",
     },
+    "demo_credentials_enabled": {
+        "value": "true",
+        "description": "Whether demo credentials are shown on login page",
+    },
 }
 
 APP_NAME_MAX_LENGTH = 80
@@ -123,6 +127,42 @@ def validate_system_setting_value(key: str, value: str | None) -> str | None:
 
 def register_system_settings_routes(app):
     """Register system settings routes with the FastAPI app."""
+    
+    # Demo credentials status endpoint (must be before generic {key} route)
+    @app.get("/system/settings/public/demo-credentials-status")
+    def get_demo_credentials_status(db: Session = Depends(get_db)):
+        """Check if demo credentials should be shown on login page.
+        
+        Returns false if any admin user has changed their default password (force_password_change = false),
+        indicating that the system has been configured and demo credentials should be hidden.
+        Returns true if all admin users still have force_password_change = true, indicating fresh install.
+        
+        SECURITY: This endpoint is safe to expose publicly as it only reveals whether demo credentials
+        should be shown, not sensitive user information.
+        """
+        try:
+            from ..models import User, Role
+            
+            # Check if any admin user has changed their password
+            admin_with_changed_password = db.query(User).filter(
+                User.role == Role.ADMIN.value,
+                User.force_password_change == False
+            ).first()
+            
+            # If any admin has changed their password, hide demo credentials
+            show_demo_credentials = admin_with_changed_password is None
+            
+            return {
+                "show_demo_credentials": show_demo_credentials,
+                "reason": "fresh_install" if show_demo_credentials else "password_changed"
+            }
+        except Exception as e:
+            logger.error(f"Error checking demo credentials status: {e}")
+            # Default to showing demo credentials on error
+            return {
+                "show_demo_credentials": True,
+                "reason": "error"
+            }
     
     # Public endpoint for settings that need to be accessible without authentication
     # SECURITY NOTE: Only add settings here that are safe to expose to unauthenticated users

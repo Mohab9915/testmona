@@ -17,15 +17,17 @@ export function Login() {
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [signupEnabled, setSignupEnabled] = useState(true);
+  const [showDemoCredentials, setShowDemoCredentials] = useState(true);
   
   const navigate = useNavigate();
   const { login } = useAuthStore();
   const { t, isRTL } = useTranslation();
   const { appName, appLogoUrl } = useAppName(false);
   
-  // Check if signup is enabled
+  // Check if signup is enabled and demo credentials status
   useEffect(() => {
     checkSignupEnabled();
+    checkDemoCredentialsStatus();
   }, []);
   
   const checkSignupEnabled = async () => {
@@ -41,6 +43,22 @@ export function Login() {
     } catch (error) {
       // Default to enabled if setting doesn't exist or request fails
       setSignupEnabled(true);
+    }
+  };
+
+  const checkDemoCredentialsStatus = async () => {
+    try {
+      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/system/settings/public/demo-credentials-status`);
+      if (response.ok) {
+        const status = await response.json();
+        setShowDemoCredentials(status.show_demo_credentials);
+      } else {
+        // Default to showing demo credentials if request fails
+        setShowDemoCredentials(true);
+      }
+    } catch (error) {
+      // Default to showing demo credentials if request fails
+      setShowDemoCredentials(true);
     }
   };
 
@@ -168,11 +186,13 @@ export function Login() {
           </CardContent>
         </Card>
 
-        <div className="rounded-lg border border-gray-200 bg-white/80 px-4 py-3 text-center text-sm text-gray-600 shadow-sm backdrop-blur-sm dark:border-gray-700 dark:bg-gray-800/80 dark:text-gray-300">
-          <p className="font-medium text-gray-800 dark:text-gray-100">{t('demoCredentials')}</p>
-          <p className="mt-1">{t('emailLabelValue', { value: 'demo@testmona.com' })}</p>
-          <p>{t('passwordLabelValue', { value: 'demo123' })}</p>
-        </div>
+        {showDemoCredentials && (
+          <div className="rounded-lg border border-gray-200 bg-white/80 px-4 py-3 text-center text-sm text-gray-600 shadow-sm backdrop-blur-sm dark:border-gray-700 dark:bg-gray-800/80 dark:text-gray-300">
+            <p className="font-medium text-gray-800 dark:text-gray-100">{t('demoCredentials')}</p>
+            <p className="mt-1">{t('emailLabelValue', { value: 'demo@testmona.com' })}</p>
+            <p>{t('passwordLabelValue', { value: 'demo123' })}</p>
+          </div>
+        )}
       </div>
     </div>
   );
