@@ -52,6 +52,14 @@ def apply_test_result_execution_timing(test_result: Any, incoming_data: Mapping[
         # Handle pause timing
         if execution_state == "paused":
             setattr(test_result, "paused_at", _utc_now())
+            # Update execution_time to current elapsed time when pausing
+            started_at = getattr(test_result, "execution_started_at", None)
+            if started_at:
+                now = _utc_now()
+                elapsed_seconds = max(0.0, (now - _as_aware_utc(started_at)).total_seconds())
+                elapsed_seconds -= getattr(test_result, "total_paused_time", 0)
+                elapsed_seconds += getattr(test_result, "manual_time_adjustment", 0)
+                setattr(test_result, "execution_time", round(elapsed_seconds, 2))
         elif execution_state == "running":
             # Resume from pause
             paused_at = getattr(test_result, "paused_at", None)
@@ -62,9 +70,28 @@ def apply_test_result_execution_timing(test_result: Any, incoming_data: Mapping[
                 total_paused_time += pause_duration
                 setattr(test_result, "total_paused_time", total_paused_time)
                 setattr(test_result, "paused_at", None)
+                # Update execution_time to current elapsed time when resuming
+                started_at = getattr(test_result, "execution_started_at", None)
+                if started_at:
+                    now = _utc_now()
+                    elapsed_seconds = max(0.0, (now - _as_aware_utc(started_at)).total_seconds())
+                    elapsed_seconds -= total_paused_time
+                    elapsed_seconds += getattr(test_result, "manual_time_adjustment", 0)
+                    setattr(test_result, "execution_time", round(elapsed_seconds, 2))
     
-    # Only apply timing logic for completed statuses
+        
+    # Only apply timing logic for completed statuses and not during pause/resume state changes
+    # Skip timing calculation if only execution_state is changing (pause/resume operations)
     if not _is_completed_result_status(status):
+        return
+    
+    # Additional check: skip timing calculation if this is a pause/resume operation
+    # even for completed statuses, to preserve manual time additions
+    keys_incoming = set(incoming_data.keys())
+    if keys_incoming == {"execution_state"} or (
+        len(keys_incoming) == 1 and "execution_state" in keys_incoming
+    ):
+        # Only execution_state is changing (pause/resume) - don't recalculate timing
         return
 
     now = _utc_now()
@@ -98,7 +125,11 @@ def apply_test_result_execution_timing(test_result: Any, incoming_data: Mapping[
         setattr(test_result, "execution_time", round(elapsed_seconds, 2))
     else:
         # Use explicit execution_time but ensure it's not negative
+        # This prevents override when manual time is added during pause/resume
         safe_execution_time = max(0.0, float(explicit_execution_time))
         setattr(test_result, "execution_time", round(safe_execution_time, 2))
+        # Don't update executed_at when explicit execution_time is provided
+        # This prevents timestamp conflicts during manual time adjustments
+        return
 
     setattr(test_result, "executed_at", now)

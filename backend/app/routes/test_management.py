@@ -882,6 +882,72 @@ def register_test_management_routes(app):
         
         return {"message": "Test run deleted successfully"}
 
+    @app.put("/test-runs/{test_run_id}/reset-time")
+    def reset_test_run_time(
+        test_run_id: int,
+        db: Session = Depends(get_db),
+        current_user: schemas.User = Depends(get_current_active_user)
+    ):
+        """Reset all timing data for a test run and its test results"""
+        # Get the test run
+        db_test_run = crud.get_test_run(db, test_run_id=test_run_id)
+        if db_test_run is None:
+            raise HTTPException(status_code=404, detail="Test run not found")
+        
+        # Check if user has permission to update this test run's project
+        if not rbac.has_permission(current_user, "write", db_test_run.project_id, db):
+            raise HTTPException(status_code=403, detail="Not authorized to reset time for this test run")
+        
+        try:
+            # Reset test run timing fields
+            db_test_run.started_at = None
+            db_test_run.completed_at = None
+            db.commit()
+            
+            # Reset all test result timing fields for this test run
+            test_results = db.query(models.TestResult).filter(
+                models.TestResult.test_run_id == test_run_id
+            ).all()
+            
+            for result in test_results:
+                result.execution_time = None
+                result.execution_started_at = None
+                result.executed_at = func.now()  # Reset to current time
+                result.execution_state = "idle"
+                result.paused_at = None
+                result.total_paused_time = 0.0
+                result.manual_time_adjustment = 0.0
+            
+            db.commit()
+            
+            # Create audit trail
+            try:
+                from ..services.audit_service import get_audit_service
+                from ..schemas_audit import AuditTrailCreate
+                from ..models import AuditAction, EntityType
+                audit_service = get_audit_service(db)
+                audit_data = AuditTrailCreate(
+                    user_id=current_user.id if current_user else None,
+                    action=AuditAction.UPDATE.value,
+                    entity_type=EntityType.TEST_RUN.value,
+                    entity_id=db_test_run.id,
+                    project_id=db_test_run.project_id,
+                    description=f"Test run time reset: {db_test_run.name or 'Untitled'}",
+                )
+                audit_service.create_audit_trail(audit_data)
+            except Exception as e:
+                print(f"Failed to create audit trail for test run time reset: {e}")
+            
+            return {
+                "message": "Test run time reset successfully",
+                "test_run_id": test_run_id,
+                "test_results_reset": len(test_results)
+            }
+            
+        except Exception as e:
+            db.rollback()
+            raise HTTPException(status_code=500, detail=f"Failed to reset test run time: {str(e)}")
+
     @app.get("/projects/{project_id}/sections/hierarchy")
     def get_project_section_hierarchy(
         project_id: int,
@@ -1514,6 +1580,153 @@ def register_test_management_routes(app):
         # Perform the deletion
         db_test_result = crud.delete_test_result(db, test_result_id=test_result_id)
         return {"message": "Test result deleted successfully"}
+
+    # Pause/Resume Execution Endpoints
+    @app.put("/test-results/{test_result_id}/pause")
+    def pause_test_execution(
+        test_result_id: int, 
+        db: Session = Depends(get_db), 
+        current_user: schemas.User = Depends(get_current_active_user)
+    ):
+        """Pause a test execution"""
+        db_test_result = crud.get_test_result(db, test_result_id=test_result_id)
+        if db_test_result is None:
+            raise HTTPException(status_code=404, detail="Test result not found")
+        
+        # Check project access
+        test_run = crud.get_test_run(db, test_run_id=db_test_result.test_run_id)
+        if test_run and not rbac.has_permission(current_user, "write", test_run.project_id, db):
+            raise HTTPException(status_code=403, detail="Not authorized to pause this test result")
+        
+        # Update execution state to paused
+        update_data = {"execution_state": "paused"}
+        crud.update_test_result(db, test_result_id, schemas.TestResultUpdate(**update_data))
+        
+        return {"message": "Test execution paused", "execution_state": "paused"}
+
+    @app.put("/test-results/{test_result_id}/resume")
+    def resume_test_execution(
+        test_result_id: int, 
+        db: Session = Depends(get_db), 
+        current_user: schemas.User = Depends(get_current_active_user)
+    ):
+        """Resume a paused test execution"""
+        db_test_result = crud.get_test_result(db, test_result_id=test_result_id)
+        if db_test_result is None:
+            raise HTTPException(status_code=404, detail="Test result not found")
+        
+        # Check project access
+        test_run = crud.get_test_run(db, test_run_id=db_test_result.test_run_id)
+        if test_run and not rbac.has_permission(current_user, "write", test_run.project_id, db):
+            raise HTTPException(status_code=403, detail="Not authorized to resume this test result")
+        
+        # Update execution state to running
+        update_data = {"execution_state": "running"}
+        crud.update_test_result(db, test_result_id, schemas.TestResultUpdate(**update_data))
+        
+        return {"message": "Test execution resumed", "execution_state": "running"}
+
+    @app.put("/test-results/{test_result_id}/add-time")
+    def add_manual_time(
+        test_result_id: int,
+        time_data: dict,  # Expect {"hours": float}
+        db: Session = Depends(get_db),
+        current_user: schemas.User = Depends(get_current_active_user)
+    ):
+        """Add manual time adjustment to test execution"""
+        db_test_result = crud.get_test_result(db, test_result_id=test_result_id)
+        if db_test_result is None:
+            raise HTTPException(status_code=404, detail="Test result not found")
+        
+        # Check project access
+        test_run = crud.get_test_run(db, test_run_id=db_test_result.test_run_id)
+        if test_run and not rbac.has_permission(current_user, "write", test_run.project_id, db):
+            raise HTTPException(status_code=403, detail="Not authorized to modify this test result")
+        
+        # Validate input
+        hours = time_data.get("hours", 0)
+        if hours <= 0 or hours > 24:
+            raise HTTPException(status_code=400, detail="Hours must be between 0 and 24")
+        
+        # Add manual time adjustment
+        current_adjustment = db_test_result.manual_time_adjustment or 0
+        current_execution_time = db_test_result.execution_time or 0
+        additional_seconds = hours * 3600
+        
+        # If currently paused, don't let timing logic recalculate on next update
+        # Set explicit execution_time to prevent override
+        update_data = {
+            "manual_time_adjustment": current_adjustment + additional_seconds,
+            "execution_time": current_execution_time + additional_seconds
+        }
+        
+        # If paused, also update the execution_state to maintain pause
+        if db_test_result.execution_state == "paused":
+            # Don't change execution_state, just update timing fields
+            pass
+            
+        crud.update_test_result(db, test_result_id, schemas.TestResultUpdate(**update_data))
+        
+        return {
+            "message": f"Added {hours} hours to execution time",
+            "total_manual_adjustment": current_adjustment + additional_seconds
+        }
+
+    @app.put("/test-results/{test_result_id}/reset-time")
+    def reset_test_result_time(
+        test_result_id: int,
+        db: Session = Depends(get_db),
+        current_user: schemas.User = Depends(get_current_active_user)
+    ):
+        """Reset timing data for a specific test result"""
+        db_test_result = crud.get_test_result(db, test_result_id=test_result_id)
+        if db_test_result is None:
+            raise HTTPException(status_code=404, detail="Test result not found")
+        
+        # Check project access
+        test_run = crud.get_test_run(db, test_run_id=db_test_result.test_run_id)
+        if test_run and not rbac.has_permission(current_user, "write", test_run.project_id, db):
+            raise HTTPException(status_code=403, detail="Not authorized to reset time for this test result")
+        
+        try:
+            # Reset timing fields for this specific test result only
+            update_data = {
+                "execution_time": None,
+                "execution_started_at": None,
+                "execution_state": "idle",
+                "paused_at": None,
+                "total_paused_time": 0.0,
+                "manual_time_adjustment": 0.0,
+                "executed_at": func.now()  # Reset to current time
+            }
+            crud.update_test_result(db, test_result_id, schemas.TestResultUpdate(**update_data))
+            
+            # Create audit trail
+            try:
+                from ..services.audit_service import get_audit_service
+                from ..schemas_audit import AuditTrailCreate
+                from ..models import AuditAction, EntityType
+                audit_service = get_audit_service(db)
+                audit_data = AuditTrailCreate(
+                    user_id=current_user.id if current_user else None,
+                    action=AuditAction.UPDATE.value,
+                    entity_type=EntityType.TEST_RESULT.value,
+                    entity_id=db_test_result.id,
+                    project_id=test_run.project_id,
+                    description=f"Test result time reset: {db_test_result.test_case.title if db_test_result.test_case else 'Test Case'}",
+                )
+                audit_service.create_audit_trail(audit_data)
+            except Exception as e:
+                print(f"Failed to create audit trail for test result time reset: {e}")
+            
+            return {
+                "message": "Test result time reset successfully",
+                "test_result_id": test_result_id
+            }
+            
+        except Exception as e:
+            db.rollback()
+            raise HTTPException(status_code=500, detail=f"Failed to reset test result time: {str(e)}")
 
     @app.get("/test-cases/{test_case_id}/execution-history")
     def get_test_case_execution_history(

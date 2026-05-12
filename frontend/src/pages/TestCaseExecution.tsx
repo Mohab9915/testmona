@@ -74,6 +74,7 @@ export function TestCaseExecution() {
   const [manualTimeEntry, setManualTimeEntry] = useState('');
   const [showManualTimeDialog, setShowManualTimeDialog] = useState(false);
   const [executionState, setExecutionState] = useState<'idle' | 'running' | 'paused' | 'completed'>('idle');
+  const [isRecentlyPaused, setIsRecentlyPaused] = useState(false);
   const [defectTouchedFields, setDefectTouchedFields] = useState<Record<string, boolean>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -105,12 +106,8 @@ export function TestCaseExecution() {
   const setExecutionStart = (startedAt: string) => {
     setExecutionStartedAtRef(startedAt);
     setExecutionStartedAt(startedAt);
-    const startedAtTime = new Date(startedAt).getTime();
-    // Calculate elapsed time ensuring it's never negative
-    const now = Date.now();
-    const rawElapsed = Math.max(0, (now - startedAtTime) / 1000);
-    const adjustedElapsed = Math.max(0, rawElapsed - totalPausedTime - manualTimeAdjustment);
-    setElapsedSeconds(adjustedElapsed);
+    // Don't calculate elapsed time here - let the timer handle it
+    // The elapsed time will be set from backend data when the component loads
   };
 
   const ensureExecutionTimerStarted = async (result?: any) => {
@@ -128,11 +125,15 @@ export function TestCaseExecution() {
       setElapsedSeconds(totalTime);
       setManualTimeAdjustment(manualAdjustment);
       
-      // Restore pause state
-      if (result.paused_at) {
+      // Restore pause state based on backend execution_state
+      const backendExecutionState = result.execution_state;
+      if (backendExecutionState === 'paused') {
         setPausedAt(result.paused_at);
         setIsPaused(true);
         setExecutionState('paused');
+      } else if (backendExecutionState === 'idle' || backendExecutionState === 'running') {
+        setIsPaused(false);
+        setPausedAt(null);
       }
     }
 
@@ -146,19 +147,70 @@ export function TestCaseExecution() {
   };
 
   useEffect(() => {
-    if (!executionStartedAt || isPaused || executionState === 'completed') return;
+    if (!executionStartedAt || isPaused || executionState === 'completed' || executionState === 'paused') return;
 
+    let secondsSinceLastSync = 0;
     const intervalId = window.setInterval(() => {
-      const startedAtTime = new Date(executionStartedAt).getTime();
-      // Calculate elapsed time ensuring it's never negative
-      const now = Date.now();
-      const rawElapsed = Math.max(0, (now - startedAtTime) / 1000);
-      const adjustedElapsed = Math.max(0, rawElapsed - totalPausedTime - manualTimeAdjustment);
-      setElapsedSeconds(adjustedElapsed);
+      // Debug: Log timer state to identify issues
+      if (isPaused) {
+        return;
+      }
+      
+      // Simply increment the existing elapsed time by 1 second
+      // This avoids timestamp calculation issues and trusts the backend's execution_time
+      setElapsedSeconds(prev => Math.max(0, prev + 1));
+      
+      // Sync with backend every 30 seconds to ensure consistency
+      // Only sync if not recently paused/resumed (to avoid overriding immediate state changes)
+      secondsSinceLastSync++;
+      if (secondsSinceLastSync >= 30 && testRunId && testCaseId && !isRecentlyPaused) {
+        secondsSinceLastSync = 0;
+        testResultsAPI.getAll(parseInt(testRunId), parseInt(testCaseId))
+          .then(results => {
+            if (results.length > 0) {
+              const result = results[0];
+              // Only sync if backend state matches current execution state
+              if (result.execution_state === executionState) {
+                setElapsedSeconds(result.execution_time || 0);
+                setManualTimeAdjustment(result.manual_time_adjustment || 0);
+                setTotalPausedTime(result.total_paused_time || 0);
+              }
+            }
+          })
+          .catch(error => console.error('Failed to sync timer:', error));
+      }
     }, 1000);
 
-    return () => window.clearInterval(intervalId);
-  }, [executionStartedAt, isPaused, totalPausedTime, manualTimeAdjustment, executionState]);
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [executionStartedAt, isPaused, executionState, testRunId, testCaseId]);
+
+  
+  // When execution state changes to completed, load the final execution time from backend
+  useEffect(() => {
+    if (executionState === 'completed' && testRunId && testCaseId) {
+      const loadFinalExecutionTime = async () => {
+        try {
+          const existingResults = await testResultsAPI.getAll(
+            parseInt(testRunId), 
+            parseInt(testCaseId)
+          );
+          if (existingResults.length > 0) {
+            const result = existingResults[0];
+            // Use the backend's calculated execution_time which includes manual adjustments
+            const totalTime = result.execution_time || 0;
+            const manualAdjustment = result.manual_time_adjustment || 0;
+            setElapsedSeconds(totalTime);
+            setManualTimeAdjustment(manualAdjustment);
+          }
+        } catch (error) {
+          console.error('Failed to load final execution time:', error);
+        }
+      };
+      loadFinalExecutionTime();
+    }
+  }, [executionState, testRunId, testCaseId]);
 
   // Load test case and test run data
   useEffect(() => {
@@ -270,8 +322,6 @@ export function TestCaseExecution() {
       try {
         // Load all users for assignee options
         const allUsers = await usersAPI.getAll();
-        console.log('👥 Loaded users:', allUsers);
-        console.log('👤 Current user:', currentUser);
         setUsers(allUsers);
         
         // Set current user as default assignee if not already set
@@ -287,8 +337,6 @@ export function TestCaseExecution() {
             title: r.test_case?.title || `Test Case ${r.test_case_id}`
           }));
           setAllTestCases(testCasesInRun);
-          console.log('Loaded test cases:', testCasesInRun);
-          console.log('Current test case ID:', testCaseId);
         }
       } catch (error) {
         console.error('Failed to load initial data:', error);
@@ -312,7 +360,6 @@ export function TestCaseExecution() {
       
       setIsLoading(true);
       try {
-        console.log('🔍 Loading existing execution for test case:', testCaseId);
         const existingResults = await testResultsAPI.getAll(
           parseInt(testRunId), 
           parseInt(testCaseId)
@@ -320,7 +367,6 @@ export function TestCaseExecution() {
         
         if (existingResults.length > 0) {
           const result = existingResults[0];
-          console.log('✅ Found existing execution:', result);
           
           // Map status values
           const statusMap: { [key: string]: string } = {
@@ -341,8 +387,12 @@ export function TestCaseExecution() {
           setAssignee(result.executed_by?.toString() || '');
           await ensureExecutionTimerStarted(result);
           
-          // Set execution state based on result status
-          if (isCompletedResultStatus(result.status)) {
+          // Set execution state based on backend execution_state first, then fallback to status logic
+          const backendExecutionState = result.execution_state;
+          if (backendExecutionState) {
+            setExecutionState(backendExecutionState);
+            setIsPaused(backendExecutionState === 'paused');
+          } else if (isCompletedResultStatus(result.status)) {
             setExecutionState('completed');
             setIsPaused(true);
           } else {
@@ -363,10 +413,7 @@ export function TestCaseExecution() {
             setIsPaused(true);
             setExecutionState('paused');
           }
-          
-          console.log('✅ Loaded existing status:', mappedStatus, 'Total time:', totalTime);
         } else {
-          console.log('📝 No existing execution found, starting fresh');
           setExecutionStatus('pending');
           setExecutionNotes('');
           setAssignee('');
@@ -388,7 +435,6 @@ export function TestCaseExecution() {
       if (!projectId || !testCaseId) return;
       
       try {
-        console.log('🔍 Loading existing defects for test case:', testCaseId);
         const allDefects = await defectsAPI.getAll(parseInt(projectId));
         
         // Filter defects for this test case
@@ -397,7 +443,6 @@ export function TestCaseExecution() {
         );
         
         setDefects(testCaseDefects);
-        console.log(`✅ Loaded ${testCaseDefects.length} defects for test case`);
       } catch (error) {
         console.error('❌ Failed to load existing defects:', error);
         setDefects([]);
@@ -529,16 +574,7 @@ export function TestCaseExecution() {
   };
 
   const handleSaveExecution = async () => {
-    console.log('🔥 handleSaveExecution called!');
-    
     try {
-      // Log the current state before saving
-      console.log('=== SAVING EXECUTION ===');
-      console.log('Test Run ID:', testRunId);
-      console.log('Test Case ID:', testCaseId);
-      console.log('Execution Status:', executionStatus);
-      console.log('Execution Notes:', executionNotes);
-      console.log('Assignee:', assignee);
 
       // Validate required fields
       if (!testRunId || !testCaseId) {
@@ -578,7 +614,6 @@ export function TestCaseExecution() {
         logs: executionLogs
       };
 
-      console.log('📤 Prepared execution data:', executionData);
       const authToken = localStorage.getItem('token');
       const requestHeaders: Record<string, string> = {
         'Content-Type': 'application/json',
@@ -586,7 +621,6 @@ export function TestCaseExecution() {
       };
 
       // First, let's test if the backend is reachable
-      console.log('🔍 Testing backend connection...');
       try {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
@@ -599,23 +633,19 @@ export function TestCaseExecution() {
         });
         
         clearTimeout(timeoutId);
-        console.log('✅ Backend test response status:', testResponse.status);
         if (!testResponse.ok) {
           throw new Error(`Backend returned ${testResponse.status}`);
         }
       } catch (connectionError) {
         console.error('❌ Backend connection failed:', connectionError);
-        console.log('⚠️ Skipping connection test and trying direct API call...');
         // Don't return here, continue with the main logic
       }
 
       // Check if a test result already exists for this test case and test run
-      console.log('🔍 Checking for existing results...');
       
       let savedResult: any = null;
       
       // Try direct fetch first to see if axios is the issue
-      console.log('🔍 Testing direct fetch...');
       try {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
@@ -633,14 +663,11 @@ export function TestCaseExecution() {
           throw new Error(`Fetch existing result failed: ${directResponse.status} - ${errorText}`);
         }
         const directData = await directResponse.json();
-        console.log('✅ Direct fetch results:', directData);
         const existingResults = directData;
         
         if (existingResults.length > 0) {
           // Update existing result using direct fetch
-          console.log('🔄 Updating existing result with direct fetch...');
           const existingResult = existingResults[0];
-          console.log('📤 Sending UPDATE request:', existingResult.id, executionData);
           
           const updateController = new AbortController();
           const updateTimeoutId = setTimeout(() => updateController.abort(), 10000);
@@ -662,15 +689,10 @@ export function TestCaseExecution() {
           }
           
           savedResult = await updateResponse.json();
-          console.log('✅ Updated existing test result:', savedResult);
         } else {
           // Create new result using direct fetch
-          console.log('➕ Creating new result with direct fetch...');
-          console.log('📤 Sending CREATE request:', executionData);
           
           const requestBody = JSON.stringify(executionData);
-          console.log('📤 Request body JSON:', requestBody);
-          console.log('📤 Request body length:', requestBody.length);
           
           const createController = new AbortController();
           const createTimeoutId = setTimeout(() => createController.abort(), 10000);
@@ -685,9 +707,6 @@ export function TestCaseExecution() {
           
           clearTimeout(createTimeoutId);
           
-          console.log('📤 Response status:', createResponse.status);
-          console.log('📤 Response headers:', createResponse.headers);
-          
           if (!createResponse.ok) {
             const errorText = await createResponse.text();
             console.error('❌ Error response body:', errorText);
@@ -695,16 +714,13 @@ export function TestCaseExecution() {
           }
           
           savedResult = await createResponse.json();
-          console.log('✅ Created new test result:', savedResult);
         }
         
         // Also test with axios API for comparison
-        console.log('🔍 Testing axios API...');
         const axiosResults = await testResultsAPI.getAll(
           parseInt(testRunId || '0'), 
           parseInt(testCaseId || '0')
         );
-        console.log('📋 Axios results found:', axiosResults);
         
       } catch (fetchError) {
         console.error('❌ Direct fetch failed:', fetchError);
@@ -746,7 +762,6 @@ export function TestCaseExecution() {
         console.error('Failed to refresh execution history:', historyError);
       }
 
-      console.log('🎉 === SAVE COMPLETED SUCCESSFULLY ===');
       toast({
         title: t('executionSaved'),
         description: t('executionSavedDescription'),
@@ -867,10 +882,8 @@ export function TestCaseExecution() {
 
   // Navigation functions
   const handleNextTestCase = () => {
-    console.log('Next clicked - currentIndex:', currentIndex, 'hasNext:', hasNext, 'allTestCases:', allTestCases);
     if (hasNext && currentIndex >= 0) {
       const nextCase = allTestCases[currentIndex + 1];
-      console.log('Next case:', nextCase);
       if (nextCase) {
         navigate(`/projects/${projectId}/test-runs/${testRunId}/test-cases/${nextCase.id}`);
       }
@@ -878,10 +891,8 @@ export function TestCaseExecution() {
   };
 
   const handlePreviousTestCase = () => {
-    console.log('Previous clicked - currentIndex:', currentIndex, 'hasPrevious:', hasPrevious);
     if (hasPrevious && currentIndex >= 0) {
       const prevCase = allTestCases[currentIndex - 1];
-      console.log('Previous case:', prevCase);
       if (prevCase) {
         navigate(`/projects/${projectId}/test-runs/${testRunId}/test-cases/${prevCase.id}`);
       }
@@ -934,12 +945,30 @@ export function TestCaseExecution() {
         });
         
         if (resumeResponse.ok) {
-          const now = new Date();
-          const pausedDuration = pausedAt ? Math.round((now.getTime() - new Date(pausedAt).getTime()) / 1000) : 0;
-          setTotalPausedTime(prev => prev + pausedDuration);
+          // Set recently paused flag to prevent sync interference
+          setIsRecentlyPaused(true);
+          setTimeout(() => setIsRecentlyPaused(false), 5000); // Reset after 5 seconds
+          
+          // Backend handles pause duration calculation, just update UI state
           setIsPaused(false);
           setPausedAt(null);
           setExecutionState('running');
+          
+          // Refresh data to get updated pause duration from backend
+          const refreshedResults = await testResultsAPI.getAll(
+            parseInt(testRunId || '0'), 
+            parseInt(testCaseId || '0')
+          );
+          if (refreshedResults.length > 0) {
+            const result = refreshedResults[0];
+            const totalTime = result.execution_time || 0;
+            const manualAdjustment = result.manual_time_adjustment || 0;
+            setElapsedSeconds(totalTime);
+            setManualTimeAdjustment(manualAdjustment);
+            // Update totalPausedTime from backend to stay in sync
+            setTotalPausedTime(result.total_paused_time || 0);
+          }
+          
           toast({
             title: 'Execution Resumed',
             description: 'Test execution has been resumed',
@@ -957,9 +986,27 @@ export function TestCaseExecution() {
         });
         
         if (pauseResponse.ok) {
-          setPausedAt(new Date().toISOString());
-          setIsPaused(true);
-          setExecutionState('paused');
+          // Set recently paused flag to prevent sync interference
+          setIsRecentlyPaused(true);
+          setTimeout(() => setIsRecentlyPaused(false), 5000); // Reset after 5 seconds
+          
+          // Refresh data to get updated timing from backend
+          const refreshedResults = await testResultsAPI.getAll(
+            parseInt(testRunId || '0'), 
+            parseInt(testCaseId || '0')
+          );
+          if (refreshedResults.length > 0) {
+            const result = refreshedResults[0];
+            setPausedAt(result.paused_at || new Date().toISOString());
+            setExecutionState('paused');
+            // Update timing fields to stay in sync with backend
+            const totalTime = result.execution_time || 0;
+            const manualAdjustment = result.manual_time_adjustment || 0;
+            setElapsedSeconds(totalTime);
+            setManualTimeAdjustment(manualAdjustment);
+            setTotalPausedTime(result.total_paused_time || 0);
+          }
+          
           toast({
             title: 'Execution Paused',
             description: 'Test execution has been paused',
@@ -1485,7 +1532,7 @@ export function TestCaseExecution() {
                     disabled={executionState === 'completed'}
                     className="h-8 text-xs"
                   >
-                    {isPaused ? (
+                    {isPaused || executionState === 'paused' ? (
                       <><CheckCircle className="h-3 w-3 mr-1" /> Resume</>
                     ) : (
                       <><AlertTriangle className="h-3 w-3 mr-1" /> Pause</>

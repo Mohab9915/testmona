@@ -425,6 +425,10 @@ export const testRunsAPI = {
     const response = await api.delete(`/test-runs/${id}`);
     return response.data;
   },
+  resetTime: async (id: number) => {
+    const response = await api.put(`/test-runs/${id}/reset-time`);
+    return response.data;
+  },
 };
 
 // Test Results API
@@ -450,6 +454,10 @@ export const testResultsAPI = {
   },
   delete: async (id: number) => {
     const response = await api.delete(`/test-results/${id}`);
+    return response.data;
+  },
+  resetTime: async (id: number) => {
+    const response = await api.put(`/test-results/${id}/reset-time`);
     return response.data;
   },
 };

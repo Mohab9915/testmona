@@ -25,7 +25,8 @@ import {
   MessageSquare,
   Edit,
   Save,
-  X
+  X,
+  RotateCcw
 } from 'lucide-react';
 import { TestRunPieChart, TestRunBarChart, TestRunTrendChart } from '@/components/ui/chart';
 import { useTranslation } from '@/hooks/useTranslation';
@@ -70,6 +71,7 @@ export function TestRunDetail() {
   const [selectedTestCasesToAdd, setSelectedTestCasesToAdd] = useState<number[]>([]);
   const [searchTestCases, setSearchTestCases] = useState('');
   const [sections, setSections] = useState<any[]>([]);
+  const [isResettingTime, setIsResettingTime] = useState(false);
 
   // Prepare chart data
   const prepareChartData = () => {
@@ -698,6 +700,36 @@ export function TestRunDetail() {
     });
   };
 
+  const handleResetTime = async () => {
+    if (!id) return;
+    
+    if (!confirm('Are you sure you want to reset all timing data for this test run? This will clear execution times for all test results.')) {
+      return;
+    }
+
+    try {
+      setIsResettingTime(true);
+      await testRunsAPI.resetTime(parseInt(id));
+      
+      // Reload test run and results to get updated data
+      const [updatedTestRun, updatedTestResults] = await Promise.all([
+        testRunsAPI.getById(parseInt(id)),
+        testResultsAPI.getAll(parseInt(id))
+      ]);
+      
+      const syncedTestRun = await syncTestRunStatus(updatedTestRun, updatedTestResults);
+      setTestRun(syncedTestRun);
+      setTestResults(updatedTestResults);
+      
+      alert('Test run time has been reset successfully');
+    } catch (error) {
+      console.error('Failed to reset test run time:', error);
+      alert('Failed to reset test run time');
+    } finally {
+      setIsResettingTime(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="space-y-6">
@@ -825,6 +857,16 @@ export function TestRunDetail() {
             >
               <BarChart3 className={`h-4 w-4 ${isRTL ? 'ml-2' : 'mr-2'}`} />
               {t('viewReport')}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleResetTime}
+              disabled={isResettingTime}
+              className="h-11 justify-center rounded-xl border-orange-200 bg-white/80 text-orange-700 hover:bg-orange-50 hover:text-orange-950 dark:border-orange-800/30 dark:bg-orange-950/10 dark:text-orange-400 dark:hover:bg-orange-950/20 dark:hover:text-orange-300"
+            >
+              <RotateCcw className={`h-4 w-4 ${isRTL ? 'ml-2' : 'mr-2'}`} />
+              {isResettingTime ? 'Resetting...' : 'Reset Time'}
             </Button>
             {selectedTestCasesForRemoval.length > 0 && (
               <Button

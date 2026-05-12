@@ -406,9 +406,14 @@ class TestResultBase(BaseModel):
     status: str
     actual_result: Optional[str] = None
     comments: Optional[str] = None
-    execution_time: Optional[float] = Field(None, ge=0, description="Elapsed execution time in seconds")
+    execution_time: Optional[float] = Field(None, description="Elapsed execution time in seconds")
     execution_started_at: Optional[datetime] = None
     executed_by: Optional[int] = None
+    # New fields for pause/resume functionality
+    execution_state: Optional[str] = Field(None, description="Execution state: idle, running, paused, completed")
+    paused_at: Optional[datetime] = None
+    total_paused_time: Optional[float] = Field(0.0, description="Total time spent in paused state (seconds)")
+    manual_time_adjustment: Optional[float] = Field(0.0, description="Manual time adjustments (seconds)")
 
 
 class TestResultCreate(TestResultBase):
@@ -420,9 +425,14 @@ class TestResultUpdate(BaseModel):
     status: Optional[str] = None
     actual_result: Optional[str] = None
     comments: Optional[str] = None
-    execution_time: Optional[float] = Field(None, ge=0, description="Elapsed execution time in seconds")
+    execution_time: Optional[float] = Field(None, description="Elapsed execution time in seconds")  # Allow negative for updates
     execution_started_at: Optional[datetime] = None
     executed_by: Optional[int] = None
+    # New fields for pause/resume functionality
+    execution_state: Optional[str] = Field(None, description="Execution state: idle, running, paused, completed")
+    paused_at: Optional[datetime] = None
+    total_paused_time: Optional[float] = Field(None, ge=0, description="Total time spent in paused state (seconds)")
+    manual_time_adjustment: Optional[float] = Field(None, description="Manual time adjustments (seconds)")
 
 
 class TestResult(TestResultBase):
@@ -432,6 +442,11 @@ class TestResult(TestResultBase):
     executed_at: datetime
     created_at: datetime
     updated_at: Optional[datetime] = None
+    # Include new fields in response
+    execution_state: Optional[str] = None
+    paused_at: Optional[datetime] = None
+    total_paused_time: Optional[float] = 0.0
+    manual_time_adjustment: Optional[float] = 0.0
 
     class Config:
         from_attributes = True
@@ -447,6 +462,11 @@ class TestResultWithDetails(TestResultBase):
     updated_at: Optional[datetime] = None
     test_case: Optional['TestCaseWithRelations'] = None
     executor: Optional['User'] = None
+    # Include new fields in detailed response
+    execution_state: Optional[str] = None
+    paused_at: Optional[datetime] = None
+    total_paused_time: Optional[float] = 0.0
+    manual_time_adjustment: Optional[float] = 0.0
 
     class Config:
         from_attributes = True

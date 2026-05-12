@@ -645,6 +645,12 @@ class TestResult(Base):
     executed_at = Column(DateTime(timezone=True), server_default=func.now())
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    
+    # New fields for pause/resume functionality
+    execution_state = Column(String(20), default="idle")  # idle, running, paused, completed
+    paused_at = Column(DateTime(timezone=True), nullable=True)
+    total_paused_time = Column(Float, default=0.0)  # Total time spent in paused state
+    manual_time_adjustment = Column(Float, default=0.0)  # Manual time adjustments added by user
 
     # Relationships
     test_case = relationship("TestCase", back_populates="test_results")
