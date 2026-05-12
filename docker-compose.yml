@@ -8,18 +8,17 @@ services:
     ports:
       - "${BACKEND_PORT:-8000}:8000"
     environment:
-      - DATABASE_URL=sqlite:///./test_management.db
+      - DATABASE_URL=${DATABASE_URL:-sqlite:////app/data/test_management.db}
       - SECRET_KEY=${SECRET_KEY:-your-super-secret-key-change-in-production}
       - ALGORITHM=${ALGORITHM:-HS256}
       - ACCESS_TOKEN_EXPIRE_MINUTES=${ACCESS_TOKEN_EXPIRE_MINUTES:-480}
       - REFRESH_TOKEN_EXPIRE_DAYS=${REFRESH_TOKEN_EXPIRE_DAYS:-7}
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:3000}
     volumes:
-      - ./backend:/app
-      - backend_cache:/app/.cache
+      - backend_data:/app/data
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health", "--max-time", "5"]
+      test: ["CMD", "curl", "--fail", "--silent", "--show-error", "--max-time", "5", "http://localhost:8000/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -44,24 +43,20 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        VITE_API_URL: ${VITE_API_URL:-/api}
     ports:
       - "${FRONTEND_PORT:-3000}:3000"
-    environment:
-      - VITE_API_URL=http://localhost:${BACKEND_PORT:-8000}
     depends_on:
       backend:
         condition: service_healthy
-    volumes:
-      - ./frontend:/app
-      - /app/node_modules
-      - frontend_cache:/app/.cache
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000", "--max-time", "5"]
+      test: ["CMD", "curl", "--fail", "--silent", "--show-error", "--max-time", "5", "http://localhost:3000/"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 40s
+      start_period: 20s
     networks:
       - app-network
     logging:
@@ -78,13 +73,10 @@ services:
           cpus: '0.5'
           memory: '256m'
 
-
 networks:
   app-network:
     driver: bridge
 
 volumes:
-  backend_cache:
-    driver: local
-  frontend_cache:
+  backend_data:
     driver: local
