@@ -102,7 +102,7 @@
         ],
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"test_run_id\": {{testRunId}},\n  \"test_case_id\": {{testCaseId}},\n  \"status\": \"pass\",\n  \"executed_by\": 1,\n  \"notes\": \"Passed\"\n}"
+          "raw": "{\n  \"test_run_id\": {{testRunId}},\n  \"test_case_id\": {{testCaseId}},\n  \"status\": \"pass\",\n  \"executed_by\": 1,\n  \"actual_result\": \"Passed\",\n  \"comments\": \"Passed\",\n  \"execution_started_at\": \"2026-05-11T12:00:00Z\",\n  \"execution_time\": 45\n}"
         },
         "url": {
           "raw": "{{baseUrl}}/test-results",
@@ -136,6 +136,8 @@
               "        pm.expect(jsonData).to.have.property('status');",
               "        pm.expect(jsonData).to.have.property('test_run_id');",
               "        pm.expect(jsonData).to.have.property('test_case_id');",
+              "        pm.expect(jsonData).to.have.property('execution_time');",
+              "        pm.expect(jsonData).to.have.property('execution_started_at');",
               "    });",
               "} else {",
               "    pm.test(\"Test run/case not found - creation skipped\", function () {",
@@ -206,7 +208,7 @@
         ],
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"status\": \"fail\",\n  \"notes\": \"Failed\"\n}"
+          "raw": "{\n  \"status\": \"fail\",\n  \"comments\": \"Failed\",\n  \"execution_started_at\": \"2026-05-11T12:00:00Z\"\n}"
         },
         "url": {
           "raw": "{{baseUrl}}/test-results/{{testResultId}}",
@@ -232,6 +234,12 @@
               "pm.test(\"Status updated\", function () {",
               "    var jsonData = pm.response.json();",
               "    pm.expect(jsonData.status).to.eql('fail');",
+              "});",
+              "",
+              "pm.test(\"Execution timing fields are present\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('execution_time');",
+              "    pm.expect(jsonData).to.have.property('execution_started_at');",
               "});"
             ],
             "type": "text/javascript"

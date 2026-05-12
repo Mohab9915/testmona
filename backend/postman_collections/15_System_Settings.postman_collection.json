@@ -76,16 +76,99 @@
       ]
     },
     {
-      "name": "Get System Settings",
+      "name": "Get Public App Name",
+      "auth": {
+        "type": "noauth"
+      },
       "request": {
         "method": "GET",
         "url": {
-          "raw": "{{baseUrl}}/system-settings",
+          "raw": "{{baseUrl}}/system/settings/public/app_name",
           "host": [
             "{{baseUrl}}"
           ],
           "path": [
-            "system-settings"
+            "system",
+            "settings",
+            "public",
+            "app_name"
+          ]
+        },
+        "description": "Get the public application display name without authentication"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"Response contains app_name\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData.key).to.eql('app_name');",
+              "    pm.expect(jsonData.value).to.be.a('string').and.not.empty;",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Get Public Signup Setting",
+      "auth": {
+        "type": "noauth"
+      },
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/system/settings/public/signup_enabled",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "system",
+            "settings",
+            "public",
+            "signup_enabled"
+          ]
+        },
+        "description": "Get the public signup setting without authentication"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"Response contains signup_enabled\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData.key).to.eql('signup_enabled');",
+              "    pm.expect(['true', 'false']).to.include(jsonData.value);",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Get System Settings",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/system/settings",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "system",
+            "settings"
           ]
         },
         "description": "Get all system settings"
@@ -95,22 +178,13 @@
           "listen": "test",
           "script": {
             "exec": [
-              "pm.test(\"Status code is 200 or 404\", function () {",
-              "    pm.expect([200, 404]).to.include(pm.response.code);",
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
               "});",
               "",
-              "if (pm.response.code === 200) {",
-              "    pm.test(\"Response is object or array\", function () {",
-              "        var jsonData = pm.response.json();",
-              "        pm.expect(jsonData).to.satisfy(function(value) {",
-              "            return typeof value === 'object' && (Array.isArray(value) || !Array.isArray(value));",
-              "        });",
-              "    });",
-              "} else {",
-              "    pm.test(\"System settings endpoint not found - test skipped\", function () {",
-              "        console.log(\"System settings endpoint not implemented\");",
-              "    });",
-              "}"
+              "pm.test(\"Response is an array\", function () {",
+              "    pm.expect(pm.response.json()).to.be.an('array');",
+              "});"
             ],
             "type": "text/javascript"
           }
@@ -118,7 +192,47 @@
       ]
     },
     {
-      "name": "Update Setting",
+      "name": "Create App Name Setting",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"key\": \"app_name\",\n  \"value\": \"TestMona\",\n  \"description\": \"Application display name\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/system/settings",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "system",
+            "settings"
+          ]
+        },
+        "description": "Create the application display name setting if it does not already exist"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200 or already exists\", function () {",
+              "    pm.expect([200, 409]).to.include(pm.response.code);",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Update App Name Setting",
       "request": {
         "method": "PUT",
         "header": [
@@ -129,40 +243,35 @@
         ],
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"key\": \"signup_enabled\",\n  \"value\": \"true\"\n}"
+          "raw": "{\n  \"value\": \"TestMona\",\n  \"description\": \"Application display name\"\n}"
         },
         "url": {
-          "raw": "{{baseUrl}}/system-settings/signup_enabled",
+          "raw": "{{baseUrl}}/system/settings/app_name",
           "host": [
             "{{baseUrl}}"
           ],
           "path": [
-            "system-settings",
-            "signup_enabled"
+            "system",
+            "settings",
+            "app_name"
           ]
         },
-        "description": "Update a system setting"
+        "description": "Update the application display name"
       },
       "event": [
         {
           "listen": "test",
           "script": {
             "exec": [
-              "pm.test(\"Status code is 200 or 404\", function () {",
-              "    pm.expect([200, 404]).to.include(pm.response.code);",
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
               "});",
               "",
-              "if (pm.response.code === 200) {",
-              "    pm.test(\"Setting updated\", function () {",
-              "        var jsonData = pm.response.json();",
-              "        pm.expect(jsonData).to.have.property('key');",
-              "        pm.expect(jsonData.value).to.eql('false');",
-              "    });",
-              "} else {",
-              "    pm.test(\"System settings endpoint not found - test skipped\", function () {",
-              "        console.log(\"System settings endpoint not implemented\");",
-              "    });",
-              "}"
+              "pm.test(\"Setting updated\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData.key).to.eql('app_name');",
+              "    pm.expect(jsonData.value).to.eql('TestMona');",
+              "});"
             ],
             "type": "text/javascript"
           }

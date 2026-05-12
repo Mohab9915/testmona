@@ -97,7 +97,7 @@
         ],
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"title\": \"Test User Login Functionality\",\n  \"description\": \"Verify that users can successfully login with valid credentials\",\n  \"test_suite_id\": {{testSuiteId}},\n  \"priority\": \"high\",\n  \"status\": \"active\"\n}"
+          "raw": "{\n  \"title\": \"Test User Login Functionality\",\n  \"description\": \"Verify that users can successfully login with valid credentials\",\n  \"test_suite_id\": \"{{testSuiteId}}\",\n  \"test_type\": \"manual\",\n  \"priority\": \"high\",\n  \"status\": \"active\",\n  \"is_multistep\": true,\n  \"test_steps\": [\n    {\n      \"step_number\": 1,\n      \"action\": \"Open the login page\",\n      \"expected_result\": \"Login page is displayed\",\n      \"step_type\": \"manual\"\n    },\n    {\n      \"step_number\": 2,\n      \"action\": \"Submit valid credentials\",\n      \"expected_result\": \"User is authenticated successfully\",\n      \"step_type\": \"manual\"\n    }\n  ]\n}"
         },
         "url": {
           "raw": "{{baseUrl}}/test-cases",
@@ -362,6 +362,380 @@
               "    pm.test(\"Test case not found - delete skipped\", function () {",
               "        console.log(\"Test case ID not set or not found\");",
               "    });",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Get Test Type Definitions",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/test-type-definitions/",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "test-type-definitions",
+            ""
+          ]
+        },
+        "description": "List active test type definitions with usage_count computed from real test cases"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () { pm.response.to.have.status(200); });",
+              "pm.test(\"Response is an array\", function () { pm.expect(pm.response.json()).to.be.an(\"array\"); });",
+              "pm.test(\"Definitions expose usage_count\", function () {",
+              "    const data = pm.response.json();",
+              "    if (data.length > 0) pm.expect(data[0]).to.have.property('usage_count');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Create Test Type Definition",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/test-type-definitions/",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "test-type-definitions",
+            ""
+          ]
+        },
+        "description": "Create a test type definition",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"Exploratory\",\n  \"description\": \"Exploratory testing sessions\",\n  \"color\": \"#3B82F6\",\n  \"icon\": \"\ud83d\udd0e\",\n  \"created_by\": {{userId}}\n}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is successful\", function () {",
+              "    pm.expect([200, 201]).to.include(pm.response.code);",
+              "});",
+              "",
+              "if ([200, 201].includes(pm.response.code)) {",
+              "    const jsonData = pm.response.json();",
+              "    pm.test(\"Response contains test type definition data\", function () {",
+              "        pm.expect(jsonData).to.have.property('id');",
+              "        pm.expect(jsonData).to.have.property('name');",
+              "    });",
+              "    pm.environment.set(\"testTypeDefinitionId\", jsonData.id);",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Update Test Type Definition",
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/test-type-definitions/{{testTypeDefinitionId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "test-type-definitions",
+            "{{testTypeDefinitionId}}"
+          ]
+        },
+        "description": "Update a test type definition",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"Exploratory\",\n  \"description\": \"Updated exploratory testing sessions\",\n  \"color\": \"#2563EB\",\n  \"icon\": \"\\ud83d\\udd0d\"\n}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is successful\", function () {",
+              "    pm.expect([200, 201]).to.include(pm.response.code);",
+              "});",
+              "",
+              "if ([200, 201].includes(pm.response.code)) {",
+              "    const jsonData = pm.response.json();",
+              "    pm.test(\"Response contains test type definition data\", function () {",
+              "        pm.expect(jsonData).to.have.property('id');",
+              "        pm.expect(jsonData).to.have.property('name');",
+              "    });",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Delete Test Type Definition",
+      "request": {
+        "method": "DELETE",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/test-type-definitions/{{testTypeDefinitionId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "test-type-definitions",
+            "{{testTypeDefinitionId}}"
+          ]
+        },
+        "description": "Soft-delete a test type definition"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200 or 404\", function () { pm.expect([200, 404]).to.include(pm.response.code); });"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Get Priority Definitions",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/priority-definitions/",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "priority-definitions",
+            ""
+          ]
+        },
+        "description": "List active priority definitions"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () { pm.response.to.have.status(200); });",
+              "pm.test(\"Response is an array\", function () { pm.expect(pm.response.json()).to.be.an(\"array\"); });"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Create Priority Definition",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/priority-definitions/",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "priority-definitions",
+            ""
+          ]
+        },
+        "description": "Create a priority definition",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"Urgent\",\n  \"value\": 5,\n  \"color\": \"#DC2626\",\n  \"description\": \"Requires immediate action\",\n  \"is_default\": false,\n  \"created_by\": {{userId}}\n}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is successful\", function () {",
+              "    pm.expect([200, 201]).to.include(pm.response.code);",
+              "});",
+              "",
+              "if ([200, 201].includes(pm.response.code)) {",
+              "    const jsonData = pm.response.json();",
+              "    pm.test(\"Response contains priority definition data\", function () {",
+              "        pm.expect(jsonData).to.have.property('id');",
+              "        pm.expect(jsonData).to.have.property('name');",
+              "    });",
+              "    pm.environment.set(\"priorityDefinitionId\", jsonData.id);",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Update Priority Definition",
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/priority-definitions/{{priorityDefinitionId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "priority-definitions",
+            "{{priorityDefinitionId}}"
+          ]
+        },
+        "description": "Update a priority definition",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"Urgent\",\n  \"value\": 5,\n  \"color\": \"#B91C1C\",\n  \"description\": \"Updated urgent priority\",\n  \"is_default\": false\n}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is successful\", function () {",
+              "    pm.expect([200, 201]).to.include(pm.response.code);",
+              "});",
+              "",
+              "if ([200, 201].includes(pm.response.code)) {",
+              "    const jsonData = pm.response.json();",
+              "    pm.test(\"Response contains priority definition data\", function () {",
+              "        pm.expect(jsonData).to.have.property('id');",
+              "        pm.expect(jsonData).to.have.property('name');",
+              "    });",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Delete Priority Definition",
+      "request": {
+        "method": "DELETE",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/priority-definitions/{{priorityDefinitionId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "priority-definitions",
+            "{{priorityDefinitionId}}"
+          ]
+        },
+        "description": "Soft-delete a priority definition"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200 or 404\", function () { pm.expect([200, 404]).to.include(pm.response.code); });"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Get Test Case Execution History",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/test-cases/{{testCaseId}}/execution-history?limit=50",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "test-cases",
+            "{{testCaseId}}",
+            "execution-history"
+          ],
+          "query": [
+            {
+              "key": "limit",
+              "value": "50"
+            }
+          ]
+        },
+        "description": "Get execution history of a test case across test runs with run and executor metadata"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200, 403, or 404\", function () {",
+              "    pm.expect([200, 403, 404]).to.include(pm.response.code);",
+              "});",
+              "",
+              "if (pm.response.code === 200) {",
+              "    const jsonData = pm.response.json();",
+              "    pm.test(\"Response is an array\", function () {",
+              "        pm.expect(jsonData).to.be.an('array');",
+              "    });",
+              "",
+              "    if (jsonData.length > 0) {",
+              "        pm.test(\"History item contains enriched fields\", function () {",
+              "            pm.expect(jsonData[0]).to.have.property('test_run_id');",
+              "            pm.expect(jsonData[0]).to.have.property('test_run_name');",
+              "            pm.expect(jsonData[0]).to.have.property('status');",
+              "            pm.expect(jsonData[0]).to.have.property('executed_at');",
+              "            pm.expect(jsonData[0]).to.have.property('project_id');",
+              "            pm.expect(jsonData[0]).to.have.property('executed_by');",
+              "            pm.expect(jsonData[0]).to.have.property('execution_started_at');",
+              "            pm.expect(jsonData[0]).to.have.property('execution_time');",
+              "        });",
+              "    }",
               "}"
             ],
             "type": "text/javascript"
