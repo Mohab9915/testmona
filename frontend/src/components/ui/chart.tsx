@@ -94,9 +94,15 @@ export function TestRunPieChart({ data, title, onChartClick }: TestRunChartProps
     null
   );
 
-  const handlePieClick = (entry: TestResultData) => {
-    if (onChartClick && entry) {
-      onChartClick({ type: 'status', value: entry.key || entry.name.toLowerCase() });
+  const handlePieClick = (data: any, index: number, e: React.MouseEvent) => {
+    if (onChartClick && data) {
+      onChartClick({ type: 'status', value: data.key || data.name.toLowerCase() });
+    }
+  };
+
+  const handleButtonClick = (item: TestResultData) => {
+    if (onChartClick && item) {
+      onChartClick({ type: 'status', value: item.key || item.name.toLowerCase() });
     }
   };
 
@@ -152,7 +158,7 @@ export function TestRunPieChart({ data, title, onChartClick }: TestRunChartProps
                 <button
                   key={item.key || item.name}
                   type="button"
-                  onClick={() => handlePieClick(item)}
+                  onClick={() => handleButtonClick(item)}
                   className="flex items-center justify-between rounded-xl border border-slate-200 bg-white px-3 py-2 text-left text-xs transition hover:-translate-y-0.5 hover:shadow-md dark:border-slate-800 dark:bg-slate-950"
                 >
                   <span className="flex min-w-0 items-center gap-2 text-slate-600 dark:text-slate-300">
