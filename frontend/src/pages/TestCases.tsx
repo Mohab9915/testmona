@@ -2463,17 +2463,21 @@ export function TestCases() {
         });
 
         // Create test results for all selected test cases
-        const testCaseId = selectedTestCases[0]; // Start with the first test case
-        await testResultsAPI.create({
-          test_run_id: newRun.id,
-          test_case_id: testCaseId,
-          status: 'pending',
-          actual_result: '',
-          comments: '',
-        });
+        await Promise.all(
+          selectedTestCases.map(testCaseId =>
+            testResultsAPI.create({
+              test_run_id: newRun.id,
+              test_case_id: testCaseId,
+              status: 'pending',
+              actual_result: '',
+              comments: '',
+            })
+          )
+        );
 
         // Navigate to execute the first test case
-        navigate(`/projects/${projectId}/test-runs/${newRun.id}/test-cases/${testCaseId}`);
+        const firstTestCaseId = selectedTestCases[0];
+        navigate(`/projects/${projectId}/test-runs/${newRun.id}/test-cases/${firstTestCaseId}`);
       } catch (error) {
         console.error('Failed to create test run for bulk execution:', error);
         toast({
