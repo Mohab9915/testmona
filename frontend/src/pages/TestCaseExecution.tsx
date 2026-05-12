@@ -64,9 +64,16 @@ export function TestCaseExecution() {
   const [showUnsavedDialog, setShowUnsavedDialog] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const defectTitleInputRef = useRef<HTMLInputElement>(null);
-  const executionStartedAtRef = useRef<string | null>(null);
+  const [manualTimeAdjustment, setManualTimeAdjustment] = useState(0);
+  const [executionStartedAtRef, setExecutionStartedAtRef] = useState<string | null>(null);
   const [executionStartedAt, setExecutionStartedAt] = useState<string | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const [isPaused, setIsPaused] = useState(false);
+  const [pausedAt, setPausedAt] = useState<string | null>(null);
+  const [totalPausedTime, setTotalPausedTime] = useState(0);
+  const [manualTimeEntry, setManualTimeEntry] = useState('');
+  const [showManualTimeDialog, setShowManualTimeDialog] = useState(false);
+  const [executionState, setExecutionState] = useState<'idle' | 'running' | 'paused' | 'completed'>('idle');
   const [defectTouchedFields, setDefectTouchedFields] = useState<Record<string, boolean>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -96,10 +103,14 @@ export function TestCaseExecution() {
   );
 
   const setExecutionStart = (startedAt: string) => {
-    executionStartedAtRef.current = startedAt;
+    setExecutionStartedAtRef(startedAt);
     setExecutionStartedAt(startedAt);
     const startedAtTime = new Date(startedAt).getTime();
-    setElapsedSeconds(Number.isNaN(startedAtTime) ? 0 : Math.max(0, Math.round((Date.now() - startedAtTime) / 1000)));
+    // Calculate elapsed time ensuring it's never negative
+    const now = Date.now();
+    const rawElapsed = Math.max(0, (now - startedAtTime) / 1000);
+    const adjustedElapsed = Math.max(0, rawElapsed - totalPausedTime - manualTimeAdjustment);
+    setElapsedSeconds(adjustedElapsed);
   };
 
   const ensureExecutionTimerStarted = async (result?: any) => {
@@ -108,6 +119,22 @@ export function TestCaseExecution() {
     const startedAt = existingStart || new Date().toISOString();
 
     setExecutionStart(startedAt);
+    
+    // Restore time values from database
+    if (result) {
+      // execution_time already includes manual_time_adjustment from backend calculation
+      const totalTime = result.execution_time || 0;
+      const manualAdjustment = result.manual_time_adjustment || 0;
+      setElapsedSeconds(totalTime);
+      setManualTimeAdjustment(manualAdjustment);
+      
+      // Restore pause state
+      if (result.paused_at) {
+        setPausedAt(result.paused_at);
+        setIsPaused(true);
+        setExecutionState('paused');
+      }
+    }
 
     if (shouldPersistStart) {
       try {
@@ -119,15 +146,19 @@ export function TestCaseExecution() {
   };
 
   useEffect(() => {
-    if (!executionStartedAt) return;
+    if (!executionStartedAt || isPaused || executionState === 'completed') return;
 
     const intervalId = window.setInterval(() => {
       const startedAtTime = new Date(executionStartedAt).getTime();
-      setElapsedSeconds(Number.isNaN(startedAtTime) ? 0 : Math.max(0, Math.round((Date.now() - startedAtTime) / 1000)));
+      // Calculate elapsed time ensuring it's never negative
+      const now = Date.now();
+      const rawElapsed = Math.max(0, (now - startedAtTime) / 1000);
+      const adjustedElapsed = Math.max(0, rawElapsed - totalPausedTime - manualTimeAdjustment);
+      setElapsedSeconds(adjustedElapsed);
     }, 1000);
 
     return () => window.clearInterval(intervalId);
-  }, [executionStartedAt]);
+  }, [executionStartedAt, isPaused, totalPausedTime, manualTimeAdjustment, executionState]);
 
   // Load test case and test run data
   useEffect(() => {
@@ -310,13 +341,38 @@ export function TestCaseExecution() {
           setAssignee(result.executed_by?.toString() || '');
           await ensureExecutionTimerStarted(result);
           
-          console.log('✅ Loaded existing status:', mappedStatus);
+          // Set execution state based on result status
+          if (isCompletedResultStatus(result.status)) {
+            setExecutionState('completed');
+            setIsPaused(true);
+          } else {
+            setExecutionState('running');
+            setIsPaused(false);
+          }
+          
+          // Restore elapsed time from database
+          // execution_time already includes manual_time_adjustment from backend calculation
+          const totalTime = result.execution_time || 0;
+          const manualAdjustment = result.manual_time_adjustment || 0;
+          setElapsedSeconds(totalTime);
+          setManualTimeAdjustment(manualAdjustment);
+          
+          // Restore pause state if applicable
+          if (result.paused_at) {
+            setPausedAt(result.paused_at);
+            setIsPaused(true);
+            setExecutionState('paused');
+          }
+          
+          console.log('✅ Loaded existing status:', mappedStatus, 'Total time:', totalTime);
         } else {
           console.log('📝 No existing execution found, starting fresh');
           setExecutionStatus('pending');
           setExecutionNotes('');
           setAssignee('');
           await ensureExecutionTimerStarted();
+          setExecutionState('running');
+          setIsPaused(false);
         }
       } finally {
         setIsLoading(false);
@@ -505,11 +561,10 @@ export function TestCaseExecution() {
         'pending': 'skip'
       };
 
-      const startedAt = executionStartedAtRef.current || new Date().toISOString();
+      const startedAt = executionStartedAtRef || new Date().toISOString();
       const startedAtTime = new Date(startedAt).getTime();
-      const executionTimeSeconds = Number.isNaN(startedAtTime)
-        ? 0
-        : Math.max(0, Math.round((Date.now() - startedAtTime) / 1000));
+      // Use current elapsed seconds from state, not recalculate
+      const executionTimeSeconds = Math.max(0, elapsedSeconds);
 
       const executionData = {
         test_case_id: parseInt(testCaseId || '0'),
@@ -849,6 +904,234 @@ export function TestCaseExecution() {
         handlePreviousTestCase();
       }
     }, 500); // Small delay to show success message
+  };
+
+  // Pause/Resume functionality
+  const handlePauseExecution = async () => {
+    if (!testRunId || !testCaseId) return;
+    
+    try {
+      const existingResults = await testResultsAPI.getAll(
+        parseInt(testRunId), 
+        parseInt(testCaseId)
+      );
+      
+      if (existingResults.length === 0) {
+        console.error('No test result found to pause/resume');
+        return;
+      }
+      
+      const result = existingResults[0];
+      
+      if (isPaused) {
+        // Resume
+        const resumeResponse = await fetch(`${API_BASE_URL}/test-results/${result.id}/resume`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${localStorage.getItem('token')}`
+          }
+        });
+        
+        if (resumeResponse.ok) {
+          const now = new Date();
+          const pausedDuration = pausedAt ? Math.round((now.getTime() - new Date(pausedAt).getTime()) / 1000) : 0;
+          setTotalPausedTime(prev => prev + pausedDuration);
+          setIsPaused(false);
+          setPausedAt(null);
+          setExecutionState('running');
+          toast({
+            title: 'Execution Resumed',
+            description: 'Test execution has been resumed',
+            variant: 'success',
+          });
+        }
+      } else {
+        // Pause
+        const pauseResponse = await fetch(`${API_BASE_URL}/test-results/${result.id}/pause`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${localStorage.getItem('token')}`
+          }
+        });
+        
+        if (pauseResponse.ok) {
+          setPausedAt(new Date().toISOString());
+          setIsPaused(true);
+          setExecutionState('paused');
+          toast({
+            title: 'Execution Paused',
+            description: 'Test execution has been paused',
+            variant: 'success',
+          });
+        }
+      }
+    } catch (error) {
+      console.error('Failed to pause/resume execution:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to pause/resume execution',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const handleManualTimeEntry = async () => {
+    const hours = parseFloat(manualTimeEntry) || 0;
+    if (hours <= 0 || hours > 24) {
+      toast({
+        title: 'Invalid Input',
+        description: 'Please enter a valid number of hours between 0 and 24',
+        variant: 'destructive',
+      });
+      return;
+    }
+    
+    if (!testRunId || !testCaseId) return;
+    
+    try {
+      const existingResults = await testResultsAPI.getAll(
+        parseInt(testRunId), 
+        parseInt(testCaseId)
+      );
+      
+      if (existingResults.length === 0) {
+        console.error('No test result found to add time to');
+        return;
+      }
+      
+      const result = existingResults[0];
+      
+      const response = await fetch(`${API_BASE_URL}/test-results/${result.id}/add-time`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify({ hours })
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setManualTimeEntry('');
+        setShowManualTimeDialog(false);
+        toast({
+          title: 'Time Added',
+          description: `Added ${hours.toFixed(1)} hours to execution time`,
+          variant: 'success',
+        });
+        
+        // Refresh execution data to get updated time
+        const refreshedResults = await testResultsAPI.getAll(
+          parseInt(testRunId || '0'), 
+          parseInt(testCaseId || '0')
+        );
+        if (refreshedResults.length > 0) {
+          const result = refreshedResults[0];
+          // execution_time already includes manual_time_adjustment from backend calculation
+          const totalTime = result.execution_time || 0;
+          const manualAdjustment = result.manual_time_adjustment || 0;
+          setElapsedSeconds(totalTime);
+          setManualTimeAdjustment(manualAdjustment);
+          
+          // Also update other timing fields
+          if (result.execution_state) {
+            setExecutionState(result.execution_state);
+            setIsPaused(result.execution_state === 'paused');
+          }
+        }
+      } else {
+        throw new Error('Failed to add time');
+      }
+    } catch (error) {
+      console.error('Failed to add manual time:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to add manual time',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const [showResetTimerDialog, setShowResetTimerDialog] = useState(false);
+  const handleResetTimer = () => {
+    setShowResetTimerDialog(true);
+  };
+
+  const handleConfirmResetTimer = async () => {
+    if (!testRunId || !testCaseId) {
+      toast({
+        title: 'Error',
+        description: 'Test run ID or test case ID not found',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    try {
+      // Get current test result to reset
+      const currentResults = await testResultsAPI.getAll(
+        parseInt(testRunId || '0'), 
+        parseInt(testCaseId || '0')
+      );
+      
+      if (currentResults.length === 0) {
+        toast({
+          title: 'Error',
+          description: 'No test result found for this test case',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      // Reset time for individual test result
+      await testResultsAPI.resetTime(currentResults[0].id);
+      
+      // Reset local state
+      setElapsedSeconds(0);
+      setTotalPausedTime(0);
+      setPausedAt(null);
+      setManualTimeAdjustment(0);
+      const now = new Date().toISOString();
+      setExecutionStartedAt(now);
+      setExecutionStartedAtRef(now);
+      setShowResetTimerDialog(false);
+      
+      toast({
+        title: 'Timer Reset',
+        description: 'Timer has been reset for this test case',
+        variant: 'success',
+      });
+      
+      // Refresh execution data to get updated time from backend
+      const refreshedResults = await testResultsAPI.getAll(
+        parseInt(testRunId || '0'), 
+        parseInt(testCaseId || '0')
+      );
+      
+      if (refreshedResults.length > 0) {
+        const result = refreshedResults[0];
+        // Update local state with backend data
+        // Don't overwrite executionStartedAt if it was reset to None
+        if (result.execution_started_at) {
+          setExecutionStartedAt(result.execution_started_at);
+          setExecutionStartedAtRef(result.execution_started_at);
+        }
+        // Keep the current executionStartedAt (now) since backend has None
+        setElapsedSeconds(0);
+        setManualTimeAdjustment(0);
+        setTotalPausedTime(0);
+        setPausedAt(null);
+      }
+    } catch (error) {
+      console.error('Failed to reset test result time:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to reset test case timer',
+        variant: 'destructive',
+      });
+    }
   };
 
   const selectedStatus = statusOptions.find(opt => opt.value === executionStatus);
@@ -1192,6 +1475,57 @@ export function TestCaseExecution() {
                 <p className="mt-1 text-xs text-cyan-700/80 dark:text-cyan-200/80">
                   {t('executionStartedLabel')}: {executionStartedAt ? new Date(executionStartedAt).toLocaleString() : t('nA')}
                 </p>
+                
+                {/* Timer Controls */}
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handlePauseExecution}
+                    disabled={executionState === 'completed'}
+                    className="h-8 text-xs"
+                  >
+                    {isPaused ? (
+                      <><CheckCircle className="h-3 w-3 mr-1" /> Resume</>
+                    ) : (
+                      <><AlertTriangle className="h-3 w-3 mr-1" /> Pause</>
+                    )}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowManualTimeDialog(true)}
+                    className="h-8 text-xs"
+                  >
+                    <Clock className="h-3 w-3 mr-1" />
+                    Add Time
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleResetTimer}
+                    className="h-8 text-xs"
+                  >
+                    <ArrowLeft className="h-3 w-3 mr-1 rotate-180" />
+                    Reset
+                  </Button>
+                </div>
+                
+                {/* Status Indicator */}
+                <div className="mt-2 flex items-center gap-2">
+                  <div className={`h-2 w-2 rounded-full ${
+                    executionState === 'running' ? 'bg-green-500' :
+                    executionState === 'paused' ? 'bg-yellow-500' :
+                    executionState === 'completed' ? 'bg-blue-500' :
+                    'bg-gray-400'
+                  }`} />
+                  <span className="text-xs text-gray-600 dark:text-gray-400">
+                    {executionState === 'running' ? 'Running' :
+                     executionState === 'paused' ? 'Paused' :
+                     executionState === 'completed' ? 'Completed' :
+                     'Idle'}
+                  </span>
+                </div>
               </div>
 
               {/* Show link fields only when failed or blocked */}
@@ -1611,6 +1945,69 @@ export function TestCaseExecution() {
             </Button>
             <Button onClick={() => handleUnsavedConfirm(true)}>
               Discard Changes
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Manual Time Entry Dialog */}
+      <Dialog open={showManualTimeDialog} onOpenChange={setShowManualTimeDialog}>
+        <DialogContent isRTL={isRTL} className="sm:max-w-[400px]">
+          <DialogHeader>
+            <DialogTitle>Add Manual Time</DialogTitle>
+            <DialogDescription>
+              Add additional time to the current execution.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="manualTime" className="text-right">
+                Hours
+              </Label>
+              <div className="col-span-3 space-y-1">
+                <Input
+                  id="manualTime"
+                  type="number"
+                  step="0.1"
+                  min="0"
+                  max="24"
+                  value={manualTimeEntry}
+                  onChange={(e) => setManualTimeEntry(e.target.value)}
+                  placeholder="Enter hours (e.g., 1.5)"
+                  className="h-9"
+                />
+                <div className="text-xs text-gray-500">
+                  Enter time in hours (e.g., 1.5 for 1 hour 30 minutes)
+                </div>
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowManualTimeDialog(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleManualTimeEntry} disabled={!manualTimeEntry || parseFloat(manualTimeEntry) <= 0}>
+              Add Time
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Reset Timer Confirmation Dialog */}
+      <Dialog open={showResetTimerDialog} onOpenChange={setShowResetTimerDialog}>
+        <DialogContent isRTL={isRTL} className="sm:max-w-[400px]">
+          <DialogHeader>
+            <DialogTitle>Reset Timer</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to reset the timer? This will clear all elapsed time and manual adjustments.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowResetTimerDialog(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleConfirmResetTimer} className="bg-red-600 hover:bg-red-700">
+              Reset Timer
             </Button>
           </DialogFooter>
         </DialogContent>
