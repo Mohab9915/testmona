@@ -1551,6 +1551,26 @@ export function Projects() {
         </DialogContent>
       </Dialog>
 
+      {/* Unsaved Changes Dialog */}
+      <AlertDialog open={showUnsavedDialog} onOpenChange={setShowUnsavedDialog}>
+        <AlertDialogContent isRTL={isRTL}>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('unsavedChanges')}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t('unsavedChangesMessage')}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => handleUnsavedConfirm(false)}>
+              {t('continueEditing')}
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={() => handleUnsavedConfirm(true)} className="bg-destructive hover:bg-destructive/90">
+              {t('discardChangesModal')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       {/* Edit Project Dialog */}
       <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
         <DialogContent isRTL={isRTL} className="sm:max-w-[425px]">
