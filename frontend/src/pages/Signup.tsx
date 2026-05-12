@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { UserPlus, Eye, EyeOff } from 'lucide-react';
+import { useAppName } from '@/hooks/useAppName';
 
 const API_BASE_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:8000';
 
@@ -18,6 +19,7 @@ export function Signup() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const { appName, appLogoUrl } = useAppName(false);
   
   const navigate = useNavigate();
 
@@ -75,7 +77,10 @@ export function Signup() {
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-md w-full space-y-8">
         <div className="text-center">
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100">TestMona</h1>
+          {appLogoUrl && (
+            <img src={appLogoUrl} alt={appName} className="mx-auto mb-3 h-14 w-14 rounded-2xl object-cover shadow-sm" />
+          )}
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100">{appName}</h1>
           <p className="mt-2 text-gray-600 dark:text-gray-400">Create your account</p>
         </div>
 

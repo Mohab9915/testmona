@@ -4,6 +4,8 @@ import { useProjectStore } from '@/stores/projectStore';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { FolderOpen, ArrowRight } from 'lucide-react';
+import { useTranslation } from '@/hooks/useTranslation';
+import { useAppName } from '@/hooks/useAppName';
 
 interface ProjectGuardProps {
   children: React.ReactNode;
@@ -13,6 +15,8 @@ interface ProjectGuardProps {
 export function ProjectGuard({ children, fallback }: ProjectGuardProps) {
   const navigate = useNavigate();
   const { projects } = useProjectStore();
+  const { t } = useTranslation();
+  const { appName } = useAppName(false);
 
   // Check if there are any projects in the database
   const hasProjects = projects && projects.length > 0;
@@ -38,7 +42,7 @@ export function ProjectGuard({ children, fallback }: ProjectGuardProps) {
                 No Projects Found
               </h2>
               <p className="text-gray-600 mb-6 leading-relaxed">
-                TestMona is project-first. You need to create a project before accessing this feature.
+                {t('projectGuardNoProjectsDesc', { appName })}
               </p>
               <Button 
                 onClick={() => navigate('/projects')}

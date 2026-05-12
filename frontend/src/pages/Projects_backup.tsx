@@ -741,7 +741,7 @@ export function Projects() {
                   </div>
                   <h3 className="text-lg font-semibold text-gray-900 mb-2">Start Your First Project</h3>
                   <p className="text-gray-600 mb-6 leading-relaxed">
-                    TestMona is project-first. Create a project to organize your test suites, 
+                    This application is project-first. Create a project to organize your test suites,
                     test cases, and manage your entire testing workflow.
                   </p>
                   <div className="space-y-3">

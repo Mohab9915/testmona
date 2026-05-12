@@ -8,6 +8,7 @@ import { defectsAPI, testCasesAPI } from '@/lib/api';
 import { defectManagementAPI, IssueTrackerIntegration } from '@/lib/defectManagementAPI';
 import { useToast } from '@/hooks/use-toast';
 import { useTranslation } from '@/hooks/useTranslation';
+import { useAppName } from '@/hooks/useAppName';
 import {
   Dialog,
   DialogContent,
@@ -33,6 +34,7 @@ export function Defects() {
   const { projectId } = useParams();
   const { toast } = useToast();
   const { t, isRTL } = useTranslation();
+  const { appName } = useAppName(false);
   
   const [defects, setDefects] = useState<any[]>([]);
   const [testCases, setTestCases] = useState<any[]>([]);
@@ -1448,9 +1450,9 @@ export function Defects() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="import">Import Only (External → TestMona)</SelectItem>
-                  <SelectItem value="export">Export Only (TestMona → External)</SelectItem>
-                  <SelectItem value="bidirectional">Bidirectional (Both Ways)</SelectItem>
+                  <SelectItem value="import">{t('importOnly', { appName })}</SelectItem>
+                  <SelectItem value="export">{t('exportOnly', { appName })}</SelectItem>
+                  <SelectItem value="bidirectional">{t('bidirectional')}</SelectItem>
                 </SelectContent>
               </Select>
             </div>

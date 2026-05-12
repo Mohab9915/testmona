@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { LogIn, Eye, EyeOff } from 'lucide-react';
 import { useTranslation } from '@/hooks/useTranslation';
+import { useAppName } from '@/hooks/useAppName';
 
 export function Login() {
   const [usernameOrEmail, setUsernameOrEmail] = useState('');
@@ -20,6 +21,7 @@ export function Login() {
   const navigate = useNavigate();
   const { login } = useAuthStore();
   const { t, isRTL } = useTranslation();
+  const { appName, appLogoUrl } = useAppName(false);
   
   // Check if signup is enabled
   useEffect(() => {
@@ -28,7 +30,7 @@ export function Login() {
   
   const checkSignupEnabled = async () => {
     try {
-      const response = await fetch('http://localhost:8000/system/settings/public/signup_enabled');
+      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/system/settings/public/signup_enabled`);
       if (response.ok) {
         const setting = await response.json();
         setSignupEnabled(setting.value === 'true');
@@ -65,7 +67,10 @@ export function Login() {
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-md w-full space-y-8">
         <div className="text-center">
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100">TestMona</h1>
+          {appLogoUrl && (
+            <img src={appLogoUrl} alt={appName} className="mx-auto mb-3 h-14 w-14 rounded-2xl object-cover shadow-sm" />
+          )}
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100">{appName}</h1>
           <p className="mt-2 text-gray-600 dark:text-gray-400">{t('signInToAccount')}</p>
         </div>
 

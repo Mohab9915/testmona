@@ -7,14 +7,25 @@ import {
   ArrowLeft, Download, CheckCircle, XCircle, AlertTriangle, 
   Clock, FileText
 } from 'lucide-react';
-import { testRunsAPI, testResultsAPI, usersAPI } from '@/lib/api';
+import { customFieldsAPI, testRunsAPI, testResultsAPI, usersAPI } from '@/lib/api';
+import { useTranslation } from '@/hooks/useTranslation';
+import { CustomFieldDefinition } from '@/types';
+import { formatDurationSeconds } from '@/utils/timeFormat';
+
+type ReportCustomFieldValue = {
+  id: number;
+  name: string;
+  value: string;
+};
 
 export function TestRunReport() {
   const navigate = useNavigate();
   const { projectId, testRunId } = useParams();
+  const { t, isRTL } = useTranslation();
   const [testRun, setTestRun] = useState<any>(null);
   const [testResults, setTestResults] = useState<any[]>([]);
   const [users, setUsers] = useState<any[]>([]);
+  const [customFields, setCustomFields] = useState<CustomFieldDefinition[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -59,14 +70,17 @@ export function TestRunReport() {
   const loadData = async () => {
     try {
       setLoading(true);
-      const [runData, resultsData, usersData] = await Promise.all([
+      const parsedProjectId = projectId ? parseInt(projectId, 10) : undefined;
+      const [runData, resultsData, usersData, customFieldsData] = await Promise.all([
         testRunsAPI.getById(parseInt(testRunId!)),
         testResultsAPI.getAll(parseInt(testRunId!)),
-        usersAPI.getAll()
+        usersAPI.getAll(),
+        parsedProjectId ? customFieldsAPI.getDefinitions(parsedProjectId).catch(() => []) : Promise.resolve([])
       ]);
       setTestRun(runData);
       setTestResults(resultsData);
       setUsers(usersData);
+      setCustomFields(Array.isArray(customFieldsData) ? customFieldsData : []);
     } catch (error) {
       console.error('Failed to load report data:', error);
     } finally {
@@ -78,6 +92,29 @@ export function TestRunReport() {
     if (!userId) return 'N/A';
     const user = users.find(u => u.id === userId);
     return user ? user.username : `User ${userId}`;
+  };
+
+  const getCustomFieldName = (fieldDefinitionId: number) => {
+    const field = customFields.find((customField) => customField.id === fieldDefinitionId);
+    return field?.name || t('customFieldFallbackName', { id: fieldDefinitionId });
+  };
+
+  const getResultCustomFields = (result: any): ReportCustomFieldValue[] => {
+    const values = result.test_case?.custom_field_values || [];
+    return values
+      .filter((fieldValue: any) => fieldValue.value !== undefined && fieldValue.value !== null && String(fieldValue.value).trim() !== '')
+      .map((fieldValue: any) => ({
+        id: fieldValue.field_definition_id,
+        name: getCustomFieldName(fieldValue.field_definition_id),
+        value: String(fieldValue.value),
+      }));
+  };
+
+  const getResultCustomFieldMap = (result: any): Record<string, string> => {
+    return getResultCustomFields(result).reduce<Record<string, string>>((fields, field) => {
+      fields[field.name] = field.value;
+      return fields;
+    }, {});
   };
 
   const statusCounts = testResults.reduce((acc: any, result) => {
@@ -93,6 +130,9 @@ export function TestRunReport() {
   const skippedTests = (statusCounts.skip || 0) + (statusCounts.skipped || 0);
   const notTestedTests = statusCounts.not_tested || 0;
   const passRate = totalTests > 0 ? Math.round((passedTests / totalTests) * 100) : 0;
+  const totalExecutionSeconds = testResults.reduce((total, result) => total + (Number(result.execution_time) || 0), 0);
+  const executedResultsCount = testResults.filter((result) => result.execution_time != null && result.status !== 'not_tested').length;
+  const averageExecutionSeconds = executedResultsCount > 0 ? Math.round(totalExecutionSeconds / executedResultsCount) : 0;
 
   const handleDownloadJSON = () => {
     const report = {
@@ -107,6 +147,8 @@ export function TestRunReport() {
         skippedTests,
         notTestedTests,
         passRate,
+        totalExecutionTimeSeconds: totalExecutionSeconds,
+        averageExecutionTimeSeconds: averageExecutionSeconds,
         duration: testRun?.completed_at 
           ? Math.round((new Date(testRun.completed_at).getTime() - new Date(testRun.created_at).getTime()) / 60000)
           : 'In Progress'
@@ -119,8 +161,10 @@ export function TestRunReport() {
         status: result.status,
         executedBy: getUserName(result.executed_by),
         executedById: result.executed_by,
+        executionStartedAt: result.execution_started_at,
         executedAt: result.executed_at,
         duration: result.execution_time,
+        customFields: getResultCustomFieldMap(result),
         comments: result.comments
       }))
     };
@@ -149,7 +193,7 @@ export function TestRunReport() {
   }
 
   return (
-    <div className="space-y-4 p-6">
+    <div className="space-y-4 p-6" dir={isRTL ? 'rtl' : 'ltr'}>
       {/* Header */}
       <div className="flex items-center justify-between print:hidden">
         <div className="flex items-center gap-4">
@@ -186,7 +230,7 @@ export function TestRunReport() {
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-6 gap-4">
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-gray-600">Total Tests</CardTitle>
@@ -226,6 +270,24 @@ export function TestRunReport() {
               <XCircle className="h-5 w-5 text-red-600" />
               <div className="text-2xl font-bold">{failedTests}</div>
             </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-gray-600">{t('totalExecutionTime')}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{formatDurationSeconds(totalExecutionSeconds, t)}</div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-gray-600">{t('averageCaseTime')}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{executedResultsCount > 0 ? formatDurationSeconds(averageExecutionSeconds, t) : t('notAvailableShort')}</div>
           </CardContent>
         </Card>
       </div>
@@ -360,8 +422,11 @@ export function TestRunReport() {
                   <th className="px-4 py-2 text-left">Test Case</th>
                   <th className="px-4 py-2 text-left">Status</th>
                   <th className="px-4 py-2 text-left">Priority</th>
+                  <th className="px-4 py-2 text-left">{t('customFields')}</th>
                   <th className="px-4 py-2 text-left">Executed By</th>
+                  <th className="px-4 py-2 text-left">{t('executionStartedLabel')}</th>
                   <th className="px-4 py-2 text-left">Executed At</th>
+                  <th className="px-4 py-2 text-left">{t('duration')}</th>
                   <th className="px-4 py-2 text-left">Comments</th>
                 </tr>
               </thead>
@@ -391,10 +456,28 @@ export function TestRunReport() {
                         {result.test_case?.priority || 'N/A'}
                       </Badge>
                     </td>
+                    <td className="px-4 py-2 text-xs">
+                      {getResultCustomFields(result).length > 0 ? (
+                        <div className="space-y-1">
+                          {getResultCustomFields(result).map((field) => (
+                            <div key={`${result.id}-${field.id}`} className="rounded bg-gray-50 px-2 py-1">
+                              <span className="font-medium text-gray-700">{field.name}: </span>
+                              <span className="text-gray-600">{field.value}</span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-gray-400">{t('noCustomFieldValues')}</span>
+                      )}
+                    </td>
                     <td className="px-4 py-2 text-xs">{getUserName(result.executed_by)}</td>
+                    <td className="px-4 py-2 text-xs">
+                      {result.execution_started_at ? new Date(result.execution_started_at).toLocaleString() : 'N/A'}
+                    </td>
                     <td className="px-4 py-2 text-xs">
                       {result.executed_at ? new Date(result.executed_at).toLocaleString() : 'N/A'}
                     </td>
+                    <td className="px-4 py-2 text-xs">{formatDurationSeconds(result.execution_time, t)}</td>
                     <td className="px-4 py-2 text-xs">{result.comments || '-'}</td>
                   </tr>
                 ))}

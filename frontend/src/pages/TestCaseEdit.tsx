@@ -1,28 +1,38 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { MarkdownEditor } from '@/components/ui/markdown-editor';
 import { ReferenceField } from '@/components/ui/reference-field';
 import { ArrowLeft, Save, Trash2, Plus, AlertTriangle, RefreshCw } from 'lucide-react';
-import { testCasesAPI, testSuitesAPI, projectsAPI, sectionsAPI } from '@/lib/api';
+import { testCasesAPI, testSuitesAPI, projectsAPI, sectionsAPI, customFieldsAPI, enumsAPI } from '@/lib/api';
+import { CustomFieldDefinition } from '@/types';
 import { useProjectStore } from '@/stores/projectStore';
 import { useToast } from '@/hooks/use-toast';
 import { useTranslation } from '@/hooks/useTranslation';
 
 type TestCasePriority = 'low' | 'medium' | 'high' | 'critical';
 type TestCaseStatus = 'active' | 'inactive' | 'archived';
-type TestCaseType = 'manual' | 'automated' | 'performance' | 'security' | 'smoke';
+type TestCaseType = string;
+type SelectOption = { value: string; label: string };
+
+const parseBooleanFlag = (value: unknown): boolean => {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'string') return value.toLowerCase() === 'true';
+  return Boolean(value);
+};
 
 export function TestCaseEdit() {
   const { id, projectId } = useParams<{ id: string; projectId?: string }>();
   const navigate = useNavigate();
   const { setSelectedProject, projects } = useProjectStore();
-  const { t, isRTL } = useTranslation();
+  const { t, isRTL, language } = useTranslation();
   const { toast } = useToast();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -50,10 +60,28 @@ export function TestCaseEdit() {
   const [testSuiteOptions, setTestSuiteOptions] = useState<{ id: number; name: string }[]>([]);
   const [testSuitesLoading, setTestSuitesLoading] = useState(false);
   const [currentProjectId, setCurrentProjectId] = useState<number | null>(null);
+  const [customFields, setCustomFields] = useState<CustomFieldDefinition[]>([]);
+  const [customFieldValues, setCustomFieldValues] = useState<Record<number, string>>({});
+  const [existingCustomFieldValueIds, setExistingCustomFieldValueIds] = useState<Record<number, number>>({});
+  const [customFieldsLoading, setCustomFieldsLoading] = useState(false);
+  const [testTypeOptions, setTestTypeOptions] = useState<SelectOption[]>([]);
+  const [testTypesLoading, setTestTypesLoading] = useState(false);
+
+  const displayedTestTypeOptions = useMemo(() => {
+    if (!formData.test_type || testTypeOptions.some((option) => option.value === formData.test_type)) {
+      return testTypeOptions;
+    }
+
+    return [
+      { value: formData.test_type, label: formData.test_type },
+      ...testTypeOptions,
+    ];
+  }, [formData.test_type, testTypeOptions]);
 
   const navigateBack = () => {
-    if (currentProjectId) {
-      navigate(`/projects/${currentProjectId}/test-cases/${id}`);
+    const targetProjectId = currentProjectId || (projectId ? parseInt(projectId, 10) : null);
+    if (targetProjectId) {
+      navigate(`/projects/${targetProjectId}/test-cases/${id}`);
     } else {
       navigate(`/test-cases/${id}`);
     }
@@ -85,7 +113,23 @@ export function TestCaseEdit() {
 
           const suiteId = (testCaseData as any).test_suite_id ?? null;
           const sectionId = (testCaseData as any).section_id ?? null;
+          const existingCustomValues = ((testCaseData as any).custom_field_values || []).reduce(
+            (
+              values: {
+                fieldValues: Record<number, string>;
+                valueIds: Record<number, number>;
+              },
+              fieldValue: { id: number; field_definition_id: number; value?: string | null }
+            ) => {
+              values.fieldValues[fieldValue.field_definition_id] = fieldValue.value || '';
+              values.valueIds[fieldValue.field_definition_id] = fieldValue.id;
+              return values;
+            },
+            { fieldValues: {}, valueIds: {} }
+          );
           
+          const isMultistep = parseBooleanFlag((testCaseData as any).is_multistep);
+
           setFormData({
             title: testCaseData.title,
             description: testCaseData.description || '',
@@ -99,11 +143,13 @@ export function TestCaseEdit() {
             reference: testCaseData.reference || '',
             test_suite_id: suiteId,
             section_id: sectionId,
-            is_multistep: (testCaseData as any).is_multistep || false,
+            is_multistep: isMultistep,
           });
+          setCustomFieldValues(existingCustomValues.fieldValues);
+          setExistingCustomFieldValueIds(existingCustomValues.valueIds);
           
           // If multistep, fetch the steps
-          if ((testCaseData as any).is_multistep) {
+          if (isMultistep) {
             const steps = await testCasesAPI.getSteps(parseInt(id));
             setTestSteps(steps);
           }
@@ -139,6 +185,61 @@ export function TestCaseEdit() {
 
     fetchTestCase();
   }, [id, projectId]);
+
+  useEffect(() => {
+    const loadTestTypes = async () => {
+      setTestTypesLoading(true);
+      try {
+        const definitions = await enumsAPI.getTestTypes();
+        const options = (Array.isArray(definitions) ? definitions : [])
+          .filter((definition: any) => definition?.name)
+          .map((definition: any) => ({
+            value: String(definition.name).toLowerCase(),
+            label: String(definition.name),
+          }));
+
+        setTestTypeOptions(options);
+      } catch (error) {
+        console.error('Failed to load test type definitions:', error);
+        setTestTypeOptions([
+          { value: 'manual', label: t('manual') },
+          { value: 'automated', label: t('automated') },
+          { value: 'smoke', label: t('smoke') },
+          { value: 'regression', label: 'Regression' },
+          { value: 'integration', label: 'Integration' },
+          { value: 'security', label: t('security') },
+          { value: 'performance', label: t('performance') },
+          { value: 'usability', label: 'Usability' },
+        ]);
+      } finally {
+        setTestTypesLoading(false);
+      }
+    };
+
+    loadTestTypes();
+  }, [language]);
+
+  useEffect(() => {
+    const loadCustomFields = async () => {
+      if (!currentProjectId) {
+        setCustomFields([]);
+        return;
+      }
+
+      setCustomFieldsLoading(true);
+      try {
+        const fields = await customFieldsAPI.getDefinitions(currentProjectId);
+        setCustomFields(Array.isArray(fields) ? fields : []);
+      } catch (error) {
+        console.error('Failed to load custom fields:', error);
+        setCustomFields([]);
+      } finally {
+        setCustomFieldsLoading(false);
+      }
+    };
+
+    loadCustomFields();
+  }, [currentProjectId]);
 
   useEffect(() => {
     const loadTestSuites = async () => {
@@ -269,10 +370,149 @@ export function TestCaseEdit() {
     ));
   };
 
+  const getCustomFieldOptions = (field: CustomFieldDefinition): string[] => {
+    if (!field.options) {
+      return [];
+    }
+
+    if (Array.isArray(field.options)) {
+      return field.options.map(String);
+    }
+
+    const optionValues = Array.isArray(field.options.values)
+      ? field.options.values
+      : Array.isArray(field.options.options)
+        ? field.options.options
+        : [];
+
+    return optionValues.map(String);
+  };
+
+  const parseMultiSelectValues = (value: string | undefined): string[] =>
+    (value || '')
+      .split(',')
+      .map((item) => item.trim())
+      .filter(Boolean);
+
+  const formatMultiSelectValues = (values: string[]): string =>
+    Array.from(new Set(values.map((value) => value.trim()).filter(Boolean))).join(',');
+
+  const handleCustomFieldChange = (fieldId: number, value: string | boolean) => {
+    setCustomFieldValues((prev) => ({
+      ...prev,
+      [fieldId]: String(value),
+    }));
+  };
+
+  const handleCustomFieldMultiSelectToggle = (fieldId: number, option: string, checked: boolean) => {
+    setCustomFieldValues((prev) => {
+      const current = parseMultiSelectValues(prev[fieldId]);
+      const next = checked
+        ? [...current, option]
+        : current.filter((value) => value !== option);
+
+      return {
+        ...prev,
+        [fieldId]: formatMultiSelectValues(next),
+      };
+    });
+  };
+
+  const getCustomFieldValidationError = (field: CustomFieldDefinition): string => {
+    const value = customFieldValues[field.id];
+    if (field.field_type === 'boolean') {
+      if (field.is_required && value !== 'true' && value !== 'false') {
+        return t('fieldRequired', { field: field.name });
+      }
+      return '';
+    }
+
+    if (field.is_required && (!value || !String(value).trim())) {
+      return t('fieldRequired', { field: field.name });
+    }
+
+    if (field.field_type === 'number' && value && Number.isNaN(Number(value))) {
+      return t('fieldMustBeValidNumber', { field: field.name });
+    }
+
+    const options = getCustomFieldOptions(field);
+
+    if (field.field_type === 'select' && value && options.length > 0 && !options.includes(value)) {
+      return t('fieldRequired', { field: field.name });
+    }
+
+    if (field.field_type === 'multiselect' && value) {
+      const selectedOptions = parseMultiSelectValues(value);
+      const invalidOptions = selectedOptions.filter((selectedOption) => !options.includes(selectedOption));
+      if (invalidOptions.length > 0) {
+        return t('fieldRequired', { field: field.name });
+      }
+    }
+
+    return '';
+  };
+
+  const customFieldValidationErrors = useMemo(() => {
+    const errors: Record<number, string> = {};
+    customFields.forEach((field) => {
+      const error = getCustomFieldValidationError(field);
+      if (error) {
+        errors[field.id] = error;
+      }
+    });
+    return errors;
+  }, [customFields, customFieldValues, language]);
+
+  const syncCustomFieldValues = async (testCaseId: number) => {
+    await Promise.all(customFields.map(async (field) => {
+      const rawValue = customFieldValues[field.id];
+      let value = field.field_type === 'boolean'
+        ? (rawValue === 'true' || rawValue === 'false' ? rawValue : '')
+        : (rawValue === undefined || rawValue === null ? '' : String(rawValue));
+      if (field.field_type === 'multiselect') {
+        const allowedOptions = new Set(getCustomFieldOptions(field));
+        const sanitizedValues = parseMultiSelectValues(value).filter((selectedOption) => allowedOptions.has(selectedOption));
+        value = formatMultiSelectValues(sanitizedValues);
+      }
+      const existingValueId = existingCustomFieldValueIds[field.id];
+
+      if (existingValueId && value.trim() === '') {
+        await customFieldsAPI.deleteValue(existingValueId);
+        return;
+      }
+
+      if (existingValueId) {
+        await customFieldsAPI.updateValue(existingValueId, { value });
+        return;
+      }
+
+      if (value.trim() !== '') {
+        await customFieldsAPI.createValue({
+          field_definition_id: field.id,
+          test_case_id: testCaseId,
+          value,
+        });
+      }
+    }));
+  };
+
   const handleSave = async () => {
     setSaving(true);
     try {
       if (id) {
+        const customFieldError = customFields
+          .map(getCustomFieldValidationError)
+          .find(Boolean);
+
+        if (customFieldError) {
+          toast({
+            variant: 'destructive',
+            title: t('validationError'),
+            description: customFieldError,
+          });
+          return;
+        }
+
         const testCaseId = parseInt(id);
         const payload = {
           ...formData,
@@ -282,9 +522,9 @@ export function TestCaseEdit() {
         
         // Update test case first
         await testCasesAPI.update(testCaseId, payload);
+        await syncCustomFieldValues(testCaseId);
         
-        // Handle steps: if multistep, always sync steps (including empty array to clear)
-        // If not multistep, send empty array to clear any existing steps
+        // Sync step rows separately. An empty array clears existing multistep rows while preserving simple mode.
         if (formData.is_multistep) {
           // Backend handles test_case_id assignment, no need to add it here
           await testCasesAPI.createWithSteps(testCaseId, testSteps);
@@ -395,14 +635,14 @@ export function TestCaseEdit() {
               <Label htmlFor="test_type">{t('testType')}</Label>
               <Select value={formData.test_type} onValueChange={(value) => handleInputChange('test_type', value as TestCaseType)}>
                 <SelectTrigger className="w-full">
-                  <SelectValue placeholder={t('selectTestType')} />
+                  <SelectValue placeholder={testTypesLoading ? t('loading') : t('selectTestType')} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="manual">{t('manual')}</SelectItem>
-                  <SelectItem value="automated">{t('automated')}</SelectItem>
-                  <SelectItem value="performance">{t('performance')}</SelectItem>
-                  <SelectItem value="security">{t('security')}</SelectItem>
-                  <SelectItem value="smoke">{t('smoke')}</SelectItem>
+                  {displayedTestTypeOptions.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -508,6 +748,121 @@ export function TestCaseEdit() {
               className="mt-1"
             />
           </div>
+
+          {(customFieldsLoading || customFields.length > 0) && (
+            <Card className="border-slate-200 shadow-sm dark:border-slate-800">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base font-semibold">{t('customFields')}</CardTitle>
+                {customFieldsLoading && (
+                  <p className="text-sm text-muted-foreground">{t('loadingCustomFields')}</p>
+                )}
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {!customFieldsLoading && customFields.map((field) => {
+                  const fieldError = customFieldValidationErrors[field.id];
+                  const fieldOptions = getCustomFieldOptions(field);
+                  const selectedValues = parseMultiSelectValues(customFieldValues[field.id]);
+
+                  return (
+                    <div key={field.id} className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4 dark:border-slate-800 dark:bg-slate-950/60">
+                      <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                        <div className="space-y-1">
+                          <Label htmlFor={`custom-field-${field.id}`} className="text-sm font-semibold text-slate-900 dark:text-white">
+                            {field.name}
+                            {field.is_required && <span className="text-red-500 ml-1">*</span>}
+                          </Label>
+                          {field.description && (
+                            <p className="text-xs leading-5 text-muted-foreground">{field.description}</p>
+                          )}
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          <Badge variant="outline" className="rounded-full text-[10px]">{field.field_type}</Badge>
+                          {field.is_required && (
+                            <Badge className="rounded-full bg-amber-100 text-[10px] text-amber-800 dark:bg-amber-900/30 dark:text-amber-300">{t('requiredBadge')}</Badge>
+                          )}
+                        </div>
+                      </div>
+
+                      {field.field_type === 'boolean' ? (
+                        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
+                          <Checkbox
+                            id={`custom-field-${field.id}`}
+                            checked={customFieldValues[field.id] === 'true'}
+                            onCheckedChange={(checked) => handleCustomFieldChange(field.id, checked === true)}
+                          />
+                          <Label htmlFor={`custom-field-${field.id}`} className="text-sm text-slate-700 dark:text-slate-300">
+                            {customFieldValues[field.id] === 'true' ? t('true') : t('false')}
+                          </Label>
+                          {field.is_required && customFieldValues[field.id] !== 'true' && customFieldValues[field.id] !== 'false' && (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 px-2 text-xs"
+                              onClick={() => handleCustomFieldChange(field.id, false)}
+                            >
+                              {t('setDefaultFalse')}
+                            </Button>
+                          )}
+                        </div>
+                      ) : field.field_type === 'select' ? (
+                        <Select
+                          value={customFieldValues[field.id] || '__none__'}
+                          onValueChange={(value) => handleCustomFieldChange(field.id, value === '__none__' ? '' : value)}
+                        >
+                          <SelectTrigger id={`custom-field-${field.id}`} className="bg-white dark:bg-slate-900">
+                            <SelectValue placeholder={t('customFieldValue')} />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="__none__">{t('noDefaultValue')}</SelectItem>
+                            {fieldOptions.map((option) => (
+                              <SelectItem key={option} value={option}>
+                                {option}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      ) : field.field_type === 'multiselect' ? (
+                        <div id={`custom-field-${field.id}`} className="rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
+                          {fieldOptions.length === 0 ? (
+                            <p className="text-sm text-muted-foreground">{t('noCustomFieldValues')}</p>
+                          ) : (
+                            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                              {fieldOptions.map((option) => {
+                                const isChecked = selectedValues.includes(option);
+                                return (
+                                  <label key={option} className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm transition hover:bg-slate-50 dark:hover:bg-slate-800">
+                                    <Checkbox
+                                      checked={isChecked}
+                                      onCheckedChange={(checked) => handleCustomFieldMultiSelectToggle(field.id, option, checked === true)}
+                                    />
+                                    <span>{option}</span>
+                                  </label>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <Input
+                          id={`custom-field-${field.id}`}
+                          type={field.field_type === 'number' ? 'number' : field.field_type === 'date' ? 'date' : 'text'}
+                          value={customFieldValues[field.id] || ''}
+                          onChange={(event) => handleCustomFieldChange(field.id, event.target.value)}
+                          placeholder={t('enterCustomFieldValue')}
+                          className="bg-white dark:bg-slate-900"
+                        />
+                      )}
+
+                      {fieldError && (
+                        <p className="mt-2 text-xs text-red-600 dark:text-red-400">{fieldError}</p>
+                      )}
+                    </div>
+                  );
+                })}
+              </CardContent>
+            </Card>
+          )}
 
           <div>
             <div className="flex items-center justify-between">
@@ -627,7 +982,7 @@ export function TestCaseEdit() {
           )}
 
           <div className="flex justify-end gap-3 pt-4">
-            <Button variant="outline" onClick={navigateBack}>
+            <Button type="button" variant="outline" onClick={navigateBack}>
               {t('cancel')}
             </Button>
             <Button onClick={handleSave} disabled={saving}>

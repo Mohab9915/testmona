@@ -154,6 +154,12 @@ export function TestRuns() {
         badgeClass: 'bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-900/40 dark:text-blue-300 dark:border-blue-700',
         accentClass: 'from-blue-500 to-cyan-400',
       },
+      in_progress: {
+        label: t('testRunStatusRunning'),
+        icon: PlayCircle,
+        badgeClass: 'bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-900/40 dark:text-blue-300 dark:border-blue-700',
+        accentClass: 'from-blue-500 to-cyan-400',
+      },
       passed: {
         label: t('testRunStatusPassed'),
         icon: CheckCircle2,
@@ -203,6 +209,16 @@ export function TestRuns() {
   const formatDateTime = (date?: string) => (
     date ? new Date(date).toLocaleString() : t('notStarted')
   );
+
+  const getRunStartedAt = (run: TestRun) => {
+    if (run.started_at) {
+      return run.started_at;
+    }
+
+    return ['running', 'in_progress', 'completed', 'passed', 'failed', 'blocked'].includes(run.status)
+      ? run.created_at
+      : undefined;
+  };
 
   const clearTestRunFilters = () => {
     setTestRunSearchQuery('');
@@ -1269,6 +1285,7 @@ export function TestRuns() {
             {paginatedTestRuns.map((run) => {
               const statusMeta = getStatusMeta(run.status);
               const StatusIcon = statusMeta.icon;
+              const startedAt = getRunStartedAt(run);
 
               return (
                 <Card
@@ -1308,8 +1325,8 @@ export function TestRuns() {
                           <Calendar className="h-3.5 w-3.5" />
                           {t('started')}
                         </div>
-                        <p className="truncate text-sm font-semibold text-slate-900 dark:text-slate-100" title={run.started_at ? new Date(run.started_at).toLocaleString() : t('notStarted')}>
-                          {formatDateTime(run.started_at)}
+                        <p className="truncate text-sm font-semibold text-slate-900 dark:text-slate-100" title={startedAt ? new Date(startedAt).toLocaleString() : t('notStarted')}>
+                          {formatDateTime(startedAt)}
                         </p>
                       </div>
                       <div className="rounded-xl bg-slate-50 p-3 dark:bg-slate-900/70">

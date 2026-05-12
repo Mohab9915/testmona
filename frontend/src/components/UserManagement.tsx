@@ -68,7 +68,7 @@ interface Project {
 }
 
 export function UserManagement() {
-  const { isRTL } = useTranslation();
+  const { t, isRTL } = useTranslation();
   const { toast } = useToast();
   const { user: currentUser } = useAuthStore();
   const [users, setUsers] = useState<User[]>([]);
@@ -105,6 +105,18 @@ export function UserManagement() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [userToDelete, setUserToDelete] = useState<User | null>(null);
 
+  const getRoleLabel = (role: string) => {
+    const normalizedRole = normalizeRole(role);
+    const roleLabels: Record<string, string> = {
+      [USER_ROLES.TESTER]: t('tester'),
+      [USER_ROLES.VIEWER]: t('viewer'),
+      [USER_ROLES.MANAGER]: t('manager'),
+      [USER_ROLES.ADMIN]: t('admin'),
+    };
+
+    return roleLabels[normalizedRole] || normalizedRole;
+  };
+
   useEffect(() => {
     loadData();
   }, []);
@@ -126,8 +138,8 @@ export function UserManagement() {
     } catch (error) {
       console.error('Failed to load data:', error);
       toast({
-        title: "Error",
-        description: "Failed to load users and invitations",
+        title: t('error'),
+        description: t('failedToLoadUsersAndInvitations'),
         variant: "destructive",
       });
     } finally {
@@ -138,8 +150,8 @@ export function UserManagement() {
   const handleCreateUser = async () => {
     if (!createUsername || !createEmail || !createPassword) {
       toast({
-        title: "Error",
-        description: "Please fill in all required fields",
+        title: t('error'),
+        description: t('pleaseFillRequiredFields'),
         variant: "destructive",
       });
       return;
@@ -158,8 +170,8 @@ export function UserManagement() {
       setUsers([...users, newUser]);
       
       toast({
-        title: "Success",
-        description: `User ${createUsername} created successfully`,
+        title: t('success'),
+        description: t('userCreatedSuccessfully', { username: createUsername }),
       });
       
       // Reset form
@@ -173,8 +185,8 @@ export function UserManagement() {
     } catch (error: any) {
       console.error('Failed to create user:', error);
       toast({
-        title: "Error",
-        description: error.message || "Failed to create user",
+        title: t('error'),
+        description: error.message || t('failedToCreateUser'),
         variant: "destructive",
       });
     }
@@ -183,8 +195,8 @@ export function UserManagement() {
   const handleInviteUser = async () => {
     if (!inviteEmail) {
       toast({
-        title: "Error",
-        description: "Please enter an email address",
+        title: t('error'),
+        description: t('pleaseEnterEmailAddress'),
         variant: "destructive",
       });
       return;
@@ -203,8 +215,8 @@ export function UserManagement() {
       const inviteLink = `${window.location.origin}/accept-invite/${newInvitation.token}`;
       
       toast({
-        title: "Success",
-        description: `Invitation sent to ${inviteEmail}. Copy the invite link to share.`,
+        title: t('success'),
+        description: t('invitationSentCopyLink', { email: inviteEmail }),
       });
       
       // Reset form
@@ -216,14 +228,14 @@ export function UserManagement() {
       // Show the invite link
       navigator.clipboard.writeText(inviteLink);
       toast({
-        title: "Invite Link Copied",
-        description: "The invitation link has been copied to your clipboard.",
+        title: t('inviteLinkCopied'),
+        description: t('invitationLinkCopiedToClipboard'),
       });
     } catch (error: any) {
       console.error('Failed to invite user:', error);
       toast({
-        title: "Error",
-        description: error.message || "Failed to send invitation",
+        title: t('error'),
+        description: error.message || t('failedToSendInvitation'),
         variant: "destructive",
       });
     }
@@ -242,16 +254,16 @@ export function UserManagement() {
 
       setUsers(users.filter(u => u.id !== userToDelete.id));
       toast({
-        title: "Success",
-        description: "User deleted successfully",
+        title: t('success'),
+        description: t('userDeletedSuccessfully'),
       });
       setDeleteDialogOpen(false);
       setUserToDelete(null);
     } catch (error: any) {
       console.error('Failed to delete user:', error);
-      const errorMessage = error.response?.data?.detail || "Failed to delete user";
+      const errorMessage = error.response?.data?.detail || t('failedToDeleteUser');
       toast({
-        title: "Error",
+        title: t('error'),
         description: errorMessage,
         variant: "destructive",
       });
@@ -279,17 +291,17 @@ export function UserManagement() {
       setUsers(users.map(u => u.id === updatedUser.id ? updatedUser : u));
       
       toast({
-        title: "Success",
-        description: "User updated successfully",
+        title: t('success'),
+        description: t('userUpdatedSuccessfully'),
       });
       
       setEditDialogOpen(false);
       setEditingUser(null);
     } catch (error: any) {
       console.error('Failed to update user:', error);
-      const errorMessage = error.response?.data?.detail || "Failed to update user";
+      const errorMessage = error.response?.data?.detail || t('failedToUpdateUser');
       toast({
-        title: "Error",
+        title: t('error'),
         description: errorMessage,
         variant: "destructive",
       });
@@ -302,14 +314,14 @@ export function UserManagement() {
 
       setInvitations(invitations.filter(i => i.id !== invitationId));
       toast({
-        title: "Success",
-        description: "Invitation deleted successfully",
+        title: t('success'),
+        description: t('invitationDeletedSuccessfully'),
       });
     } catch (error: any) {
       console.error('Failed to delete invitation:', error);
-      const errorMessage = error.response?.data?.detail || "Failed to delete invitation";
+      const errorMessage = error.response?.data?.detail || t('failedToDeleteInvitation');
       toast({
-        title: "Error",
+        title: t('error'),
         description: errorMessage,
         variant: "destructive",
       });
@@ -323,8 +335,8 @@ export function UserManagement() {
     setTimeout(() => setCopiedToken(null), 2000);
     
     toast({
-      title: "Copied",
-      description: "Invitation link copied to clipboard",
+      title: t('copied'),
+      description: t('invitationLinkCopiedToClipboard'),
     });
   };
 
@@ -341,15 +353,15 @@ export function UserManagement() {
       {/* Users Section */}
       <div>
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-semibold">Users</h3>
+          <h3 className="text-lg font-semibold">{t('users')}</h3>
           <div className="flex items-center gap-2">
             <Button onClick={() => setCreateUserDialogOpen(true)} size="sm">
-              <Plus className="h-4 w-4 mr-2" />
-              Create User
+              <Plus className="h-4 w-4 mr-2 rtl:mr-0 rtl:ml-2" />
+              {t('createUser')}
             </Button>
             <Button onClick={() => setInviteDialogOpen(true)} size="sm" variant="outline">
-              <Mail className="h-4 w-4 mr-2" />
-              Invite User
+              <Mail className="h-4 w-4 mr-2 rtl:mr-0 rtl:ml-2" />
+              {t('inviteUser')}
             </Button>
           </div>
         </div>
@@ -358,20 +370,20 @@ export function UserManagement() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Username</TableHead>
-                <TableHead>Email</TableHead>
-                <TableHead>Full Name</TableHead>
-                <TableHead>Role</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Created</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
+                <TableHead>{t('username')}</TableHead>
+                <TableHead>{t('email')}</TableHead>
+                <TableHead>{t('fullName')}</TableHead>
+                <TableHead>{t('role')}</TableHead>
+                <TableHead>{t('status')}</TableHead>
+                <TableHead>{t('created')}</TableHead>
+                <TableHead className="text-end">{t('actions')}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {users.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={7} className="text-center text-gray-500 py-8">
-                    No users found
+                    {t('noUsersFound')}
                   </TableCell>
                 </TableRow>
               ) : (
@@ -382,16 +394,16 @@ export function UserManagement() {
                     <TableCell>{user.full_name || '-'}</TableCell>
                     <TableCell>
                       <Badge variant={isAdminRole(user.role) ? 'default' : 'secondary'}>
-                        {user.role}
+                        {getRoleLabel(user.role)}
                       </Badge>
                     </TableCell>
                     <TableCell>
                       <Badge variant={user.is_active ? 'default' : 'secondary'}>
-                        {user.is_active ? 'Active' : 'Inactive'}
+                        {user.is_active ? t('active') : t('inactive')}
                       </Badge>
                     </TableCell>
                     <TableCell>{new Date(user.created_at).toLocaleDateString()}</TableCell>
-                    <TableCell className="text-right">
+                    <TableCell className="text-end">
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <Button variant="ghost" size="sm">
@@ -400,8 +412,8 @@ export function UserManagement() {
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
                           <DropdownMenuItem onClick={() => handleEditUser(user)}>
-                            <Edit className="h-4 w-4 mr-2" />
-                            Edit
+                            <Edit className="h-4 w-4 mr-2 rtl:mr-0 rtl:ml-2" />
+                            {t('edit')}
                           </DropdownMenuItem>
                           {currentUser?.id !== user.id && (
                             <>
@@ -410,8 +422,8 @@ export function UserManagement() {
                                 onClick={() => handleDeleteUser(user)}
                                 className="text-red-600"
                               >
-                                <Trash2 className="h-4 w-4 mr-2" />
-                                Delete
+                                <Trash2 className="h-4 w-4 mr-2 rtl:mr-0 rtl:ml-2" />
+                                {t('delete')}
                               </DropdownMenuItem>
                             </>
                           )}
@@ -428,23 +440,23 @@ export function UserManagement() {
 
       {/* Pending Invitations Section */}
       <div>
-        <h3 className="text-lg font-semibold mb-4">Pending Invitations</h3>
+        <h3 className="text-lg font-semibold mb-4">{t('pendingInvitations')}</h3>
         <div className="border rounded-lg">
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Email</TableHead>
-                <TableHead>Role</TableHead>
-                <TableHead>Expires</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
+                <TableHead>{t('email')}</TableHead>
+                <TableHead>{t('role')}</TableHead>
+                <TableHead>{t('expires')}</TableHead>
+                <TableHead>{t('status')}</TableHead>
+                <TableHead className="text-end">{t('actions')}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {invitations.filter(i => !i.is_used).length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={5} className="text-center text-gray-500 py-8">
-                    No pending invitations
+                    {t('noPendingInvitations')}
                   </TableCell>
                 </TableRow>
               ) : (
@@ -452,13 +464,13 @@ export function UserManagement() {
                   <TableRow key={invitation.id}>
                     <TableCell className="font-medium">{invitation.email}</TableCell>
                     <TableCell>
-                      <Badge variant="secondary">{invitation.role}</Badge>
+                      <Badge variant="secondary">{getRoleLabel(invitation.role)}</Badge>
                     </TableCell>
                     <TableCell>{new Date(invitation.expires_at).toLocaleDateString()}</TableCell>
                     <TableCell>
-                      <Badge variant="outline">Pending</Badge>
+                      <Badge variant="outline">{t('pending')}</Badge>
                     </TableCell>
-                    <TableCell className="text-right">
+                    <TableCell className="text-end">
                       <div className="flex items-center justify-end gap-2">
                         <Button
                           variant="ghost"
@@ -492,82 +504,82 @@ export function UserManagement() {
       <Dialog open={createUserDialogOpen} onOpenChange={setCreateUserDialogOpen}>
         <DialogContent isRTL={isRTL} className="sm:max-w-[500px]">
           <DialogHeader>
-            <DialogTitle>Create User</DialogTitle>
+            <DialogTitle>{t('createUser')}</DialogTitle>
             <DialogDescription>
-              Create a new user account manually. The user will be able to log in immediately.
+              {t('createUserDialogDesc')}
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <div className="grid gap-2">
-              <Label htmlFor="create-username">Username *</Label>
+              <Label htmlFor="create-username">{t('username')} *</Label>
               <Input
                 id="create-username"
                 value={createUsername}
                 onChange={(e) => setCreateUsername(e.target.value)}
-                placeholder="johndoe"
+                placeholder={t('usernamePlaceholder')}
               />
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="create-email">Email *</Label>
+              <Label htmlFor="create-email">{t('email')} *</Label>
               <Input
                 id="create-email"
                 type="email"
                 value={createEmail}
                 onChange={(e) => setCreateEmail(e.target.value)}
-                placeholder="john@example.com"
+                placeholder={t('emailPlaceholder')}
               />
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="create-fullname">Full Name</Label>
+              <Label htmlFor="create-fullname">{t('fullName')}</Label>
               <Input
                 id="create-fullname"
                 value={createFullName}
                 onChange={(e) => setCreateFullName(e.target.value)}
-                placeholder="John Doe"
+                placeholder={t('fullNamePlaceholder')}
               />
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="create-password">Password *</Label>
+              <Label htmlFor="create-password">{t('password')} *</Label>
               <Input
                 id="create-password"
                 type="password"
                 value={createPassword}
                 onChange={(e) => setCreatePassword(e.target.value)}
-                placeholder="Enter password"
+                placeholder={t('enterPassword')}
               />
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="create-role">Role</Label>
+              <Label htmlFor="create-role">{t('role')}</Label>
               <Select value={createRole} onValueChange={setCreateRole}>
                 <SelectTrigger id="create-role">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value={USER_ROLES.TESTER}>Tester</SelectItem>
-                  <SelectItem value={USER_ROLES.VIEWER}>Viewer</SelectItem>
-                  <SelectItem value={USER_ROLES.MANAGER}>Manager</SelectItem>
-                  <SelectItem value={USER_ROLES.ADMIN}>Admin</SelectItem>
+                  <SelectItem value={USER_ROLES.TESTER}>{t('tester')}</SelectItem>
+                  <SelectItem value={USER_ROLES.VIEWER}>{t('viewer')}</SelectItem>
+                  <SelectItem value={USER_ROLES.MANAGER}>{t('manager')}</SelectItem>
+                  <SelectItem value={USER_ROLES.ADMIN}>{t('admin')}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
-            <div className="flex items-center space-x-2">
+            <div className="flex items-center space-x-2 rtl:space-x-reverse">
               <Checkbox
                 id="create-active"
                 checked={createIsActive}
                 onCheckedChange={(checked) => setCreateIsActive(checked as boolean)}
               />
               <Label htmlFor="create-active" className="cursor-pointer">
-                Active
+                {t('active')}
               </Label>
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setCreateUserDialogOpen(false)}>
-              Cancel
+              {t('cancel')}
             </Button>
             <Button onClick={handleCreateUser}>
-              <Plus className="h-4 w-4 mr-2" />
-              Create User
+              <Plus className="h-4 w-4 mr-2 rtl:mr-0 rtl:ml-2" />
+              {t('createUser')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -577,44 +589,44 @@ export function UserManagement() {
       <Dialog open={inviteDialogOpen} onOpenChange={setInviteDialogOpen}>
         <DialogContent isRTL={isRTL} className="sm:max-w-[500px]">
           <DialogHeader>
-            <DialogTitle>Invite User</DialogTitle>
+            <DialogTitle>{t('inviteUser')}</DialogTitle>
             <DialogDescription>
-              Send an invitation to a new user. They will receive an email with a link to create their account.
+              {t('inviteUserDialogDesc')}
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <div className="grid gap-2">
-              <Label htmlFor="invite-email">Email Address</Label>
+              <Label htmlFor="invite-email">{t('emailAddress')}</Label>
               <Input
                 id="invite-email"
                 type="email"
                 value={inviteEmail}
                 onChange={(e) => setInviteEmail(e.target.value)}
-                placeholder="user@example.com"
+                placeholder={t('userEmailPlaceholder')}
               />
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="invite-role">Role</Label>
+              <Label htmlFor="invite-role">{t('role')}</Label>
               <Select value={inviteRole} onValueChange={setInviteRole}>
                 <SelectTrigger id="invite-role">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value={USER_ROLES.TESTER}>Tester</SelectItem>
-                  <SelectItem value={USER_ROLES.VIEWER}>Viewer</SelectItem>
-                  <SelectItem value={USER_ROLES.MANAGER}>Manager</SelectItem>
-                  <SelectItem value={USER_ROLES.ADMIN}>Admin</SelectItem>
+                  <SelectItem value={USER_ROLES.TESTER}>{t('tester')}</SelectItem>
+                  <SelectItem value={USER_ROLES.VIEWER}>{t('viewer')}</SelectItem>
+                  <SelectItem value={USER_ROLES.MANAGER}>{t('manager')}</SelectItem>
+                  <SelectItem value={USER_ROLES.ADMIN}>{t('admin')}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             <div className="grid gap-2">
-              <Label>Assign to Projects</Label>
+              <Label>{t('assignToProjects')}</Label>
               <div className="border rounded-md p-3 max-h-48 overflow-y-auto space-y-2">
                 {projects.length === 0 ? (
-                  <p className="text-sm text-gray-500">No projects available</p>
+                  <p className="text-sm text-gray-500">{t('noProjectsAvailable')}</p>
                 ) : (
                   projects.map((project) => (
-                    <div key={project.id} className="flex items-center space-x-2">
+                    <div key={project.id} className="flex items-center space-x-2 rtl:space-x-reverse">
                       <Checkbox
                         id={`project-${project.id}`}
                         checked={selectedProjects.includes(project.id)}
@@ -634,11 +646,11 @@ export function UserManagement() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setInviteDialogOpen(false)}>
-              Cancel
+              {t('cancel')}
             </Button>
             <Button onClick={handleInviteUser}>
-              <Mail className="h-4 w-4 mr-2" />
-              Send Invitation
+              <Mail className="h-4 w-4 mr-2 rtl:mr-0 rtl:ml-2" />
+              {t('sendInvitation')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -648,43 +660,43 @@ export function UserManagement() {
       <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
         <DialogContent isRTL={isRTL} className="sm:max-w-[425px]">
           <DialogHeader>
-            <DialogTitle>Edit User</DialogTitle>
+            <DialogTitle>{t('editUser')}</DialogTitle>
             <DialogDescription>
-              Update user role and status.
+              {t('editUserDialogDesc')}
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <div className="grid gap-2">
-              <Label htmlFor="edit-role">Role</Label>
+              <Label htmlFor="edit-role">{t('role')}</Label>
               <Select value={editRole} onValueChange={setEditRole}>
                 <SelectTrigger id="edit-role">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value={USER_ROLES.TESTER}>Tester</SelectItem>
-                  <SelectItem value={USER_ROLES.VIEWER}>Viewer</SelectItem>
-                  <SelectItem value={USER_ROLES.MANAGER}>Manager</SelectItem>
-                  <SelectItem value={USER_ROLES.ADMIN}>Admin</SelectItem>
+                  <SelectItem value={USER_ROLES.TESTER}>{t('tester')}</SelectItem>
+                  <SelectItem value={USER_ROLES.VIEWER}>{t('viewer')}</SelectItem>
+                  <SelectItem value={USER_ROLES.MANAGER}>{t('manager')}</SelectItem>
+                  <SelectItem value={USER_ROLES.ADMIN}>{t('admin')}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
-            <div className="flex items-center space-x-2">
+            <div className="flex items-center space-x-2 rtl:space-x-reverse">
               <Checkbox
                 id="edit-active"
                 checked={editIsActive}
                 onCheckedChange={(checked) => setEditIsActive(checked as boolean)}
               />
               <Label htmlFor="edit-active" className="cursor-pointer">
-                Active
+                {t('active')}
               </Label>
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditDialogOpen(false)}>
-              Cancel
+              {t('cancel')}
             </Button>
             <Button onClick={handleUpdateUser} disabled={editRole === originalRole}>
-              Save Changes
+              {t('saveChanges')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -694,17 +706,17 @@ export function UserManagement() {
       <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <DialogContent isRTL={isRTL} className="sm:max-w-[400px]">
           <DialogHeader>
-            <DialogTitle>Delete User</DialogTitle>
+            <DialogTitle>{t('deleteUser')}</DialogTitle>
             <DialogDescription>
-              Are you sure you want to delete {userToDelete?.username}? This action cannot be undone.
+              {t('deleteUserConfirmDesc', { username: userToDelete?.username || '' })}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDeleteDialogOpen(false)}>
-              Cancel
+              {t('cancel')}
             </Button>
             <Button variant="destructive" onClick={confirmDeleteUser}>
-              Delete
+              {t('delete')}
             </Button>
           </DialogFooter>
         </DialogContent>

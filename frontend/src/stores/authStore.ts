@@ -85,11 +85,15 @@ interface AuthState {
   isAuthenticated: boolean;
   language: 'en' | 'fa' | 'ar';
   compactMode: boolean;
+  appName: string;
+  appLogoUrl: string;
   login: (usernameOrEmail: string, password: string) => Promise<boolean>;
   logout: () => void;
   setUser: (user: User) => void;
   setLanguage: (language: 'en' | 'fa' | 'ar') => void;
   setCompactMode: (compactMode: boolean) => void;
+  setAppName: (appName: string) => void;
+  setAppLogoUrl: (appLogoUrl: string) => void;
   refreshAccessToken: () => Promise<void>;
   initializeDevAuth: () => Promise<void>;
   _isLoggingIn: boolean;
@@ -105,6 +109,8 @@ export const useAuthStore = create<AuthState>()(
       isAuthenticated: false,
       language: 'en',
       compactMode: false,
+      appName: 'TestMona',
+      appLogoUrl: '',
       _isLoggingIn: false,
       _loginPromise: null,
 
@@ -181,7 +187,7 @@ export const useAuthStore = create<AuthState>()(
         set({ user });
       },
 
-      setLanguage: (language: 'en' | 'fa') => {
+      setLanguage: (language: 'en' | 'fa' | 'ar') => {
         set({ language });
       },
 
@@ -193,6 +199,14 @@ export const useAuthStore = create<AuthState>()(
         } else {
           document.documentElement.classList.remove('compact-mode');
         }
+      },
+
+      setAppName: (appName: string) => {
+        set({ appName });
+      },
+
+      setAppLogoUrl: (appLogoUrl: string) => {
+        set({ appLogoUrl });
       },
 
       refreshAccessToken: async () => {
@@ -264,6 +278,8 @@ export const useAuthStore = create<AuthState>()(
         user: state.user,
         language: state.language,
         compactMode: state.compactMode,
+        appName: state.appName,
+        appLogoUrl: state.appLogoUrl,
       }),
       onRehydrateStorage: () => (state) => {
         if (state && state.token) {

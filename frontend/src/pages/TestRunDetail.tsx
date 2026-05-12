@@ -31,6 +31,7 @@ import { TestRunPieChart, TestRunBarChart, TestRunTrendChart } from '@/component
 import { useTranslation } from '@/hooks/useTranslation';
 import { testRunsAPI, testResultsAPI, usersAPI } from '@/lib/api';
 import { TestResult } from '@/types/index';
+import { formatDurationSeconds } from '@/utils/timeFormat';
 
 interface TestRun {
   id: string;
@@ -186,19 +187,37 @@ export function TestRunDetail() {
     return Boolean(normalizedStatus) && normalizedStatus !== 'not_tested' && normalizedStatus !== 'pending';
   };
 
+  const getTimedResultPayload = (result: any, pendingValues: Record<string, any>) => {
+    const payload = { ...pendingValues };
+    const targetStatus = payload.status ?? result.status;
+
+    if (isResultComplete(targetStatus) && payload.execution_time === undefined) {
+      const startedAt = payload.execution_started_at || result.execution_started_at || new Date().toISOString();
+      const startedAtTime = new Date(startedAt).getTime();
+      payload.execution_started_at = startedAt;
+      payload.execution_time = Number.isNaN(startedAtTime)
+        ? 0
+        : Math.max(0, Math.round((Date.now() - startedAtTime) / 1000));
+    }
+
+    return payload;
+  };
+
   const getDerivedRunStatusPayload = (runData: any, resultsData: any[]) => {
     const currentStatus = normalizeRunStatus(runData.status);
     const hasResults = resultsData.length > 0;
     const allCompleted = hasResults && resultsData.every((result: any) => isResultComplete(result.status));
-    const targetStatus = !hasResults ? 'pending' : allCompleted ? 'completed' : 'in_progress';
+    const targetStatus = !hasResults ? 'pending' : allCompleted ? 'completed' : 'running';
 
     const completedAtIsConsistent = targetStatus === 'completed' ? Boolean(runData.completed_at) : !runData.completed_at;
-    if (currentStatus === targetStatus && completedAtIsConsistent) {
+    const startedAtIsConsistent = targetStatus === 'pending' || Boolean(runData.started_at);
+    if (currentStatus === targetStatus && completedAtIsConsistent && startedAtIsConsistent) {
       return null;
     }
 
     return {
       status: targetStatus,
+      started_at: targetStatus === 'pending' ? null : (runData.started_at || new Date().toISOString()),
       completed_at: targetStatus === 'completed' ? (runData.completed_at || new Date().toISOString()) : null,
     };
   };
@@ -475,6 +494,9 @@ export function TestRunDetail() {
   const skippedTests = (statusCounts.skip || 0) + (statusCounts.skipped || 0);
   const notTestedTests = (statusCounts.not_tested || 0) + (statusCounts.pending || 0);
   const passRate = totalTests > 0 ? Math.round((passedTests / totalTests) * 100) : 0;
+  const totalExecutionSeconds = testResults.reduce((total, result) => total + (Number(result.execution_time) || 0), 0);
+  const executedResultsCount = testResults.filter((result) => isResultComplete(result.status) && result.execution_time != null).length;
+  const averageExecutionSeconds = executedResultsCount > 0 ? Math.round(totalExecutionSeconds / executedResultsCount) : 0;
   const { pieData, sectionData, trendData } = prepareChartData();
   const runDescription = testRun?.description?.trim() || t('noDescriptionProvided');
   const formattedCreatedDate = testRun?.created_at
@@ -599,7 +621,7 @@ export function TestRunDetail() {
 
     try {
       const payload = {
-        ...pendingValues,
+        ...getTimedResultPayload(result, pendingValues),
         executed_by: pendingValues.executed_by ? parseInt(pendingValues.executed_by, 10) : result.executed_by,
       };
       const updatedResult = await testResultsAPI.update(Number(resultId), payload);
@@ -647,8 +669,8 @@ export function TestRunDetail() {
         result.priority || 'medium',
         result.status,
         result.executedBy || '',
-        result.executedAt || '',
-        result.duration || '',
+        result.executed_at || '',
+        result.execution_time ?? '',
         `"${result.comments || ''}"`
       ].join(','))
     ].join('\n');
@@ -919,18 +941,18 @@ export function TestRunDetail() {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Duration</CardTitle>
+            <CardTitle className="text-sm font-medium">{t('duration')}</CardTitle>
             <Clock className="h-4 w-4 text-gray-600" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {testRun?.completed_at 
-                ? `${Math.round((new Date(testRun.completed_at).getTime() - new Date(testRun.created_at).getTime()) / 60000)}m`
-                : testRun?.estimated_duration ? `${testRun.estimated_duration}m (estimated)` : 'In Progress'
+              {totalExecutionSeconds > 0
+                ? formatDurationSeconds(totalExecutionSeconds, t)
+                : testRun?.estimated_duration ? t('minutesShort', { count: testRun.estimated_duration }) : t('inProgress')
               }
             </div>
             <p className="text-xs text-gray-500">
-              {testRun?.environment || 'No environment'} • Priority: {testRun?.priority || 'medium'}
+              {t('averageCaseTime')}: {executedResultsCount > 0 ? formatDurationSeconds(averageExecutionSeconds, t) : t('notAvailableShort')}
             </p>
           </CardContent>
         </Card>
@@ -1142,7 +1164,7 @@ export function TestRunDetail() {
                         </TableCell>
                         <TableCell className="align-top">
                           <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
-                            {result.execution_time ? `${result.execution_time}s` : '-'}
+                            {formatDurationSeconds(result.execution_time, t)}
                           </span>
                         </TableCell>
                         <TableCell className="align-top">

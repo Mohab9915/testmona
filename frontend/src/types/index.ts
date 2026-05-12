@@ -61,6 +61,7 @@ export interface TestCase {
     expected_result: string;
     step_type: string;
   }>;
+  custom_field_values?: CustomFieldValue[];
   // Nested relationships
   creator?: User;
   test_suite?: {
@@ -81,7 +82,7 @@ export interface TestRun {
   name: string;
   description?: string;
   project_id: number;
-  status: 'pending' | 'running' | 'passed' | 'failed' | 'skipped' | 'blocked' | 'completed';
+  status: 'pending' | 'running' | 'in_progress' | 'passed' | 'failed' | 'skipped' | 'blocked' | 'completed';
   environment_id?: number;
   environment?: {
     id: number;
@@ -129,7 +130,8 @@ export interface TestResult {
   actual_result?: string;
   comments?: string;
   execution_time?: number;
-  executed_by?: string;
+  execution_started_at?: string;
+  executed_by?: string | number;
   executed_at: string;
   created_at: string;
   updated_at?: string;

@@ -12,6 +12,7 @@ import { TestCases } from '@/pages/TestCases';
 import { TestCaseDetail } from '@/pages/TestCaseDetail';
 import { TestCaseEdit } from '@/pages/TestCaseEdit';
 import { TestCaseRevisions } from '@/pages/TestCaseRevisions';
+import { TestCaseExecutionHistory } from '@/pages/TestCaseExecutionHistory';
 import { TestCaseExecute } from '@/pages/TestCaseExecute';
 import { TestCaseExecution } from '@/pages/TestCaseExecution';
 import { SectionManagement } from '@/pages/SectionManagement';
@@ -32,11 +33,13 @@ import { Profile } from '@/pages/Profile';
 import { ThemeProvider } from '@/contexts/ThemeContext';
 import { useAuthStore, initializeAuthFromLocalStorage } from '@/stores/authStore';
 import { useTranslation } from '@/hooks/useTranslation';
+import { useAppName } from '@/hooks/useAppName';
 import { useEffect, useState } from 'react';
 
 function AppWithRouter() {
   const { isAuthenticated, initializeDevAuth, compactMode } = useAuthStore();
   const { isRTL, language } = useTranslation();
+  const { appName, appLogoUrl } = useAppName();
   const [isInitialized, setIsInitialized] = useState(false);
   
   // Initialize localStorage sync immediately on component mount
@@ -50,6 +53,17 @@ function AppWithRouter() {
     document.documentElement.dir = isRTL ? 'rtl' : 'ltr';
     document.documentElement.lang = language;
   }, [isRTL, language]);
+
+  useEffect(() => {
+    document.title = appName;
+  }, [appName]);
+
+  useEffect(() => {
+    const existingIcon = document.querySelector<HTMLLinkElement>("link[rel='icon']");
+    if (!existingIcon || !appLogoUrl) return;
+
+    existingIcon.href = appLogoUrl;
+  }, [appLogoUrl]);
 
   // Apply compact mode on mount and when it changes
   useEffect(() => {
@@ -122,6 +136,11 @@ function AppWithRouter() {
         <Route path="/projects/:projectId/test-cases/:id/revisions" element={
           <ProjectGuard>
             <TestCaseRevisions />
+          </ProjectGuard>
+        } />
+        <Route path="/projects/:projectId/test-cases/:id/execution-history" element={
+          <ProjectGuard>
+            <TestCaseExecutionHistory />
           </ProjectGuard>
         } />
         <Route path="/projects/:projectId/test-cases/:id/execute" element={
@@ -219,6 +238,11 @@ function AppWithRouter() {
         <Route path="/test-cases/:id/revisions" element={
           <ProjectGuard>
             <TestCaseRevisions />
+          </ProjectGuard>
+        } />
+        <Route path="/test-cases/:id/execution-history" element={
+          <ProjectGuard>
+            <TestCaseExecutionHistory />
           </ProjectGuard>
         } />
         <Route path="/test-cases/:id/execute" element={

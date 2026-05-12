@@ -55,6 +55,20 @@ import { api, testCasesAPI, sectionsAPI, importExportAPI, userPreferencesAPI, en
 import { defectManagementAPI, IssueTrackerIntegration } from '@/lib/defectManagementAPI';
 import { useAuthStore } from '@/stores/authStore';
 import { useTranslation } from '@/hooks/useTranslation';
+import {
+  APP_LOGO_URL_MAX_LENGTH,
+  APP_LOGO_URL_SETTING_KEY,
+  APP_NAME_MAX_LENGTH,
+  APP_NAME_SETTING_KEY,
+  DEFAULT_APP_NAME,
+  DEFAULT_TIMEZONE_SETTING_KEY,
+  ORGANIZATION_NAME_MAX_LENGTH,
+  ORGANIZATION_NAME_SETTING_KEY,
+  SUPPORT_EMAIL_MAX_LENGTH,
+  SUPPORT_EMAIL_SETTING_KEY,
+  normalizeOptionalSetting,
+  useAppName,
+} from '@/hooks/useAppName';
 import { useToast } from '@/hooks/use-toast';
 import { UserManagement } from '@/components/UserManagement';
 import { isAdminUser } from '@/utils/roles';
@@ -151,6 +165,7 @@ interface AutomationSettings {
 export function Settings() {
   const { language, setLanguage, compactMode, setCompactMode } = useAuthStore();
   const { t, isRTL } = useTranslation();
+  const { appName, appLogoUrl, setAppName: setStoredAppName, setAppLogoUrl: setStoredAppLogoUrl } = useAppName(false);
   const { user } = useAuthStore();
   const { toast } = useToast();
   const [integrations, setIntegrations] = useState<IssueTrackerIntegration[]>([]);
@@ -158,6 +173,7 @@ export function Settings() {
   const [isIntegrationDialogOpen, setIsIntegrationDialogOpen] = useState(false);
   const [isIntegrationFormOpen, setIsIntegrationFormOpen] = useState(false);
   const [editingIntegration, setEditingIntegration] = useState<IssueTrackerIntegration | null>(null);
+  const [integrationToDelete, setIntegrationToDelete] = useState<IssueTrackerIntegration | null>(null);
   const [isTestingConnection, setIsTestingConnection] = useState(false);
   const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null);
   const [projects, setProjects] = useState<any[]>([]);
@@ -169,6 +185,11 @@ export function Settings() {
   const [debugLogging, setDebugLogging] = useState(false);
   const [sessionTimeout, setSessionTimeout] = useState(60);
   const [passwordComplexity, setPasswordComplexity] = useState('high');
+  const [appNameInput, setAppNameInput] = useState(appName);
+  const [appLogoUrlInput, setAppLogoUrlInput] = useState(appLogoUrl);
+  const [organizationName, setOrganizationName] = useState('');
+  const [supportEmail, setSupportEmail] = useState('');
+  const [defaultTimezone, setDefaultTimezone] = useState('UTC');
   const [saving, setSaving] = useState(false);
   
   // Audit trail configuration state
@@ -177,10 +198,59 @@ export function Settings() {
   const [loadingAuditConfig, setLoadingAuditConfig] = useState(false);
   const [savingAuditConfig, setSavingAuditConfig] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
+  useEffect(() => {
+    setAppNameInput(appName);
+  }, [appName]);
+
+  useEffect(() => {
+    setAppLogoUrlInput(appLogoUrl);
+  }, [appLogoUrl]);
   
   const loadSystemSettings = async () => {
     try {
       const settings = await systemSettingsAPI.getAllSettings();
+
+      const appNameSetting = settings.find(s => s.key === APP_NAME_SETTING_KEY);
+      if (appNameSetting) {
+        const configuredAppName = appNameSetting.value?.trim() || DEFAULT_APP_NAME;
+        setAppNameInput(configuredAppName);
+        setStoredAppName(configuredAppName);
+      } else {
+        await systemSettingsAPI.createSetting(APP_NAME_SETTING_KEY, DEFAULT_APP_NAME, 'Application display name');
+        setAppNameInput(DEFAULT_APP_NAME);
+        setStoredAppName(DEFAULT_APP_NAME);
+      }
+
+      const appLogoUrlSetting = settings.find(s => s.key === APP_LOGO_URL_SETTING_KEY);
+      if (appLogoUrlSetting) {
+        const configuredLogoUrl = normalizeOptionalSetting(appLogoUrlSetting.value);
+        setAppLogoUrlInput(configuredLogoUrl);
+        setStoredAppLogoUrl(configuredLogoUrl);
+      } else {
+        await systemSettingsAPI.createSetting(APP_LOGO_URL_SETTING_KEY, '', 'Application logo URL');
+      }
+
+      const organizationSetting = settings.find(s => s.key === ORGANIZATION_NAME_SETTING_KEY);
+      if (organizationSetting) {
+        setOrganizationName(normalizeOptionalSetting(organizationSetting.value));
+      } else {
+        await systemSettingsAPI.createSetting(ORGANIZATION_NAME_SETTING_KEY, '', 'Organization display name');
+      }
+
+      const supportEmailSetting = settings.find(s => s.key === SUPPORT_EMAIL_SETTING_KEY);
+      if (supportEmailSetting) {
+        setSupportEmail(normalizeOptionalSetting(supportEmailSetting.value));
+      } else {
+        await systemSettingsAPI.createSetting(SUPPORT_EMAIL_SETTING_KEY, '', 'Public support email address');
+      }
+
+      const timezoneSetting = settings.find(s => s.key === DEFAULT_TIMEZONE_SETTING_KEY);
+      if (timezoneSetting) {
+        setDefaultTimezone(timezoneSetting.value || 'UTC');
+      } else {
+        await systemSettingsAPI.createSetting(DEFAULT_TIMEZONE_SETTING_KEY, 'UTC', 'Default timezone');
+      }
       
       // Load each setting or create with default if it doesn't exist
       const maintenanceSetting = settings.find(s => s.key === 'maintenance_mode');
@@ -225,6 +295,11 @@ export function Settings() {
       setDebugLogging(false);
       setSessionTimeout(60);
       setPasswordComplexity('high');
+      setAppNameInput(appName);
+      setAppLogoUrlInput(appLogoUrl);
+      setOrganizationName('');
+      setSupportEmail('');
+      setDefaultTimezone('UTC');
     }
   };
 
@@ -257,8 +332,8 @@ export function Settings() {
       const token = localStorage.getItem('token');
       if (!token) {
         toast({
-          title: 'Error',
-          description: 'Authentication required',
+          title: t('error'),
+          description: t('authenticationRequired'),
           variant: 'destructive',
         });
         return;
@@ -286,7 +361,7 @@ export function Settings() {
   };
 
   const handleResetAuditTrailConfig = async () => {
-    if (!confirm('Are you sure you want to reset audit trail configuration to defaults?')) {
+    if (!confirm(t('confirmResetAuditTrailConfig'))) {
       return;
     }
 
@@ -295,8 +370,8 @@ export function Settings() {
       const token = localStorage.getItem('token');
       if (!token) {
         toast({
-          title: 'Error',
-          description: 'Authentication required',
+          title: t('error'),
+          description: t('authenticationRequired'),
           variant: 'destructive',
         });
         return;
@@ -343,7 +418,7 @@ export function Settings() {
     setShowDeleteConfirm(false);
     setSavingAuditConfig(true);
     try {
-      const response = await fetch(`${(import.meta as any).env?.VITE_API_URL || 'http://localhost:8000'}/system/settings/audit-trails/all`, {
+      const response = await fetch(`${API_BASE_URL}/system/settings/audit-trails/all`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`,
@@ -568,46 +643,46 @@ export function Settings() {
   const getPlaceholders = () => {
     const placeholders: Record<string, any> = {
       jira: {
-        name: 'My Jira Integration',
+        name: t('integrationNamePlaceholder'),
         apiUrl: 'https://your-domain.atlassian.net',
         projectKey: 'TEST',
-        projectKeyLabel: 'Project Key',
-        projectKeyDesc: 'The project key from your Jira instance (e.g., TEST, PROJ)'
+        projectKeyLabel: t('projectKeyLabel'),
+        projectKeyDesc: t('projectKeyDesc')
       },
       github: {
-        name: 'My GitHub Integration',
+        name: t('githubIntegrationNamePlaceholder'),
         apiUrl: 'https://api.github.com',
         projectKey: 'owner/repo',
-        projectKeyLabel: 'Repository',
-        projectKeyDesc: 'GitHub repository in format: owner/repo'
+        projectKeyLabel: t('repositoryLabel'),
+        projectKeyDesc: t('repositoryDesc')
       },
       gitlab: {
-        name: 'My GitLab Integration',
+        name: t('gitlabIntegrationNamePlaceholder'),
         apiUrl: 'https://gitlab.com/api/v4',
         projectKey: 'namespace/project',
-        projectKeyLabel: 'Project Path',
-        projectKeyDesc: 'GitLab project path (e.g., namespace/project)'
+        projectKeyLabel: t('projectPathLabel'),
+        projectKeyDesc: t('projectPathDesc')
       },
       'azure-devops': {
-        name: 'My Azure DevOps Integration',
+        name: t('azureDevopsIntegrationNamePlaceholder'),
         apiUrl: 'https://dev.azure.com/your-org',
-        projectKey: 'Project Name',
-        projectKeyLabel: 'Project Name',
-        projectKeyDesc: 'Azure DevOps project name'
+        projectKey: t('projectNamePlaceholder'),
+        projectKeyLabel: t('projectNameLabel'),
+        projectKeyDesc: t('projectNameDesc')
       },
       linear: {
-        name: 'My Linear Integration',
+        name: t('linearIntegrationNamePlaceholder'),
         apiUrl: 'https://api.linear.app',
-        projectKey: 'Team Key',
-        projectKeyLabel: 'Team Key',
-        projectKeyDesc: 'Linear team key (e.g., ENG, PROD)'
+        projectKey: t('teamKeyPlaceholder'),
+        projectKeyLabel: t('teamKeyLabel'),
+        projectKeyDesc: t('teamKeyDesc')
       },
       asana: {
-        name: 'My Asana Integration',
+        name: t('asanaIntegrationNamePlaceholder'),
         apiUrl: 'https://app.asana.com/api/1.0',
-        projectKey: 'Project GID',
-        projectKeyLabel: 'Project GID',
-        projectKeyDesc: 'Asana project GID (numeric ID)'
+        projectKey: t('projectGidPlaceholder'),
+        projectKeyLabel: t('projectGidLabel'),
+        projectKeyDesc: t('projectGidDesc')
       }
     };
     return placeholders[integrationForm.tracker_type] || placeholders.jira;
@@ -621,47 +696,24 @@ export function Settings() {
   const tokenInputRef = useRef<HTMLInputElement>(null);
   const projectKeyInputRef = useRef<HTMLInputElement>(null);
 
-  // Mock projects for now
-  const mockProjects = [
-    { id: 1, name: 'Web Application' },
-    { id: 2, name: 'Mobile App' },
-    { id: 3, name: 'API Testing' }
-  ];
-
   const loadProjects = async () => {
     setLoadingProjects(true);
     try {
       const token = localStorage.getItem('token');
       if (!token) {
-        // Fall back to mock projects if no token
-        setProjects(mockProjects);
-        if (mockProjects.length > 0) {
-          setSelectedProjectId(mockProjects[0].id);
-        }
+        setProjects([]);
+        setSelectedProjectId(null);
         return;
       }
 
       const response = await api.get('/projects');
-
-      if (response.data) {
-        setProjects(response.data);
-        if (response.data.length > 0) {
-          setSelectedProjectId(response.data[0].id);
-        }
-      } else {
-        // Fall back to mock projects if API fails
-        setProjects(mockProjects);
-        if (mockProjects.length > 0) {
-          setSelectedProjectId(mockProjects[0].id);
-        }
-      }
+      const projectData = Array.isArray(response.data) ? response.data : [];
+      setProjects(projectData);
+      setSelectedProjectId(projectData.length > 0 ? projectData[0].id : null);
     } catch (error) {
       console.error('Failed to load projects:', error);
-      // Fall back to mock projects on error
-      setProjects(mockProjects);
-      if (mockProjects.length > 0) {
-        setSelectedProjectId(mockProjects[0].id);
-      }
+      setProjects([]);
+      setSelectedProjectId(null);
     } finally {
       setLoadingProjects(false);
     }
@@ -690,7 +742,7 @@ export function Settings() {
       // Load test type definitions from database API only
       const token = localStorage.getItem('token');
       if (!token) {
-        setTestManagementError('Authentication required. Please log in again.');
+        setTestManagementError(t('authenticationRequiredLoginAgain'));
         setLoadingTestManagement(false);
         return;
       }
@@ -767,7 +819,7 @@ export function Settings() {
       console.log('Test management settings loaded successfully from API');
     } catch (error) {
       console.error('Failed to load test management settings:', error);
-      setTestManagementError('Failed to load test management settings. Please check your connection and authentication.');
+      setTestManagementError(t('failedToLoadTestManagementSettings'));
     } finally {
       setLoadingTestManagement(false);
     }
@@ -829,13 +881,9 @@ export function Settings() {
     try {
       const data = await defectManagementAPI.getIssueTrackerIntegrations(selectedProjectId);
       setIntegrations(data);
-    } catch (error) {
-      console.error('Failed to load integrations:', error);
-      toast({
-        title: 'Error',
-        description: 'Failed to load integrations',
-        variant: 'destructive',
-      });
+	    } catch (error) {
+	      console.error('Failed to load integrations:', error);
+	      showErrorToast(t('failedToLoadIntegrations'));
     } finally {
       setLoadingIntegrations(false);
     }
@@ -891,40 +939,40 @@ export function Settings() {
     
     // Name validation
     if (!integrationForm.name.trim()) {
-      errors.name = 'Integration name is required';
+      errors.name = t('integrationNameRequired');
     } else if (integrationForm.name.length < 3) {
-      errors.name = 'Integration name must be at least 3 characters';
+      errors.name = t('integrationNameMinLength');
     } else if (integrationForm.name.length > 100) {
-      errors.name = 'Integration name must be less than 100 characters';
+      errors.name = t('integrationNameMaxLength');
     }
 
     // API URL validation
     if (!integrationForm.api_url.trim()) {
-      errors.api_url = 'API URL is required';
+      errors.api_url = t('apiUrlRequired');
     } else {
       try {
         const url = new URL(integrationForm.api_url);
         if (!['http:', 'https:'].includes(url.protocol)) {
-          errors.api_url = 'API URL must use HTTP or HTTPS protocol';
+          errors.api_url = t('apiUrlProtocol');
         }
       } catch {
-        errors.api_url = 'API URL must be a valid URL';
+        errors.api_url = t('apiUrlValidUrl');
       }
     }
 
     // API Token validation (required for new integrations, optional for edits)
     if (!editingIntegration && !integrationForm.api_token.trim()) {
-      errors.api_token = 'API token is required';
+      errors.api_token = t('apiTokenRequired');
     } else if (integrationForm.api_token && integrationForm.api_token.length < 8) {
-      errors.api_token = 'API token must be at least 8 characters';
+      errors.api_token = t('apiTokenMinLength');
     }
 
     // Project Key validation (required for Jira, GitHub, GitLab)
     if (['jira', 'github', 'gitlab'].includes(integrationForm.tracker_type)) {
       if (!integrationForm.project_key.trim()) {
-        errors.project_key = 'Project key/namespace is required';
+        errors.project_key = t('projectKeyRequired');
       } else if (integrationForm.project_key.length < 2) {
-        errors.project_key = 'Project key must be at least 2 characters';
+        errors.project_key = t('projectKeyMinLength');
       }
     }
 
@@ -942,11 +990,7 @@ export function Settings() {
         projectKeyInputRef.current?.focus();
       }
 
-      toast({
-        title: 'Validation Error',
-        description: 'Please fix the errors before saving',
-        variant: 'destructive',
-      });
+	      showErrorToast(t('pleaseFixErrorsBeforeSaving'));
       return;
     }
 
@@ -957,53 +1001,36 @@ export function Settings() {
           editingIntegration.id,
           integrationForm
         );
-        toast({
-          title: 'Success',
-          description: 'Integration updated successfully',
-        });
+	        showSuccessToast(t('integrationUpdatedSuccessfully'));
       } else {
         await defectManagementAPI.createIssueTrackerIntegration(
           selectedProjectId,
           integrationForm
         );
-        toast({
-          title: 'Success',
-          description: 'Integration created successfully',
-        });
+	        showSuccessToast(t('integrationCreatedSuccessfully'));
       }
       setIsIntegrationFormOpen(false);
       setValidationErrors({});
       setTouchedFields({});
       loadIntegrations();
     } catch (error) {
-      console.error('Failed to save integration:', error);
-      toast({
-        title: 'Error',
-        description: 'Failed to save integration',
-        variant: 'destructive',
-      });
+	      console.error('Failed to save integration:', error);
+	      showErrorToast(getErrorDetail(error, t('integrationSaveFailed')));
     }
   };
 
-  const handleDeleteIntegration = async (integrationId: number) => {
+  const confirmDeleteIntegration = async () => {
     if (!selectedProjectId) return;
-    
-    if (!confirm('Are you sure you want to delete this integration?')) return;
+    if (!integrationToDelete) return;
 
     try {
-      await defectManagementAPI.deleteIssueTrackerIntegration(selectedProjectId, integrationId);
-      toast({
-        title: 'Success',
-        description: 'Integration deleted successfully',
-      });
+      await defectManagementAPI.deleteIssueTrackerIntegration(selectedProjectId, integrationToDelete.id);
+      showSuccessToast(t('integrationDeletedSuccessfully'));
+      setIntegrationToDelete(null);
       loadIntegrations();
     } catch (error) {
       console.error('Failed to delete integration:', error);
-      toast({
-        title: 'Error',
-        description: 'Failed to delete integration',
-        variant: 'destructive',
-      });
+      showErrorToast(getErrorDetail(error, t('integrationDeleteFailed')));
     }
   };
 
@@ -1013,25 +1040,18 @@ export function Settings() {
     setIsTestingConnection(true);
     try {
       const result = await defectManagementAPI.testIssueTrackerConnection(selectedProjectId, integrationId);
-      if (result.success) {
-        toast({
-          title: 'Success',
-          description: 'Connection test passed',
-        });
-      } else {
-        toast({
-          title: 'Connection Failed',
-          description: result.message || 'Connection test failed',
-          variant: 'destructive',
-        });
-      }
-    } catch (error) {
-      console.error('Connection test failed:', error);
-      toast({
-        title: 'Error',
-        description: 'Connection test failed',
-        variant: 'destructive',
-      });
+	      if (result.success) {
+	        showSuccessToast(t('connectionTestPassed'));
+	      } else {
+	        toast({
+	          title: t('connectionFailed'),
+	          description: result.message || t('connectionTestFailed'),
+	          variant: 'destructive',
+	        });
+	      }
+	    } catch (error) {
+	      console.error('Connection test failed:', error);
+	      showErrorToast(getErrorDetail(error, t('connectionTestFailed')));
     } finally {
       setIsTestingConnection(false);
     }
@@ -1047,12 +1067,159 @@ export function Settings() {
     return variants[status] || 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300';
   };
 
+  const getErrorDetail = (error: unknown, fallback: string) => {
+    const apiError = error as any;
+    return apiError?.response?.data?.detail || apiError?.message || fallback;
+  };
+
+  const showSuccessToast = (description: string) => {
+    toast({
+      title: t('success'),
+      description,
+    });
+  };
+
+  const showErrorToast = (description: string) => {
+    toast({
+      title: t('error'),
+      description,
+      variant: 'destructive',
+    });
+  };
+
+  const validateBrandingSettings = (): {
+    appName: string;
+    appLogoUrl: string;
+    organizationName: string;
+    supportEmail: string;
+    defaultTimezone: string;
+  } | null => {
+    const normalizedAppName = appNameInput.trim();
+    const normalizedLogoUrl = appLogoUrlInput.trim();
+    const normalizedOrganizationName = organizationName.trim();
+    const normalizedSupportEmail = supportEmail.trim();
+    const normalizedTimezone = defaultTimezone.trim() || 'UTC';
+
+    if (!normalizedAppName) {
+      showErrorToast(t('appNameValidationRequired'));
+      return null;
+    }
+
+    if (normalizedAppName.length > APP_NAME_MAX_LENGTH) {
+      showErrorToast(t('appNameValidationLength', { max: APP_NAME_MAX_LENGTH }));
+      return null;
+    }
+
+    if (normalizedLogoUrl) {
+      if (normalizedLogoUrl.length > APP_LOGO_URL_MAX_LENGTH) {
+        showErrorToast(t('appLogoUrlValidationLength', { max: APP_LOGO_URL_MAX_LENGTH }));
+        return null;
+      }
+
+      try {
+        const parsedLogoUrl = new URL(normalizedLogoUrl);
+        if (!['http:', 'https:'].includes(parsedLogoUrl.protocol)) {
+          showErrorToast(t('appLogoUrlValidationProtocol'));
+          return null;
+        }
+      } catch {
+        showErrorToast(t('appLogoUrlValidationInvalid'));
+        return null;
+      }
+    }
+
+    if (normalizedOrganizationName.length > ORGANIZATION_NAME_MAX_LENGTH) {
+      showErrorToast(t('organizationNameValidationLength', { max: ORGANIZATION_NAME_MAX_LENGTH }));
+      return null;
+    }
+
+    if (normalizedSupportEmail) {
+      if (normalizedSupportEmail.length > SUPPORT_EMAIL_MAX_LENGTH) {
+        showErrorToast(t('supportEmailValidationLength', { max: SUPPORT_EMAIL_MAX_LENGTH }));
+        return null;
+      }
+
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedSupportEmail)) {
+        showErrorToast(t('supportEmailValidationInvalid'));
+        return null;
+      }
+    }
+
+    if (!normalizedTimezone || normalizedTimezone.length > 80) {
+      showErrorToast(t('defaultTimezoneValidationInvalid'));
+      return null;
+    }
+
+    return {
+      appName: normalizedAppName,
+      appLogoUrl: normalizedLogoUrl,
+      organizationName: normalizedOrganizationName,
+      supportEmail: normalizedSupportEmail,
+      defaultTimezone: normalizedTimezone,
+    };
+  };
+
+  const handleSaveAppName = async () => {
+    const brandingSettings = validateBrandingSettings();
+    if (!brandingSettings) return;
+
+    setSaving(true);
+    try {
+      await saveBrandingSettings(brandingSettings);
+      showSuccessToast(t('brandingUpdated', { appName: brandingSettings.appName }));
+    } catch (error) {
+      console.error('Failed to save branding settings:', error);
+      showErrorToast(getErrorDetail(error, t('brandingUpdateFailed')));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const saveSystemSetting = async (key: string, value: string, description: string) => {
+    try {
+      await systemSettingsAPI.updateSetting(key, value, description);
+    } catch (error) {
+      if ((error as any)?.response?.status === 404) {
+        await systemSettingsAPI.createSetting(key, value, description);
+        return;
+      }
+      throw error;
+    }
+  };
+
+  const saveBrandingSettings = async (brandingSettings: {
+    appName: string;
+    appLogoUrl: string;
+    organizationName: string;
+    supportEmail: string;
+    defaultTimezone: string;
+  }) => {
+    await Promise.all([
+      saveSystemSetting(APP_NAME_SETTING_KEY, brandingSettings.appName, 'Application display name'),
+      saveSystemSetting(APP_LOGO_URL_SETTING_KEY, brandingSettings.appLogoUrl, 'Application logo URL'),
+      saveSystemSetting(ORGANIZATION_NAME_SETTING_KEY, brandingSettings.organizationName, 'Organization display name'),
+      saveSystemSetting(SUPPORT_EMAIL_SETTING_KEY, brandingSettings.supportEmail, 'Public support email address'),
+      saveSystemSetting(DEFAULT_TIMEZONE_SETTING_KEY, brandingSettings.defaultTimezone, 'Default timezone'),
+    ]);
+
+    setAppNameInput(brandingSettings.appName);
+    setAppLogoUrlInput(brandingSettings.appLogoUrl);
+    setOrganizationName(brandingSettings.organizationName);
+    setSupportEmail(brandingSettings.supportEmail);
+    setDefaultTimezone(brandingSettings.defaultTimezone);
+    setStoredAppName(brandingSettings.appName);
+    setStoredAppLogoUrl(brandingSettings.appLogoUrl);
+  };
+
   const handleSaveSystemConfiguration = async () => {
+    const brandingSettings = validateBrandingSettings();
+    if (!brandingSettings) return;
+
     // Validate session_timeout
     if (sessionTimeout < 1 || sessionTimeout > 1440) {
       toast({
-        title: 'Validation Error',
-        description: 'Session timeout must be between 1 and 1440 minutes',
+          title: t('error'),
+          description: t('sessionTimeoutValidation'),
         variant: 'destructive',
       });
       return;
@@ -1061,8 +1228,8 @@ export function Settings() {
     // Validate password_complexity
     if (!['low', 'medium', 'high'].includes(passwordComplexity)) {
       toast({
-        title: 'Validation Error',
-        description: 'Password complexity must be low, medium, or high',
+          title: t('error'),
+          description: t('passwordComplexityValidation'),
         variant: 'destructive',
       });
       return;
@@ -1070,6 +1237,8 @@ export function Settings() {
 
     setSaving(true);
     try {
+      await saveBrandingSettings(brandingSettings);
+
       // Save all system settings to API
       const results = await Promise.allSettled([
         systemSettingsAPI.updateSetting('maintenance_mode', maintenanceMode.toString(), 'Enable/disable maintenance mode'),
@@ -1084,21 +1253,21 @@ export function Settings() {
       if (failedUpdates.length > 0) {
         console.error('Some settings failed to save:', failedUpdates);
         toast({
-          title: 'Partial Success',
-          description: `${failedUpdates.length} setting(s) failed to save. Please try again.`,
+          title: t('partialSuccess'),
+          description: t('settingsPartialSaveFailed', { count: failedUpdates.length }),
           variant: 'destructive',
         });
       } else {
         toast({
           title: t('success'),
-          description: 'System configuration saved successfully!',
+          description: t('systemConfigurationSaved'),
         });
       }
     } catch (error) {
       console.error('Failed to save system configuration:', error);
       toast({
         title: t('error'),
-        description: 'Failed to save system configuration',
+        description: getErrorDetail(error, t('systemConfigurationSaveFailed')),
         variant: 'destructive',
       });
     } finally {
@@ -1109,25 +1278,19 @@ export function Settings() {
   const handleClearSystemCache = async () => {
     try {
       // Simulate API call to clear cache
-      await new Promise(resolve => setTimeout(resolve, 500));
-      console.log('System cache cleared');
-      alert('System cache cleared successfully!');
-    } catch (error) {
-      console.error('Failed to clear system cache:', error);
-      alert('Failed to clear system cache');
-    }
-  };
+	      await new Promise(resolve => setTimeout(resolve, 500));
+	      console.log('System cache cleared');
+	      showSuccessToast(t('systemCacheCleared'));
+	    } catch (error) {
+	      console.error('Failed to clear system cache:', error);
+	      showErrorToast(t('systemCacheClearFailed'));
+	    }
+	  };
 
-  const handleAddTestType = async (typeName: string, typeDescription: string, typeColor: string) => {
-    try {
-      // Simulate API call to add test type
-      await new Promise(resolve => setTimeout(resolve, 500));
-      console.log('Adding test type:', { name: typeName, description: typeDescription, color: typeColor });
-      alert('Test type added successfully!');
-    } catch (error) {
-      console.error('Failed to add test type:', error);
-      alert('Failed to add test type');
-    }
+  const handleResetUserPreferences = () => {
+    setCompactMode(false);
+    setLanguage('en');
+    showSuccessToast(t('preferencesReset'));
   };
 
   // Test Management Handlers
@@ -1139,11 +1302,11 @@ export function Settings() {
     
     try {
       setIsCreating(true);
-      const token = localStorage.getItem('token');
-      if (!token) {
-        alert('Authentication required. Please log in again.');
-        return;
-      }
+	      const token = localStorage.getItem('token');
+	      if (!token) {
+	        showErrorToast(t('authenticationRequired'));
+	        return;
+	      }
 
       const response = await api.post('/test-type-definitions/', {
         name: testTypeForm.name,
@@ -1169,15 +1332,11 @@ export function Settings() {
         setTestTypeForm({ name: '', description: '', color: '#3B82F6', icon: '🖱️' });
         setHasUnsavedChanges(false);
         setTestTypeDialogOpen(false);
-        toast({
-          title: 'Success',
-          description: 'Test type created successfully!',
-          variant: 'success',
-        });
-    } catch (error: any) {
-      console.error('Failed to create test type:', error);
-      alert(`Failed to create test type: ${error.response?.data?.detail || error.message || 'Unknown error'}`);
-    } finally {
+	        showSuccessToast(t('testTypeCreatedSuccessfully', { name: newTestType.name }));
+	    } catch (error: any) {
+	      console.error('Failed to create test type:', error);
+	      showErrorToast(getErrorDetail(error, t('failedToCreateTestType')));
+	    } finally {
       setIsCreating(false);
     }
   };
@@ -1189,11 +1348,11 @@ export function Settings() {
     }
     
     try {
-      const token = localStorage.getItem('token');
-      if (!token) {
-        alert('Authentication required. Please log in again.');
-        return;
-      }
+	      const token = localStorage.getItem('token');
+	      if (!token) {
+	        showErrorToast(t('authenticationRequired'));
+	        return;
+	      }
 
       const response = await api.post('/priority-definitions/', {
         name: priorityForm.name,
@@ -1224,16 +1383,12 @@ export function Settings() {
         setPriorities([...priorities, mappedPriority]);
         setPriorityForm({ name: '', value: 2, color: '#F59E0B', description: '', is_default: false });
         setPriorityDialogOpen(false);
-        toast({
-          title: 'Success',
-          description: 'Priority created successfully!',
-          variant: 'success',
-        });
-    } catch (error: any) {
-      console.error('Failed to create priority:', error);
-      alert(`Failed to create priority: ${error.response?.data?.detail || error.message || 'Unknown error'}`);
-    }
-  };
+	        showSuccessToast(t('priorityCreatedSuccessfully', { name: newPriority.name }));
+	    } catch (error: any) {
+	      console.error('Failed to create priority:', error);
+	      showErrorToast(getErrorDetail(error, t('failedToCreatePriority')));
+	    }
+	  };
 
   const handleCreateSharedStep = async () => {
     if (isEditMode) {
@@ -1281,16 +1436,12 @@ export function Settings() {
         related_steps: ''
       });
       setSharedStepDialogOpen(false);
-      toast({
-        title: 'Success',
-        description: 'Shared step template created successfully!',
-        variant: 'success',
-      });
-    } catch (error) {
-      console.error('Failed to create shared step template:', error);
-      alert('Failed to create shared step template. Please check console for details.');
-    }
-  };
+	      showSuccessToast(t('sharedStepTemplateCreatedSuccessfully'));
+	    } catch (error) {
+	      console.error('Failed to create shared step template:', error);
+	      showErrorToast(t('failedToCreateSharedStepTemplate'));
+	    }
+	  };
 
   const handleEditTestType = (type: TestType) => {
     setEditingTestType(type);
@@ -1319,46 +1470,46 @@ export function Settings() {
   const handleDeleteConfirm = async () => {
     if (deleteType === 'testType' && testTypeToDelete) {
       try {
-        const token = localStorage.getItem('token');
-        if (!token) {
-          alert('Authentication required. Please log in again.');
-          return;
-        }
+	        const token = localStorage.getItem('token');
+	        if (!token) {
+	          showErrorToast(t('authenticationRequired'));
+	          return;
+	        }
 
         await api.delete(`/test-type-definitions/${testTypeToDelete}`);
           setTestTypes(testTypes.map(type => 
             type.id === testTypeToDelete ? { ...type, is_active: false } : type
           ));
-      } catch (error: any) {
-        console.error('Failed to delete test type:', error);
-        alert(`Failed to delete test type: ${error.response?.data?.detail || error.message || 'Unknown error'}`);
-      }
+	      } catch (error: any) {
+	        console.error('Failed to delete test type:', error);
+	        showErrorToast(getErrorDetail(error, t('failedToDeleteTestType')));
+	      }
     } else if (deleteType === 'priority' && priorityToDelete) {
       try {
-        const token = localStorage.getItem('token');
-        if (!token) {
-          alert('Authentication required. Please log in again.');
-          return;
-        }
+	        const token = localStorage.getItem('token');
+	        if (!token) {
+	          showErrorToast(t('authenticationRequired'));
+	          return;
+	        }
 
         await api.delete(`/priority-definitions/${priorityToDelete}`);
           setPriorities(priorities.map(priority => 
             priority.id === priorityToDelete ? { ...priority, is_active: false } : priority
           ));
-      } catch (error: any) {
-        console.error('Failed to delete priority:', error);
-        alert(`Failed to delete priority: ${error.response?.data?.detail || error.message || 'Unknown error'}`);
-      }
+	      } catch (error: any) {
+	        console.error('Failed to delete priority:', error);
+	        showErrorToast(getErrorDetail(error, t('failedToDeletePriority')));
+	      }
     } else if (deleteType === 'sharedStep' && sharedStepToDelete) {
       try {
         await testManagementAPI.deleteSharedStepTemplate(parseInt(sharedStepToDelete));
         setSharedStepTemplates(sharedStepTemplates.map(step => 
           step.id === sharedStepToDelete ? { ...step, is_active: false } : step
         ));
-      } catch (error) {
-        console.error('Failed to delete shared step template:', error);
-        alert('Failed to delete shared step template. Please check console for details.');
-      }
+	      } catch (error) {
+	        console.error('Failed to delete shared step template:', error);
+	        showErrorToast(t('failedToDeleteSharedStepTemplate'));
+	      }
     }
     
     setDeleteConfirmOpen(false);
@@ -1378,11 +1529,11 @@ export function Settings() {
     if (!editingTestType) return;
     
     try {
-      const token = localStorage.getItem('token');
-      if (!token) {
-        alert('Authentication required. Please log in again.');
-        return;
-      }
+	      const token = localStorage.getItem('token');
+	      if (!token) {
+	        showErrorToast(t('authenticationRequired'));
+	        return;
+	      }
 
       const response = await api.put(`/test-type-definitions/${editingTestType.id}`, {
         name: testTypeForm.name,
@@ -1404,15 +1555,11 @@ export function Settings() {
         setEditingTestType(null);
         setIsEditMode(false);
         setTestTypeDialogOpen(false);
-        toast({
-          title: 'Success',
-          description: 'Test type updated successfully!',
-          variant: 'success',
-        });
-    } catch (error: any) {
-      console.error('Failed to update test type:', error);
-      alert(`Failed to update test type: ${error.response?.data?.detail || error.message || 'Unknown error'}`);
-    }
+	        showSuccessToast(t('testTypeUpdatedSuccessfully'));
+	    } catch (error: any) {
+	      console.error('Failed to update test type:', error);
+	      showErrorToast(getErrorDetail(error, t('failedToUpdateTestType')));
+	    }
   };
 
   const handleEditPriority = (priority: Priority) => {
@@ -1447,11 +1594,7 @@ export function Settings() {
     
     // If all values 1-10 are taken, show error
     if (existingValues.includes(newValue)) {
-      toast({
-        title: 'Error',
-        description: 'Cannot duplicate priority: all priority values (1-10) are already in use.',
-        variant: 'destructive',
-      });
+	      showErrorToast(t('priorityDuplicateUnavailable'));
       return;
     }
     
@@ -1477,11 +1620,11 @@ export function Settings() {
     if (!editingPriority) return;
     
     try {
-      const token = localStorage.getItem('token');
-      if (!token) {
-        alert('Authentication required. Please log in again.');
-        return;
-      }
+	      const token = localStorage.getItem('token');
+	      if (!token) {
+	        showErrorToast(t('authenticationRequired'));
+	        return;
+	      }
 
       const response = await api.put(`/priority-definitions/${editingPriority.id}`, {
         name: priorityForm.name,
@@ -1505,15 +1648,11 @@ export function Settings() {
         setEditingPriority(null);
         setIsEditMode(false);
         setPriorityDialogOpen(false);
-        toast({
-          title: 'Success',
-          description: 'Priority updated successfully!',
-          variant: 'success',
-        });
-    } catch (error: any) {
-      console.error('Failed to update priority:', error);
-      alert(`Failed to update priority: ${error.response?.data?.detail || error.message || 'Unknown error'}`);
-    }
+	        showSuccessToast(t('priorityUpdatedSuccessfully'));
+	    } catch (error: any) {
+	      console.error('Failed to update priority:', error);
+	      showErrorToast(getErrorDetail(error, t('failedToUpdatePriority')));
+	    }
   };
 
   const handleEditSharedStep = (step: SharedStepTemplate) => {
@@ -1597,15 +1736,11 @@ export function Settings() {
       setEditingSharedStep(null);
       setIsEditMode(false);
       setSharedStepDialogOpen(false);
-      toast({
-        title: 'Success',
-        description: 'Shared step template updated successfully!',
-        variant: 'success',
-      });
-    } catch (error) {
-      console.error('Failed to update shared step template:', error);
-      alert('Failed to update shared step template. Please check console for details.');
-    }
+	      showSuccessToast(t('sharedStepTemplateUpdatedSuccessfully'));
+	    } catch (error) {
+	      console.error('Failed to update shared step template:', error);
+	      showErrorToast(t('failedToUpdateSharedStepTemplate'));
+	    }
   };
 
   const handleSaveTestManagementSettings = async () => {
@@ -1630,14 +1765,14 @@ export function Settings() {
         promises.push(testManagementAPI.updateAutomationSettings(automationSettings.id, automationSettings));
       }
       
-      await Promise.all(promises);
-      
-      console.log('Test management settings saved successfully!');
-      alert('Test management settings saved successfully!');
-    } catch (error) {
-      console.error('Failed to save test management settings:', error);
-      alert('Failed to save test management settings');
-    } finally {
+	      await Promise.all(promises);
+
+	      console.log('Test management settings saved successfully!');
+	      showSuccessToast(t('testManagementSettingsSaved'));
+	    } catch (error) {
+	      console.error('Failed to save test management settings:', error);
+	      showErrorToast(t('testManagementSettingsSaveFailed'));
+	    } finally {
       setSaving(false);
     }
   };
@@ -1654,30 +1789,24 @@ export function Settings() {
       <Tabs defaultValue="general" className="space-y-6">
         <TabsList className="inline-flex h-12 items-center justify-center rounded-md bg-muted p-1 text-muted-foreground w-full">
           <TabsTrigger value="general" className="inline-flex items-center justify-center whitespace-nowrap rounded-sm px-4 py-2 text-sm font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm">
-            <Globe className="h-4 w-4 mr-2" />
+            <Globe className="h-4 w-4 mr-2 rtl:mr-0 rtl:ml-2" />
             {t('general')}
           </TabsTrigger>
           <TabsTrigger value="test-management" className="inline-flex items-center justify-center whitespace-nowrap rounded-sm px-4 py-2 text-sm font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm">
-            <FileText className="h-4 w-4 mr-2" />
+            <FileText className="h-4 w-4 mr-2 rtl:mr-0 rtl:ml-2" />
             {t('testManagement')}
           </TabsTrigger>
           <TabsTrigger value="integrations" className="inline-flex items-center justify-center whitespace-nowrap rounded-sm px-4 py-2 text-sm font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm">
-            <Link className="h-4 w-4 mr-2" />
+            <Link className="h-4 w-4 mr-2 rtl:mr-0 rtl:ml-2" />
             {t('integrations')}
           </TabsTrigger>
           <TabsTrigger value="users" className="inline-flex items-center justify-center whitespace-nowrap rounded-sm px-4 py-2 text-sm font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm">
-            <Users className="h-4 w-4 mr-2" />
+            <Users className="h-4 w-4 mr-2 rtl:mr-0 rtl:ml-2" />
             {t('users')}
           </TabsTrigger>
           {isAdminUser(user) && (
-            <TabsTrigger value="system" className="inline-flex items-center justify-center whitespace-nowrap rounded-sm px-4 py-2 text-sm font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm">
-              <SettingsIcon className="h-4 w-4 mr-2" />
-              {t('system')}
-            </TabsTrigger>
-          )}
-          {isAdminUser(user) && (
             <TabsTrigger value="audit" className="inline-flex items-center justify-center whitespace-nowrap rounded-sm px-4 py-2 text-sm font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm">
-              <History className="h-4 w-4 mr-2" />
+              <History className="h-4 w-4 mr-2 rtl:mr-0 rtl:ml-2" />
               {t('auditTrails')}
             </TabsTrigger>
           )}
@@ -1691,14 +1820,26 @@ export function Settings() {
                   <Label className="text-base">{t('compactMode')}</Label>
                   <p className="text-sm text-gray-500 dark:text-gray-400">{t('compactModeDesc')}</p>
                 </div>
-                <Switch checked={compactMode} onCheckedChange={setCompactMode} />
+                <Switch
+                  checked={compactMode}
+                  onCheckedChange={(checked) => {
+                    setCompactMode(checked);
+                    showSuccessToast(checked ? t('compactModeEnabled') : t('compactModeDisabled'));
+                  }}
+                />
               </div>
               <div className="flex items-center justify-between">
                 <div className="space-y-0.5">
                   <Label className="text-base">{t('language')}</Label>
-                  <p className="text-sm text-gray-500 dark:text-gray-400">Select your preferred language</p>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">{t('languageDesc')}</p>
                 </div>
-                <Select value={language} onValueChange={setLanguage}>
+                <Select
+                  value={language}
+                  onValueChange={(value) => {
+                    setLanguage(value as 'en' | 'fa' | 'ar');
+                    showSuccessToast(t('languageUpdated'));
+                  }}
+                >
                   <SelectTrigger className="w-32">
                     <SelectValue />
                   </SelectTrigger>
@@ -1712,16 +1853,187 @@ export function Settings() {
             </CardHeader>
             <CardContent className="space-y-6 pt-6">
               <div className="text-sm text-gray-500 dark:text-gray-400">
-                <p>General settings have been updated successfully.</p>
+	                <p>{t('generalSettingsApplyImmediately')}</p>
               </div>
             </CardContent>
           </Card>
 
-          <div className="flex justify-end">
-            <Button className="px-8" onClick={handleSaveSystemConfiguration} disabled={saving}>
-              {saving ? 'Saving...' : t('saveChanges')}
-            </Button>
-          </div>
+	          <div className="flex justify-end">
+	            <Button className="px-8" variant="outline" onClick={handleResetUserPreferences}>
+	              {t('resetPreferences')}
+	            </Button>
+	          </div>
+
+          {isAdminUser(user) && (
+          <Card>
+            <CardHeader className="border-b border-gray-100 dark:border-gray-800">
+              <div className="flex items-center space-x-2 rtl:space-x-reverse">
+                <SettingsIcon className="h-5 w-5 text-gray-600 dark:text-gray-400" />
+                <CardTitle>{t('systemConfiguration')}</CardTitle>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-6 pt-6">
+              <div className="space-y-4 rounded-lg border border-gray-200 p-4 dark:border-gray-800">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="space-y-1">
+                    <Label className="text-base">{t('branding')}</Label>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">
+                      {t('brandingDescription', { appName })}
+                    </p>
+                  </div>
+                  <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-blue-600 text-sm font-bold text-white">
+                    {appLogoUrlInput ? (
+                      <img src={appLogoUrlInput} alt={appNameInput || appName} className="h-full w-full rounded-2xl object-cover" />
+                    ) : (
+                      (appNameInput || appName).slice(0, 2).toUpperCase()
+                    )}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="app-name">{t('appName')}</Label>
+                    <Input
+                      id="app-name"
+                      value={appNameInput}
+                      onChange={(event) => setAppNameInput(event.target.value)}
+                      maxLength={APP_NAME_MAX_LENGTH}
+                      placeholder={t('appNamePlaceholder')}
+                      disabled={saving}
+                    />
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      {t('appNameCharacterLimit', { max: APP_NAME_MAX_LENGTH })}
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="app-logo-url">{t('appLogoUrl')}</Label>
+                    <Input
+                      id="app-logo-url"
+                      value={appLogoUrlInput}
+                      onChange={(event) => setAppLogoUrlInput(event.target.value)}
+                      maxLength={APP_LOGO_URL_MAX_LENGTH}
+                      placeholder={t('appLogoUrlPlaceholder')}
+                      disabled={saving}
+                    />
+                    <p className="text-xs text-gray-500 dark:text-gray-400">{t('appLogoUrlDescription')}</p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="organization-name">{t('organizationName')}</Label>
+                    <Input
+                      id="organization-name"
+                      value={organizationName}
+                      onChange={(event) => setOrganizationName(event.target.value)}
+                      maxLength={ORGANIZATION_NAME_MAX_LENGTH}
+                      placeholder={t('organizationNamePlaceholder')}
+                      disabled={saving}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="support-email">{t('supportEmail')}</Label>
+                    <Input
+                      id="support-email"
+                      type="email"
+                      value={supportEmail}
+                      onChange={(event) => setSupportEmail(event.target.value)}
+                      maxLength={SUPPORT_EMAIL_MAX_LENGTH}
+                      placeholder={t('supportEmailPlaceholder')}
+                      disabled={saving}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="default-timezone">{t('timezone')}</Label>
+                    <Input
+                      id="default-timezone"
+                      value={defaultTimezone}
+                      onChange={(event) => setDefaultTimezone(event.target.value)}
+                      placeholder={t('defaultTimezonePlaceholder')}
+                      disabled={saving}
+                    />
+                    <p className="text-xs text-gray-500 dark:text-gray-400">{t('defaultTimezoneDescription')}</p>
+                  </div>
+                </div>
+              </div>
+              <div className="space-y-4">
+	                <div className="flex items-center justify-between">
+	                  <div className="space-y-0.5">
+	                    <Label className="text-base">{t('maintenanceMode')}</Label>
+	                    <p className="text-sm text-gray-500 dark:text-gray-400">{t('maintenanceModeDesc')}</p>
+	                  </div>
+	                  <Switch
+	                    checked={maintenanceMode}
+	                    onCheckedChange={setMaintenanceMode}
+	                    disabled={saving}
+	                  />
+	                </div>
+	                {maintenanceMode && (
+	                  <div className="rounded-lg border border-yellow-200 bg-yellow-50 p-3 text-sm text-yellow-800 dark:border-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-200">
+	                    {t('maintenanceModePreview', { appName: appNameInput || appName })}
+	                  </div>
+	                )}
+	                <div className="flex items-center justify-between">
+	                  <div className="space-y-0.5">
+	                    <Label className="text-base">{t('newUserRegistration')}</Label>
+	                    <p className="text-sm text-gray-500 dark:text-gray-400">{t('newUserRegistrationDesc')}</p>
+	                  </div>
+	                  <Switch
+	                    checked={newUserRegistration}
+	                    onCheckedChange={setNewUserRegistration}
+	                    disabled={saving}
+	                  />
+	                </div>
+	                <div className="flex items-center justify-between">
+	                  <div className="space-y-0.5">
+	                    <Label className="text-base">{t('debugLogging')}</Label>
+	                    <p className="text-sm text-gray-500 dark:text-gray-400">{t('debugLoggingDesc')}</p>
+	                  </div>
+	                  <Switch
+	                    checked={debugLogging}
+	                    onCheckedChange={setDebugLogging}
+	                    disabled={saving}
+	                  />
+	                </div>
+	                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+	                  <div className="space-y-2">
+	                    <Label htmlFor="session-timeout">{t('sessionTimeout')}</Label>
+	                    <Input
+	                      id="session-timeout"
+	                      type="number"
+	                      min="1"
+	                      max="1440"
+	                      value={sessionTimeout}
+	                      onChange={(event) => setSessionTimeout(Number(event.target.value))}
+	                      disabled={saving}
+	                    />
+	                    <p className="text-xs text-gray-500 dark:text-gray-400">{t('sessionTimeoutDesc')}</p>
+	                  </div>
+	                  <div className="space-y-2">
+	                    <Label htmlFor="password-complexity">{t('passwordComplexity')}</Label>
+	                    <Select value={passwordComplexity} onValueChange={setPasswordComplexity} disabled={saving}>
+	                      <SelectTrigger id="password-complexity">
+	                        <SelectValue />
+	                      </SelectTrigger>
+	                      <SelectContent>
+	                        <SelectItem value="low">{t('passwordComplexityLow')}</SelectItem>
+	                        <SelectItem value="medium">{t('passwordComplexityMedium')}</SelectItem>
+	                        <SelectItem value="high">{t('passwordComplexityHigh')}</SelectItem>
+	                      </SelectContent>
+	                    </Select>
+	                    <p className="text-xs text-gray-500 dark:text-gray-400">{t('passwordComplexityDesc')}</p>
+	                  </div>
+	                </div>
+	                <div className="flex justify-end">
+	                  <Button onClick={handleSaveSystemConfiguration} disabled={saving}>
+	                    {saving ? t('saving') : t('saveChanges')}
+	                  </Button>
+	                </div>
+	              </div>
+            </CardContent>
+          </Card>
+          )}
         </TabsContent>
 
         <TabsContent value="test-management" className="space-y-6">
@@ -1729,68 +2041,68 @@ export function Settings() {
           <Card className="border-0 shadow-sm">
             <CardHeader className="pb-4">
               <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-3">
+                <div className="flex items-center space-x-3 rtl:space-x-reverse">
                   <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center">
                     <Tag className="h-5 w-5 text-white" />
                   </div>
                   <div>
-                    <CardTitle className="text-xl font-semibold text-gray-900 dark:text-gray-100">Test Types Management</CardTitle>
-                    <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Define and manage test case categories</p>
+                    <CardTitle className="text-xl font-semibold text-gray-900 dark:text-gray-100">{t('testTypesManagementTitle')}</CardTitle>
+                    <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{t('testTypesManagementDesc')}</p>
                   </div>
                 </div>
                 <Dialog open={testTypeDialogOpen} onOpenChange={(open) => handleDialogClose('testType', open)}>
                   <DialogTrigger asChild>
-                    <Button className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg shadow-sm transition-all duration-200 hover:shadow-md">
-                      <Plus className="h-4 w-4 mr-2" />
-                      Add Test Type
+                    <Button>
+                      <Plus className="h-4 w-4 mr-2 rtl:mr-0 rtl:ml-2" />
+                      {t('addTestType')}
                     </Button>
                   </DialogTrigger>
                   <DialogContent isRTL={isRTL} className="sm:max-w-[580px]" onKeyDown={(e) => handleKeyDown(e, handleCreateTestType)}>
                     <DialogHeader className="pb-4">
-                      <DialogTitle className="text-xl font-semibold text-gray-900 dark:text-gray-100">{isEditMode ? 'Edit Test Type' : 'Create New Test Type'}</DialogTitle>
+                      <DialogTitle className="text-xl font-semibold text-gray-900 dark:text-gray-100">{isEditMode ? t('editTestType') : t('createNewTestType')}</DialogTitle>
                       <DialogDescription className="text-gray-600">
-                        {isEditMode ? 'Update the test type details' : 'Add a new test type to categorize your test cases'}
+                        {isEditMode ? t('updateTestTypeDetails') : t('addTestTypeDesc')}
                       </DialogDescription>
                     </DialogHeader>
                     <div className="grid gap-6 py-6">
                       <div className="grid grid-cols-1 gap-4">
                         <div>
-                          <Label htmlFor="test-type-name" className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">Name</Label>
+                          <Label htmlFor="test-type-name" className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">{t('name')}</Label>
                           <Input
                             ref={testTypeNameInputRef}
                             id="test-type-name"
                             value={testTypeForm.name}
                             onChange={(e) => setTestTypeForm({...testTypeForm, name: e.target.value})}
-                            placeholder="e.g., Performance"
+                            placeholder={t('testTypeNamePlaceholder')}
                             className={testTypeForm.name.trim() === '' ? 'h-11 rounded-lg border-red-300 focus:border-red-500 focus:ring-2 focus:ring-red-500/20' : 'h-11 rounded-lg border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20'}
                             maxLength={100}
                           />
                           <div className="flex justify-between text-xs text-gray-500 mt-1">
-                            <span>Name of the test type</span>
+                            <span>{t('testTypeNameHelp')}</span>
                             <span>{testTypeForm.name.length}/100</span>
                           </div>
                         </div>
                         <div>
-                          <Label htmlFor="test-type-description" className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">Description</Label>
+                          <Label htmlFor="test-type-description" className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">{t('description')}</Label>
                           <Textarea
                             id="test-type-description"
                             value={testTypeForm.description}
                             onChange={(e) => setTestTypeForm({...testTypeForm, description: e.target.value})}
-                            placeholder="Describe the test type purpose and when to use it"
+                            placeholder={t('testTypeDescriptionPlaceholder')}
                             rows={3}
                             className="rounded-lg border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 resize-none"
                             maxLength={500}
                           />
                           <div className="flex justify-between text-xs text-gray-500 mt-1">
-                            <span>Description of the test type</span>
+                            <span>{t('testTypeDescriptionHelp')}</span>
                             <span>{testTypeForm.description.length}/500</span>
                           </div>
                         </div>
                       </div>
                       <div className="grid grid-cols-2 gap-4">
                         <div>
-                          <Label htmlFor="test-type-color" className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">Color</Label>
-                          <div className="flex items-center space-x-3">
+                          <Label htmlFor="test-type-color" className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">{t('color')}</Label>
+                          <div className="flex items-center space-x-3 rtl:space-x-reverse">
                             <Input
                               id="test-type-color"
                               type="color"
@@ -1806,7 +2118,7 @@ export function Settings() {
                           </div>
                         </div>
                         <div>
-                          <Label htmlFor="test-type-icon" className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">Icon</Label>
+                          <Label htmlFor="test-type-icon" className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">{t('icon')}</Label>
                           <Input
                             id="test-type-icon"
                             value={testTypeForm.icon}
@@ -1822,10 +2134,10 @@ export function Settings() {
                         {t('toSubmit')}
                       </div>
                       <Button variant="outline" onClick={() => handleDialogClose('testType', false)} className="px-6 py-2 rounded-lg">
-                        Cancel
+                        {t('cancel')}
                       </Button>
-                      <Button onClick={handleCreateTestType} disabled={!testTypeForm.name.trim() || isCreating} className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg transition-all duration-200">
-                        {isCreating ? 'Creating...' : (isEditMode ? 'Update Test Type' : 'Create Test Type')}
+                      <Button onClick={handleCreateTestType} disabled={!testTypeForm.name.trim() || isCreating}>
+                        {isCreating ? t('creating') : (isEditMode ? t('updateTestType') : t('createTestType'))}
                       </Button>
                     </DialogFooter>
                   </DialogContent>
@@ -1836,20 +2148,20 @@ export function Settings() {
                   <AlertDialogContent isRTL={isRTL}>
                     <AlertDialogHeader>
                       <AlertDialogTitle>
-                        {deleteType === 'testType' && 'Are you sure you want to delete this test type?'}
-                        {deleteType === 'priority' && 'Are you sure you want to delete this priority?'}
-                        {deleteType === 'sharedStep' && 'Are you sure you want to delete this shared step template?'}
+                        {deleteType === 'testType' && t('confirmDeleteTestType')}
+                        {deleteType === 'priority' && t('confirmDeletePriority')}
+                        {deleteType === 'sharedStep' && t('confirmDeleteSharedStep')}
                       </AlertDialogTitle>
                       <AlertDialogDescription>
-                        {deleteType === 'testType' && 'This action cannot be undone. The test type will be permanently removed from the system.'}
-                        {deleteType === 'priority' && 'This action cannot be undone. The priority level will be permanently removed from the system.'}
-                        {deleteType === 'sharedStep' && 'This action cannot be undone. The shared step template will be permanently removed from the system.'}
+                        {deleteType === 'testType' && t('deleteTestTypeDesc')}
+                        {deleteType === 'priority' && t('deletePriorityDesc')}
+                        {deleteType === 'sharedStep' && t('deleteSharedStepDesc')}
                       </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
-                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                      <AlertDialogCancel>{t('cancel')}</AlertDialogCancel>
                       <AlertDialogAction onClick={handleDeleteConfirm} className="bg-red-600 hover:bg-red-700">
-                        Delete
+                        {t('delete')}
                       </AlertDialogAction>
                     </AlertDialogFooter>
                   </AlertDialogContent>
@@ -1860,20 +2172,20 @@ export function Settings() {
               {loadingTestManagement ? (
                 <div className="flex items-center justify-center py-12">
                   <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-                  <span className="ml-3 text-gray-600 dark:text-gray-400">Loading test types...</span>
+                  <span className="ml-3 rtl:ml-0 rtl:mr-3 text-gray-600 dark:text-gray-400">{t('loadingTestTypes')}</span>
                 </div>
               ) : testManagementError ? (
                 <div className="flex flex-col items-center justify-center py-12">
                   <AlertCircle className="h-12 w-12 text-red-500 mb-3" />
                   <p className="text-red-600 text-center mb-4">{testManagementError}</p>
-                  <Button onClick={loadTestManagementSettings} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg">
-                    Retry
+                  <Button onClick={loadTestManagementSettings}>
+                    {t('retry')}
                   </Button>
                 </div>
               ) : testTypes.filter(type => type.is_active).length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-12">
                   <Layers className="h-12 w-12 text-gray-400 dark:text-gray-500 mb-3" />
-                  <p className="text-gray-600 dark:text-gray-400 text-center mb-4">No test types found. Create your first test type to get started.</p>
+                  <p className="text-gray-600 dark:text-gray-400 text-center mb-4">{t('noTestTypesFoundDesc')}</p>
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -1891,17 +2203,17 @@ export function Settings() {
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end" className="w-48 rounded-lg border-gray-200 shadow-lg">
                           <DropdownMenuItem onClick={() => handleEditTestType(type)} className="rounded-lg">
-                            <Edit className="h-4 w-4 mr-2 text-gray-500 dark:text-gray-400" />
-                            <span>Edit</span>
+                            <Edit className="h-4 w-4 mr-2 rtl:mr-0 rtl:ml-2 text-gray-500 dark:text-gray-400" />
+                            <span>{t('edit')}</span>
                           </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => handleDuplicateTestType(type)} className="rounded-lg">
-                            <Copy className="h-4 w-4 mr-2 text-gray-500 dark:text-gray-400" />
-                            <span>Duplicate</span>
+                            <Copy className="h-4 w-4 mr-2 rtl:mr-0 rtl:ml-2 text-gray-500 dark:text-gray-400" />
+                            <span>{t('duplicate')}</span>
                           </DropdownMenuItem>
                           <DropdownMenuSeparator />
                           <DropdownMenuItem onClick={() => handleDeleteTestType(type.id)} className="rounded-lg text-red-600 hover:text-red-700 hover:bg-red-50">
-                            <Trash2 className="h-4 w-4 mr-2" />
-                            <span>Delete</span>
+                            <Trash2 className="h-4 w-4 mr-2 rtl:mr-0 rtl:ml-2" />
+                            <span>{t('delete')}</span>
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
@@ -1910,16 +2222,16 @@ export function Settings() {
                       <div className="flex items-center gap-2 mb-2">
                         <h4 className="font-semibold text-gray-900 dark:text-gray-100 text-lg">{type.name}</h4>
                       </div>
-                      <p className="text-sm text-gray-600 dark:text-gray-400 mb-4 line-clamp-2">{type.description || 'No description provided'}</p>
+                      <p className="text-sm text-gray-600 dark:text-gray-400 mb-4 line-clamp-2">{type.description || t('noDescriptionProvided')}</p>
                       <div className="flex items-center justify-between">
-                        <div className="flex items-center space-x-4">
+                        <div className="flex items-center space-x-4 rtl:space-x-reverse">
                           <div className="flex items-center text-xs text-gray-500 dark:text-gray-400">
                             <div className="w-2 h-2 rounded-full bg-green-400 mr-1.5"></div>
-                            <span>Active</span>
+                            <span>{t('active')}</span>
                           </div>
                           <div className="flex items-center text-xs text-gray-500 dark:text-gray-400">
                             <span className="font-medium">{type.usage_count}</span>
-                            <span className="ml-1">uses</span>
+                            <span className="ml-1 rtl:ml-0 rtl:mr-1">{t('uses')}</span>
                           </div>
                         </div>
                         <div className="text-xs text-gray-400 dark:text-gray-500">
@@ -1938,43 +2250,43 @@ export function Settings() {
           <Card className="border-0 shadow-sm">
             <CardHeader className="pb-4">
               <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-3">
+                <div className="flex items-center space-x-3 rtl:space-x-reverse">
                   <div className="w-10 h-10 bg-gradient-to-br from-orange-500 to-red-500 rounded-xl flex items-center justify-center">
                     <AlertCircle className="h-5 w-5 text-white" />
                   </div>
                   <div>
-                    <CardTitle className="text-xl font-semibold text-gray-900 dark:text-gray-100">Priorities Management</CardTitle>
-                    <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Define priority levels for test cases and defects</p>
+                    <CardTitle className="text-xl font-semibold text-gray-900 dark:text-gray-100">{t('prioritiesManagementTitle')}</CardTitle>
+                    <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{t('prioritiesManagementDesc')}</p>
                   </div>
                 </div>
                 <Dialog open={priorityDialogOpen} onOpenChange={setPriorityDialogOpen}>
                   <DialogTrigger asChild>
-                    <Button className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg shadow-sm transition-all duration-200 hover:shadow-md">
-                      <Plus className="h-4 w-4 mr-2" />
-                      Add Priority
+                    <Button>
+                      <Plus className="h-4 w-4 mr-2 rtl:mr-0 rtl:ml-2" />
+                      {t('addPriority')}
                     </Button>
                   </DialogTrigger>
                   <DialogContent isRTL={isRTL} className="sm:max-w-[500px]">
                     <DialogHeader className="pb-4">
-                      <DialogTitle className="text-xl font-semibold text-gray-900 dark:text-gray-100">{isEditMode ? 'Edit Priority Level' : 'Create New Priority Level'}</DialogTitle>
+                      <DialogTitle className="text-xl font-semibold text-gray-900 dark:text-gray-100">{isEditMode ? t('editPriorityLevel') : t('createNewPriorityLevel')}</DialogTitle>
                       <DialogDescription className="text-gray-600">
-                        {isEditMode ? 'Update the priority level details' : 'Add a new priority level to classify test case importance'}
+                        {isEditMode ? t('updatePriorityDetails') : t('addPriorityDesc')}
                       </DialogDescription>
                     </DialogHeader>
                     <div className="grid gap-4 py-4">
                       <div className="grid grid-cols-2 gap-4">
                         <div>
-                          <Label htmlFor="priority-name" className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">Name</Label>
+                          <Label htmlFor="priority-name" className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">{t('name')}</Label>
                           <Input
                             id="priority-name"
                             value={priorityForm.name}
                             onChange={(e) => setPriorityForm({...priorityForm, name: e.target.value})}
-                            placeholder="e.g., Urgent"
+                            placeholder={t('priorityNamePlaceholder')}
                             className="h-10 rounded-lg border-gray-200 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20"
                           />
                         </div>
                         <div>
-                          <Label htmlFor="priority-value" className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">Value (1-10)</Label>
+                          <Label htmlFor="priority-value" className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">{t('priorityValueRange')}</Label>
                           <Input
                             id="priority-value"
                             type="number"
@@ -1987,20 +2299,20 @@ export function Settings() {
                         </div>
                       </div>
                       <div>
-                        <Label htmlFor="priority-description" className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">Description</Label>
+                        <Label htmlFor="priority-description" className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">{t('description')}</Label>
                         <Textarea
                           id="priority-description"
                           value={priorityForm.description}
                           onChange={(e) => setPriorityForm({...priorityForm, description: e.target.value})}
-                          placeholder="Describe when this priority should be used"
+                          placeholder={t('priorityDescriptionPlaceholder')}
                           rows={2}
                           className="rounded-lg border-gray-200 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 resize-none"
                         />
                       </div>
                       <div className="grid grid-cols-2 gap-4">
                         <div>
-                          <Label htmlFor="priority-color" className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">Color</Label>
-                          <div className="flex items-center space-x-2">
+                          <Label htmlFor="priority-color" className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">{t('color')}</Label>
+                          <div className="flex items-center space-x-2 rtl:space-x-reverse">
                             <Input
                               id="priority-color"
                               type="color"
@@ -2011,14 +2323,14 @@ export function Settings() {
                             <span className="text-sm text-gray-600 dark:text-gray-400 font-mono">{priorityForm.color}</span>
                           </div>
                         </div>
-                        <div className="flex items-center space-x-2">
+                        <div className="flex items-center space-x-2 rtl:space-x-reverse">
                           <Switch
                             id="priority-default"
                             checked={priorityForm.is_default}
                             onCheckedChange={(checked) => setPriorityForm({...priorityForm, is_default: checked})}
                             className="data-[state=checked]:bg-orange-600"
                           />
-                          <Label htmlFor="priority-default" className="text-sm font-medium text-gray-700 dark:text-gray-300 cursor-pointer">Default</Label>
+                          <Label htmlFor="priority-default" className="text-sm font-medium text-gray-700 dark:text-gray-300 cursor-pointer">{t('default')}</Label>
                         </div>
                       </div>
                     </div>
@@ -2029,10 +2341,10 @@ export function Settings() {
                         setIsEditMode(false);
                         setPriorityForm({ name: '', value: 2, color: '#F59E0B', description: '', is_default: false });
                       }} className="px-6 py-2 rounded-lg">
-                        Cancel
+                        {t('cancel')}
                       </Button>
-                      <Button onClick={handleCreatePriority} disabled={!priorityForm.name.trim()} className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg">
-                        {isEditMode ? 'Update Priority' : 'Create Priority'}
+                      <Button onClick={handleCreatePriority} disabled={!priorityForm.name.trim()}>
+                        {isEditMode ? t('updatePriority') : t('createPriority')}
                       </Button>
                     </DialogFooter>
                   </DialogContent>
@@ -2043,43 +2355,43 @@ export function Settings() {
               {loadingTestManagement ? (
                 <div className="flex items-center justify-center py-12">
                   <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-                  <span className="ml-3 text-gray-600 dark:text-gray-400">Loading priorities...</span>
+                  <span className="ml-3 rtl:ml-0 rtl:mr-3 text-gray-600 dark:text-gray-400">{t('loadingPriorities')}</span>
                 </div>
               ) : testManagementError ? (
                 <div className="flex flex-col items-center justify-center py-12">
                   <AlertCircle className="h-12 w-12 text-red-500 mb-3" />
                   <p className="text-red-600 text-center mb-4">{testManagementError}</p>
-                  <Button onClick={loadTestManagementSettings} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg">
-                    Retry
+                  <Button onClick={loadTestManagementSettings}>
+                    {t('retry')}
                   </Button>
                 </div>
               ) : priorities.filter(priority => priority.is_active).length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-12">
                   <AlertCircle className="h-12 w-12 text-gray-400 dark:text-gray-500 mb-3" />
-                  <p className="text-gray-600 dark:text-gray-400 text-center mb-4">No priorities found. Create your first priority level to get started.</p>
+                  <p className="text-gray-600 dark:text-gray-400 text-center mb-4">{t('noPrioritiesFoundDesc')}</p>
                 </div>
               ) : (
                 <div className="space-y-2">
                   {priorities.filter(priority => priority.is_active).sort((a, b) => b.value - a.value).map((priority) => (
                   <div key={priority.id} className="flex items-center justify-between p-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
-                    <div className="flex items-center space-x-3">
+                    <div className="flex items-center space-x-3 rtl:space-x-reverse">
                       <div className="w-6 h-6 rounded-full flex items-center justify-center" style={{ backgroundColor: priority.color }}>
                         <span className="text-white font-bold text-xs">{priority.value}</span>
                       </div>
                       <div>
-                        <div className="flex items-center space-x-2">
+                        <div className="flex items-center space-x-2 rtl:space-x-reverse">
                           <h4 className="font-semibold text-gray-900 dark:text-gray-100">{priority.name}</h4>
                           {priority.is_default && (
                             <Badge className="bg-orange-100 text-orange-800 border-orange-200 px-2 py-0.5 rounded-full text-xs font-medium">
-                              Default
+                              {t('default')}
                             </Badge>
                           )}
                         </div>
-                        <p className="text-sm text-gray-600 dark:text-gray-400">{priority.description || 'No description provided'}</p>
+                        <p className="text-sm text-gray-600 dark:text-gray-400">{priority.description || t('noDescriptionProvided')}</p>
                       </div>
                     </div>
-                    <div className="flex items-center space-x-2">
-                      <span className="text-xs text-gray-500 dark:text-gray-400">Value: {priority.value}</span>
+                    <div className="flex items-center space-x-2 rtl:space-x-reverse">
+                      <span className="text-xs text-gray-500 dark:text-gray-400">{t('priorityValueInline', { value: priority.value })}</span>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <Button variant="ghost" size="sm" className="h-8 w-8 p-0 rounded-lg hover:bg-gray-100">
@@ -2088,17 +2400,17 @@ export function Settings() {
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end" className="w-40 rounded-lg border-gray-200 shadow-lg">
                           <DropdownMenuItem onClick={() => handleEditPriority(priority)} className="rounded-lg text-sm">
-                            <Edit className="h-4 w-4 mr-2 text-gray-500 dark:text-gray-400" />
-                            <span>Edit</span>
+                            <Edit className="h-4 w-4 mr-2 rtl:mr-0 rtl:ml-2 text-gray-500 dark:text-gray-400" />
+                            <span>{t('edit')}</span>
                           </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => handleDuplicatePriority(priority)} className="rounded-lg text-sm">
-                            <Copy className="h-4 w-4 mr-2 text-gray-500 dark:text-gray-400" />
-                            <span>Duplicate</span>
+                            <Copy className="h-4 w-4 mr-2 rtl:mr-0 rtl:ml-2 text-gray-500 dark:text-gray-400" />
+                            <span>{t('duplicate')}</span>
                           </DropdownMenuItem>
                           <DropdownMenuSeparator />
                           <DropdownMenuItem onClick={() => handleDeletePriority(priority.id)} className="rounded-lg text-sm text-red-600 hover:text-red-700 hover:bg-red-50">
-                            <Trash2 className="h-4 w-4 mr-2" />
-                            <span>Delete</span>
+                            <Trash2 className="h-4 w-4 mr-2 rtl:mr-0 rtl:ml-2" />
+                            <span>{t('delete')}</span>
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
@@ -2116,77 +2428,77 @@ export function Settings() {
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-2 rtl:space-x-reverse">
                   <Layers className="h-5 w-5 text-purple-600" />
-                  <CardTitle>Shared Steps Templates</CardTitle>
+                  <CardTitle>{t('sharedStepTemplates')}</CardTitle>
                 </div>
                 <Dialog open={sharedStepDialogOpen} onOpenChange={setSharedStepDialogOpen}>
                   <DialogTrigger asChild>
-                    <Button className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg shadow-sm transition-all duration-200 hover:shadow-md">
-                      <Plus className="h-4 w-4 mr-2" />
-                      Add Template
+                    <Button>
+                      <Plus className="h-4 w-4 mr-2 rtl:mr-0 rtl:ml-2" />
+                      {t('addTemplate')}
                     </Button>
                   </DialogTrigger>
                   <DialogContent isRTL={isRTL} className="sm:max-w-[600px]">
                     <DialogHeader>
-                      <DialogTitle>{isEditMode ? 'Edit Shared Step Template' : 'Add Shared Step Template'}</DialogTitle>
+                      <DialogTitle>{isEditMode ? t('editSharedStepTemplate') : t('addSharedStepTemplate')}</DialogTitle>
                       <DialogDescription>
-                        {isEditMode ? 'Update the reusable step template for test cases.' : 'Create a reusable step template for test cases.'}
+                        {isEditMode ? t('updateSharedStepTemplateDesc') : t('createSharedStepTemplateDesc')}
                       </DialogDescription>
                     </DialogHeader>
                     <div className="grid gap-4 py-4">
                       <div className="grid grid-cols-4 items-center gap-4">
-                        <Label htmlFor="step-name" className="text-right">Name</Label>
+                        <Label htmlFor="step-name" className="text-end">{t('name')}</Label>
                         <Input
                           id="step-name"
                           value={sharedStepForm.name}
                           onChange={(e) => setSharedStepForm({...sharedStepForm, name: e.target.value})}
                           className="col-span-3"
-                          placeholder="e.g., User Login"
+                          placeholder={t('sharedStepNamePlaceholder')}
                         />
                       </div>
                       <div className="grid grid-cols-4 items-start gap-4">
-                        <Label htmlFor="step-description" className="text-right pt-2">Description</Label>
+                        <Label htmlFor="step-description" className="text-end pt-2">{t('description')}</Label>
                         <Textarea
                           id="step-description"
                           value={sharedStepForm.description}
                           onChange={(e) => setSharedStepForm({...sharedStepForm, description: e.target.value})}
                           className="col-span-3"
-                          placeholder="Describe the step template"
+                          placeholder={t('stepDescriptionPlaceholder')}
                           rows={2}
                         />
                       </div>
                       <div className="grid grid-cols-4 items-center gap-4">
-                        <Label htmlFor="step-category" className="text-right">Category</Label>
+                        <Label htmlFor="step-category" className="text-end">{t('category')}</Label>
                         <Select value={sharedStepForm.category} onValueChange={(value: any) => setSharedStepForm({...sharedStepForm, category: value})}>
                           <SelectTrigger className="col-span-3">
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="authentication">Authentication</SelectItem>
-                            <SelectItem value="database">Database</SelectItem>
-                            <SelectItem value="api">API</SelectItem>
-                            <SelectItem value="ui">UI</SelectItem>
-                            <SelectItem value="setup">Setup</SelectItem>
-                            <SelectItem value="cleanup">Cleanup</SelectItem>
-                            <SelectItem value="validation">Validation</SelectItem>
-                            <SelectItem value="reporting">Reporting</SelectItem>
+                            <SelectItem value="authentication">{t('authentication')}</SelectItem>
+                            <SelectItem value="database">{t('database')}</SelectItem>
+                            <SelectItem value="api">{t('api')}</SelectItem>
+                            <SelectItem value="ui">{t('ui')}</SelectItem>
+                            <SelectItem value="setup">{t('setup')}</SelectItem>
+                            <SelectItem value="cleanup">{t('cleanup')}</SelectItem>
+                            <SelectItem value="validation">{t('validation')}</SelectItem>
+                            <SelectItem value="reporting">{t('reporting')}</SelectItem>
                           </SelectContent>
                         </Select>
                       </div>
                       <div className="grid grid-cols-4 items-center gap-4">
-                        <Label htmlFor="step-complexity" className="text-right">Complexity</Label>
+                        <Label htmlFor="step-complexity" className="text-end">{t('complexity')}</Label>
                         <Select value={sharedStepForm.complexity} onValueChange={(value: any) => setSharedStepForm({...sharedStepForm, complexity: value})}>
                           <SelectTrigger className="col-span-3">
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="simple">Simple</SelectItem>
-                            <SelectItem value="medium">Medium</SelectItem>
-                            <SelectItem value="complex">Complex</SelectItem>
+                            <SelectItem value="simple">{t('simple')}</SelectItem>
+                            <SelectItem value="medium">{t('medium')}</SelectItem>
+                            <SelectItem value="complex">{t('complex')}</SelectItem>
                           </SelectContent>
                         </Select>
                       </div>
                       <div className="grid grid-cols-4 items-center gap-4">
-                        <Label htmlFor="step-time" className="text-right">Est. Time (min)</Label>
+                        <Label htmlFor="step-time" className="text-end">{t('estimatedTimeMinutes')}</Label>
                         <Input
                           id="step-time"
                           type="number"
@@ -2197,34 +2509,34 @@ export function Settings() {
                         />
                       </div>
                       <div className="grid grid-cols-4 items-center gap-4">
-                        <Label htmlFor="step-tags" className="text-right">Tags</Label>
+                        <Label htmlFor="step-tags" className="text-end">{t('tags')}</Label>
                         <Input
                           id="step-tags"
                           value={sharedStepForm.tags}
                           onChange={(e) => setSharedStepForm({...sharedStepForm, tags: e.target.value})}
                           className="col-span-3"
-                          placeholder="login, auth, user (comma separated)"
+                          placeholder={t('tagsPlaceholder')}
                         />
                       </div>
                       <div className="grid grid-cols-4 items-start gap-4">
-                        <Label htmlFor="step-prerequisites" className="text-right pt-2">Prerequisites</Label>
+                        <Label htmlFor="step-prerequisites" className="text-end pt-2">{t('prerequisites')}</Label>
                         <Textarea
                           id="step-prerequisites"
                           value={sharedStepForm.prerequisites}
                           onChange={(e) => setSharedStepForm({...sharedStepForm, prerequisites: e.target.value})}
                           className="col-span-3"
-                          placeholder="Valid user credentials, Database connection (comma separated)"
+                          placeholder={t('prerequisitesPlaceholder')}
                           rows={2}
                         />
                       </div>
                       <div className="grid grid-cols-4 items-start gap-4">
-                        <Label htmlFor="step-related" className="text-right pt-2">Related Steps</Label>
+                        <Label htmlFor="step-related" className="text-end pt-2">{t('relatedSteps')}</Label>
                         <Textarea
                           id="step-related"
                           value={sharedStepForm.related_steps}
                           onChange={(e) => setSharedStepForm({...sharedStepForm, related_steps: e.target.value})}
                           className="col-span-3"
-                          placeholder="User Logout, Password Reset (comma separated)"
+                          placeholder={t('relatedStepsPlaceholder')}
                           rows={2}
                         />
                       </div>
@@ -2244,9 +2556,9 @@ export function Settings() {
                           prerequisites: '',
                           related_steps: ''
                         });
-                      }}>Cancel</Button>
-                      <Button onClick={handleCreateSharedStep} disabled={!sharedStepForm.name.trim()} className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg">
-                        {isEditMode ? 'Update Template' : 'Create Template'}
+                      }}>{t('cancel')}</Button>
+                      <Button onClick={handleCreateSharedStep} disabled={!sharedStepForm.name.trim()}>
+                        {isEditMode ? t('updateTemplate') : t('createTemplate')}
                       </Button>
                     </DialogFooter>
                   </DialogContent>
@@ -2254,23 +2566,29 @@ export function Settings() {
               </div>
             </CardHeader>
             <CardContent className="pt-6">
+              {sharedStepTemplates.filter(step => step.is_active).length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-12">
+                  <AlertCircle className="h-12 w-12 text-gray-400 dark:text-gray-500 mb-3" />
+                  <p className="text-gray-600 dark:text-gray-400 text-center mb-4">{t('noSharedStepTemplatesFoundDesc')}</p>
+                </div>
+              ) : (
               <div className="space-y-4">
                 {sharedStepTemplates.filter(step => step.is_active).map((step) => (
                   <div key={step.id} className="flex items-center justify-between p-4 border rounded-lg">
                     <div className="flex-1">
                       <div className="flex items-center space-x-2 mb-2">
                         <h4 className="font-semibold">{step.name}</h4>
-                        <Badge variant="outline">{step.category}</Badge>
+                        <Badge variant="outline">{t(step.category as any)}</Badge>
                         <Badge variant={step.complexity === 'simple' ? 'default' : step.complexity === 'medium' ? 'secondary' : 'destructive'}>
-                          {step.complexity}
+                          {t(step.complexity as any)}
                         </Badge>
                         <div className="flex items-center text-sm text-gray-500 dark:text-gray-400">
-                          <Clock className="h-3 w-3 mr-1" />
-                          {step.estimated_time}min
+                          <Clock className="h-3 w-3 mr-1 rtl:mr-0 rtl:ml-1" />
+                          {t('minutesShort', { count: step.estimated_time })}
                         </div>
                         <div className="flex items-center text-sm text-gray-500 dark:text-gray-400">
-                          <TrendingUp className="h-3 w-3 mr-1" />
-                          Used {step.usage_count} times
+                          <TrendingUp className="h-3 w-3 mr-1 rtl:mr-0 rtl:ml-1" />
+                          {t('usedTimes', { count: step.usage_count })}
                         </div>
                       </div>
                       <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">{step.description}</p>
@@ -2284,29 +2602,30 @@ export function Settings() {
                     </div>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
-                        <Button variant="outline" size="sm" className="ml-4">
+                        <Button variant="outline" size="sm" className="ml-4 rtl:ml-0 rtl:mr-4">
                           <MoreHorizontal className="h-4 w-4" />
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent>
                         <DropdownMenuItem onClick={() => handleEditSharedStep(step)}>
-                          <Edit className="h-4 w-4 mr-2" />
-                          Edit
+                          <Edit className="h-4 w-4 mr-2 rtl:mr-0 rtl:ml-2" />
+                          {t('edit')}
                         </DropdownMenuItem>
                         <DropdownMenuItem onClick={() => handleDuplicateSharedStep(step)}>
-                          <Copy className="h-4 w-4 mr-2" />
-                          Duplicate
+                          <Copy className="h-4 w-4 mr-2 rtl:mr-0 rtl:ml-2" />
+                          {t('duplicate')}
                         </DropdownMenuItem>
                         <DropdownMenuSeparator />
                         <DropdownMenuItem onClick={() => handleDeleteSharedStep(step.id)} className="text-red-600">
-                          <Trash2 className="h-4 w-4 mr-2" />
-                          Delete
+                          <Trash2 className="h-4 w-4 mr-2 rtl:mr-0 rtl:ml-2" />
+                          {t('delete')}
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </div>
                 ))}
               </div>
+              )}
             </CardContent>
           </Card>
 
@@ -2315,7 +2634,7 @@ export function Settings() {
             <CardHeader className="border-b border-gray-100 dark:border-gray-800">
               <div className="flex items-center space-x-2 rtl:space-x-reverse">
                 <Target className="h-5 w-5 text-green-600" />
-                <CardTitle>Test Execution Settings</CardTitle>
+                <CardTitle>{t('testExecutionSettingsTitle')}</CardTitle>
               </div>
             </CardHeader>
             <CardContent className="space-y-6 pt-6">
@@ -2323,8 +2642,8 @@ export function Settings() {
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
                     <div className="space-y-0.5">
-                      <Label className="text-base">Auto-save Interval</Label>
-                      <p className="text-sm text-gray-500 dark:text-gray-400">Automatically save test progress (seconds)</p>
+                      <Label className="text-base">{t('autoSaveInterval')}</Label>
+                      <p className="text-sm text-gray-500 dark:text-gray-400">{t('autoSaveIntervalDesc')}</p>
                     </div>
                     <Input
                       type="number"
@@ -2337,8 +2656,8 @@ export function Settings() {
                   </div>
                   <div className="flex items-center justify-between">
                     <div className="space-y-0.5">
-                      <Label className="text-base">Screenshot on Failure</Label>
-                      <p className="text-sm text-gray-500 dark:text-gray-400">Capture screenshots when tests fail</p>
+                      <Label className="text-base">{t('screenshotOnFailure')}</Label>
+                      <p className="text-sm text-gray-500 dark:text-gray-400">{t('screenshotOnFailureDesc')}</p>
                     </div>
                     <Switch
                       checked={testExecutionSettings.screenshot_on_failure}
@@ -2347,8 +2666,8 @@ export function Settings() {
                   </div>
                   <div className="flex items-center justify-between">
                     <div className="space-y-0.5">
-                      <Label className="text-base">Video Recording</Label>
-                      <p className="text-sm text-gray-500 dark:text-gray-400">Record video during test execution</p>
+                      <Label className="text-base">{t('videoRecording')}</Label>
+                      <p className="text-sm text-gray-500 dark:text-gray-400">{t('videoRecordingDesc')}</p>
                     </div>
                     <Switch
                       checked={testExecutionSettings.video_recording}
@@ -2359,8 +2678,8 @@ export function Settings() {
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
                     <div className="space-y-0.5">
-                      <Label className="text-base">Step Timeout</Label>
-                      <p className="text-sm text-gray-500 dark:text-gray-400">Maximum time per step (seconds)</p>
+                      <Label className="text-base">{t('stepTimeout')}</Label>
+                      <p className="text-sm text-gray-500 dark:text-gray-400">{t('stepTimeoutDesc')}</p>
                     </div>
                     <Input
                       type="number"
@@ -2373,8 +2692,8 @@ export function Settings() {
                   </div>
                   <div className="flex items-center justify-between">
                     <div className="space-y-0.5">
-                      <Label className="text-base">Retry Attempts</Label>
-                      <p className="text-sm text-gray-500 dark:text-gray-400">Number of retry attempts on failure</p>
+                      <Label className="text-base">{t('retryAttempts')}</Label>
+                      <p className="text-sm text-gray-500 dark:text-gray-400">{t('retryAttemptsDesc')}</p>
                     </div>
                     <Input
                       type="number"
@@ -2387,8 +2706,8 @@ export function Settings() {
                   </div>
                   <div className="flex items-center justify-between">
                     <div className="space-y-0.5">
-                      <Label className="text-base">Parallel Execution</Label>
-                      <p className="text-sm text-gray-500 dark:text-gray-400">Run multiple tests in parallel</p>
+                      <Label className="text-base">{t('parallelExecution')}</Label>
+                      <p className="text-sm text-gray-500 dark:text-gray-400">{t('parallelExecutionDesc')}</p>
                     </div>
                     <Switch
                       checked={testExecutionSettings.parallel_execution}
@@ -2400,8 +2719,8 @@ export function Settings() {
               {testExecutionSettings.parallel_execution && (
                 <div className="flex items-center justify-between">
                   <div className="space-y-0.5">
-                    <Label className="text-base">Max Parallel Threads</Label>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">Maximum number of parallel test threads</p>
+                    <Label className="text-base">{t('maxParallelThreads')}</Label>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">{t('maxParallelThreadsDesc')}</p>
                   </div>
                   <Input
                     type="number"
@@ -2421,7 +2740,7 @@ export function Settings() {
             <CardHeader className="border-b border-gray-100 dark:border-gray-800">
               <div className="flex items-center space-x-2 rtl:space-x-reverse">
                 <Zap className="h-5 w-5 text-yellow-600" />
-                <CardTitle>Notification Settings</CardTitle>
+                <CardTitle>{t('notificationSettingsTitle')}</CardTitle>
               </div>
             </CardHeader>
             <CardContent className="space-y-6 pt-6">
@@ -2429,8 +2748,8 @@ export function Settings() {
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
                     <div className="space-y-0.5">
-                      <Label className="text-base">Email Notifications</Label>
-                      <p className="text-sm text-gray-500 dark:text-gray-400">Send notifications via email</p>
+                      <Label className="text-base">{t('emailNotifications')}</Label>
+                      <p className="text-sm text-gray-500 dark:text-gray-400">{t('emailNotificationsDesc')}</p>
                     </div>
                     <Switch
                       checked={notificationSettings.email_notifications}
@@ -2439,8 +2758,8 @@ export function Settings() {
                   </div>
                   <div className="flex items-center justify-between">
                     <div className="space-y-0.5">
-                      <Label className="text-base">Slack Notifications</Label>
-                      <p className="text-sm text-gray-500 dark:text-gray-400">Send notifications to Slack</p>
+                      <Label className="text-base">{t('slackNotifications')}</Label>
+                      <p className="text-sm text-gray-500 dark:text-gray-400">{t('slackNotificationsDesc')}</p>
                     </div>
                     <Switch
                       checked={notificationSettings.slack_notifications}
@@ -2449,8 +2768,8 @@ export function Settings() {
                   </div>
                   <div className="flex items-center justify-between">
                     <div className="space-y-0.5">
-                      <Label className="text-base">Test Failure Alerts</Label>
-                      <p className="text-sm text-gray-500 dark:text-gray-400">Alert on test failures</p>
+                      <Label className="text-base">{t('testFailureAlerts')}</Label>
+                      <p className="text-sm text-gray-500 dark:text-gray-400">{t('testFailureAlertsDesc')}</p>
                     </div>
                     <Switch
                       checked={notificationSettings.test_failure_alerts}
@@ -2461,8 +2780,8 @@ export function Settings() {
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
                     <div className="space-y-0.5">
-                      <Label className="text-base">Test Completion Reports</Label>
-                      <p className="text-sm text-gray-500 dark:text-gray-400">Send test completion summaries</p>
+                      <Label className="text-base">{t('testCompletionReports')}</Label>
+                      <p className="text-sm text-gray-500 dark:text-gray-400">{t('testCompletionReportsDesc')}</p>
                     </div>
                     <Switch
                       checked={notificationSettings.test_completion_reports}
@@ -2471,8 +2790,8 @@ export function Settings() {
                   </div>
                   <div className="flex items-center justify-between">
                     <div className="space-y-0.5">
-                      <Label className="text-base">Weekly Summary</Label>
-                      <p className="text-sm text-gray-500 dark:text-gray-400">Send weekly activity summaries</p>
+                      <Label className="text-base">{t('weeklySummary')}</Label>
+                      <p className="text-sm text-gray-500 dark:text-gray-400">{t('weeklySummaryDesc')}</p>
                     </div>
                     <Switch
                       checked={notificationSettings.weekly_summary}
@@ -2481,8 +2800,8 @@ export function Settings() {
                   </div>
                   <div className="flex items-center justify-between">
                     <div className="space-y-0.5">
-                      <Label className="text-base">Real-time Updates</Label>
-                      <p className="text-sm text-gray-500 dark:text-gray-400">Real-time notification updates</p>
+                      <Label className="text-base">{t('realtimeUpdates')}</Label>
+                      <p className="text-sm text-gray-500 dark:text-gray-400">{t('realtimeUpdatesDesc')}</p>
                     </div>
                     <Switch
                       checked={notificationSettings.real_time_updates}
@@ -2494,12 +2813,12 @@ export function Settings() {
               
               {/* User Notification Preferences */}
               <div className="border-t border-gray-200 dark:border-gray-700 pt-6">
-                <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-4">Personal Notification Preferences</h3>
+                <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-4">{t('personalNotificationPreferences')}</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="flex items-center justify-between">
                     <div className="space-y-0.5">
-                      <Label className="text-base">Do Not Disturb</Label>
-                      <p className="text-sm text-gray-500 dark:text-gray-400">Pause all notifications</p>
+                      <Label className="text-base">{t('doNotDisturb')}</Label>
+                      <p className="text-sm text-gray-500 dark:text-gray-400">{t('doNotDisturbDesc')}</p>
                     </div>
                     <Switch
                       checked={userNotificationPrefs.do_not_disturb}
@@ -2508,8 +2827,8 @@ export function Settings() {
                   </div>
                   <div className="flex items-center justify-between">
                     <div className="space-y-0.5">
-                      <Label className="text-base">Notification Sound</Label>
-                      <p className="text-sm text-gray-500 dark:text-gray-400">Play sound for notifications</p>
+                      <Label className="text-base">{t('notificationSound')}</Label>
+                      <p className="text-sm text-gray-500 dark:text-gray-400">{t('notificationSoundDesc')}</p>
                     </div>
                     <Switch
                       checked={userNotificationPrefs.notification_sound_enabled}
@@ -2520,7 +2839,7 @@ export function Settings() {
                 {userNotificationPrefs.notifications_muted_until && (
                   <div className="mt-4 p-3 bg-yellow-50 dark:bg-yellow-900/20 rounded-md">
                     <p className="text-sm text-yellow-800 dark:text-yellow-200">
-                      Notifications muted until: {new Date(userNotificationPrefs.notifications_muted_until).toLocaleString()}
+                      {t('notificationsMutedUntil', { date: new Date(userNotificationPrefs.notifications_muted_until).toLocaleString() })}
                     </p>
                   </div>
                 )}
@@ -2533,7 +2852,7 @@ export function Settings() {
             <CardHeader className="border-b border-gray-100 dark:border-gray-800">
               <div className="flex items-center space-x-2 rtl:space-x-reverse">
                 <Cpu className="h-5 w-5 text-indigo-600" />
-                <CardTitle>Automation & AI Settings</CardTitle>
+                <CardTitle>{t('automationAiSettings')}</CardTitle>
               </div>
             </CardHeader>
             <CardContent className="space-y-6 pt-6">
@@ -2541,8 +2860,8 @@ export function Settings() {
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
                     <div className="space-y-0.5">
-                      <Label className="text-base">AI Suggestions</Label>
-                      <p className="text-sm text-gray-500 dark:text-gray-400">Enable AI-powered suggestions</p>
+                      <Label className="text-base">{t('aiSuggestions')}</Label>
+                      <p className="text-sm text-gray-500 dark:text-gray-400">{t('aiSuggestionsDesc')}</p>
                     </div>
                     <Switch
                       checked={automationSettings.ai_suggestions}
@@ -2551,8 +2870,8 @@ export function Settings() {
                   </div>
                   <div className="flex items-center justify-between">
                     <div className="space-y-0.5">
-                      <Label className="text-base">Smart Step Recommendations</Label>
-                      <p className="text-sm text-gray-500 dark:text-gray-400">Suggest relevant steps during test creation</p>
+                      <Label className="text-base">{t('smartStepRecommendations')}</Label>
+                      <p className="text-sm text-gray-500 dark:text-gray-400">{t('smartStepRecommendationsDesc')}</p>
                     </div>
                     <Switch
                       checked={automationSettings.smart_step_recommendations}
@@ -2563,8 +2882,8 @@ export function Settings() {
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
                     <div className="space-y-0.5">
-                      <Label className="text-base">Auto Categorization</Label>
-                      <p className="text-sm text-gray-500 dark:text-gray-400">Automatically categorize test cases</p>
+                      <Label className="text-base">{t('autoCategorization')}</Label>
+                      <p className="text-sm text-gray-500 dark:text-gray-400">{t('autoCategorizationDesc')}</p>
                     </div>
                     <Switch
                       checked={automationSettings.auto_categorization}
@@ -2573,8 +2892,8 @@ export function Settings() {
                   </div>
                   <div className="flex items-center justify-between">
                     <div className="space-y-0.5">
-                      <Label className="text-base">Duplicate Detection</Label>
-                      <p className="text-sm text-gray-500 dark:text-gray-400">Detect duplicate test cases</p>
+                      <Label className="text-base">{t('duplicateDetection')}</Label>
+                      <p className="text-sm text-gray-500 dark:text-gray-400">{t('duplicateDetectionDesc')}</p>
                     </div>
                     <Switch
                       checked={automationSettings.duplicate_detection}
@@ -2583,8 +2902,8 @@ export function Settings() {
                   </div>
                   <div className="flex items-center justify-between">
                     <div className="space-y-0.5">
-                      <Label className="text-base">Performance Optimization</Label>
-                      <p className="text-sm text-gray-500 dark:text-gray-400">Optimize test execution performance</p>
+                      <Label className="text-base">{t('performanceOptimization')}</Label>
+                      <p className="text-sm text-gray-500 dark:text-gray-400">{t('performanceOptimizationDesc')}</p>
                     </div>
                     <Switch
                       checked={automationSettings.performance_optimization}
@@ -2599,7 +2918,7 @@ export function Settings() {
           {/* Save Button */}
           <div className="flex justify-end">
             <Button className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-2 rounded-lg" onClick={handleSaveTestManagementSettings} disabled={saving}>
-              {saving ? 'Saving...' : 'Save Test Management Settings'}
+              {saving ? t('saving') : t('saveTestManagementSettings')}
             </Button>
           </div>
         </TabsContent>
@@ -2610,17 +2929,17 @@ export function Settings() {
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-2 rtl:space-x-reverse">
                   <Link className="h-5 w-5 text-blue-600" />
-                  <CardTitle>Issue Tracker Integrations</CardTitle>
+                  <CardTitle>{t('issueTrackerIntegrationsTitle')}</CardTitle>
                 </div>
                 <Button onClick={handleAddIntegration} disabled={!selectedProjectId}>
-                  <Plus className="h-4 w-4 mr-2" />
-                  Add Integration
+                  <Plus className="h-4 w-4 mr-2 rtl:mr-0 rtl:ml-2" />
+                  {t('addIntegration')}
                 </Button>
               </div>
             </CardHeader>
             <CardContent className="space-y-6 pt-6">
               <div className="space-y-2">
-                <Label htmlFor="project-select">Select Project</Label>
+                <Label htmlFor="project-select">{t('selectProject')}</Label>
                 <Select
                   value={selectedProjectId?.toString()}
                   onValueChange={(value) => setSelectedProjectId(parseInt(value))}
@@ -2630,12 +2949,12 @@ export function Settings() {
                     {loadingProjects ? (
                       <div className="flex items-center gap-2">
                         <Loader2 className="h-4 w-4 animate-spin" />
-                        <span>Loading projects...</span>
+                        <span>{t('loadingProjects')}</span>
                       </div>
                     ) : projects.length === 0 ? (
-                      <span>No projects available</span>
+                      <span>{t('noProjectsAvailable')}</span>
                     ) : (
-                      <SelectValue placeholder="Select a project" />
+                      <SelectValue placeholder={t('selectProject')} />
                     )}
                   </SelectTrigger>
                   <SelectContent>
@@ -2651,7 +2970,7 @@ export function Settings() {
               {!selectedProjectId ? (
                 <div className="text-center py-8 text-gray-500 dark:text-gray-400">
                   <FolderTree className="h-12 w-12 mx-auto mb-4 text-gray-300 dark:text-gray-500" />
-                  <p>Select a project to view integrations</p>
+                  <p>{t('selectProjectToViewIntegrations')}</p>
                 </div>
               ) : loadingIntegrations ? (
                 <div className="flex items-center justify-center py-8">
@@ -2660,8 +2979,8 @@ export function Settings() {
               ) : integrations.length === 0 ? (
                 <div className="text-center py-8 text-gray-500 dark:text-gray-400">
                   <Link className="h-12 w-12 mx-auto mb-4 text-gray-300 dark:text-gray-500" />
-                  <p>No Integrations</p>
-                  <p className="text-sm">Connect GitHub, GitLab, Jira, or other issue trackers to sync defects</p>
+                  <p>{t('noIntegrationsTitle')}</p>
+                  <p className="text-sm">{t('noIntegrationsDesc')}</p>
                 </div>
               ) : (
                 <div className="space-y-4">
@@ -2673,7 +2992,7 @@ export function Settings() {
                             <div className="flex items-center gap-2 mb-2">
                               <h4 className="font-semibold">{integration.name}</h4>
                               {!integration.is_active && (
-                                <Badge variant="outline" className="text-xs">Inactive</Badge>
+                                <Badge variant="outline" className="text-xs">{t('inactive')}</Badge>
                               )}
                             </div>
                             <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
@@ -2689,12 +3008,12 @@ export function Settings() {
                             </div>
                             {integration.last_sync && (
                               <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                                Last sync: {new Date(integration.last_sync).toLocaleString()}
+                                {t('lastSync')}: {new Date(integration.last_sync).toLocaleString()}
                               </p>
                             )}
                             {integration.sync_error && (
                               <p className="text-xs text-red-600 dark:text-red-400 mt-1">
-                                <AlertCircle className="h-3 w-3 inline mr-1" />
+                                <AlertCircle className="h-3 w-3 inline mr-1 rtl:mr-0 rtl:ml-1" />
                                 {integration.sync_error}
                               </p>
                             )}
@@ -2722,8 +3041,8 @@ export function Settings() {
                             <Button 
                               size="sm" 
                               variant="outline"
-                              onClick={() => handleDeleteIntegration(integration.id)}
-                            >
+	                              onClick={() => setIntegrationToDelete(integration)}
+	                            >
                               <Trash2 className="h-4 w-4" />
                             </Button>
                           </div>
@@ -2734,26 +3053,43 @@ export function Settings() {
                 </div>
               )}
             </CardContent>
-          </Card>
+	          </Card>
 
-          {/* Integration Form Dialog */}
+	          <AlertDialog open={!!integrationToDelete} onOpenChange={(open) => !open && setIntegrationToDelete(null)}>
+	            <AlertDialogContent>
+	              <AlertDialogHeader>
+	                <AlertDialogTitle>{t('confirmDeleteIntegration')}</AlertDialogTitle>
+	                <AlertDialogDescription>
+	                  {t('confirmDeleteIntegrationDesc', { name: integrationToDelete?.name || '' })}
+	                </AlertDialogDescription>
+	              </AlertDialogHeader>
+	              <AlertDialogFooter>
+	                <AlertDialogCancel>{t('cancel')}</AlertDialogCancel>
+	                <AlertDialogAction onClick={confirmDeleteIntegration} className="bg-red-600 hover:bg-red-700">
+	                  {t('delete')}
+	                </AlertDialogAction>
+	              </AlertDialogFooter>
+	            </AlertDialogContent>
+	          </AlertDialog>
+
+	          {/* Integration Form Dialog */}
           <Dialog open={isIntegrationFormOpen} onOpenChange={setIsIntegrationFormOpen}>
             <DialogContent isRTL={isRTL} className="sm:max-w-[700px] max-h-[80vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>
-                  {editingIntegration ? 'Edit Integration' : 'Add Integration'}
+                  {editingIntegration ? t('editIntegration') : t('addIntegrationTitle')}
                 </DialogTitle>
                 <DialogDescription>
                   {editingIntegration 
-                    ? 'Update the issue tracker integration configuration'
-                    : 'Configure a new issue tracker integration (Jira, GitHub, GitLab, etc.)'
+                    ? t('updateIntegrationConfiguration')
+                    : t('configureNewIntegration')
                   }
                 </DialogDescription>
               </DialogHeader>
               <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="integration-name">Integration Name *</Label>
+                    <Label htmlFor="integration-name">{t('integrationNameLabel')} *</Label>
                     <Input
                       id="integration-name"
                       ref={nameInputRef}
@@ -2768,7 +3104,7 @@ export function Settings() {
                     )}
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="tracker-type">Tracker Type *</Label>
+                    <Label htmlFor="tracker-type">{t('trackerType')} *</Label>
                     <Select
                       value={integrationForm.tracker_type}
                       onValueChange={(value) => {
@@ -2795,7 +3131,7 @@ export function Settings() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="api-url">API URL *</Label>
+                  <Label htmlFor="api-url">{t('apiUrlLabel')} *</Label>
                   <Input
                     id="api-url"
                     ref={apiUrlInputRef}
@@ -2812,21 +3148,21 @@ export function Settings() {
 
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="username">Username / Email</Label>
+                    <Label htmlFor="username">{t('usernameEmail')}</Label>
                     <Input
                       id="username"
-                      placeholder="your-email@example.com"
+                      placeholder={t('usernameEmailPlaceholder')}
                       value={integrationForm.username}
                       onChange={(e) => setIntegrationForm({...integrationForm, username: e.target.value})}
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="api-token">API Token {(!editingIntegration) ? '*' : ''}</Label>
+                    <Label htmlFor="api-token">{t('apiTokenLabel')} {(!editingIntegration) ? '*' : ''}</Label>
                     <Input
                       id="api-token"
                       ref={tokenInputRef}
                       type="password"
-                      placeholder={editingIntegration ? 'Leave blank to keep existing' : 'Enter your API token'}
+                      placeholder={editingIntegration ? t('apiTokenLeaveBlank') : t('apiTokenPlaceholder')}
                       value={integrationForm.api_token}
                       onChange={(e) => setIntegrationForm({...integrationForm, api_token: e.target.value})}
                       onBlur={() => setTouchedFields({...touchedFields, api_token: true})}
@@ -2836,7 +3172,7 @@ export function Settings() {
                       <p className="text-xs text-red-600 dark:text-red-400">{validationErrors.api_token}</p>
                     )}
                     <p className="text-xs text-gray-500">
-                      Token will be encrypted and stored securely
+                      {t('tokenEncryptedSecurely')}
                     </p>
                   </div>
                 </div>
@@ -2861,7 +3197,7 @@ export function Settings() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="sync-direction">Sync Direction</Label>
+                  <Label htmlFor="sync-direction">{t('syncDirection')}</Label>
                   <Select
                     value={integrationForm.sync_direction}
                     onValueChange={(value) => setIntegrationForm({...integrationForm, sync_direction: value})}
@@ -2870,14 +3206,14 @@ export function Settings() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="import">Import Only (External → TestMona)</SelectItem>
-                      <SelectItem value="export">Export Only (TestMona → External)</SelectItem>
-                      <SelectItem value="bidirectional">Bidirectional (Both Ways)</SelectItem>
+                      <SelectItem value="import">{t('importOnly', { appName })}</SelectItem>
+                      <SelectItem value="export">{t('exportOnly', { appName })}</SelectItem>
+                      <SelectItem value="bidirectional">{t('bidirectional')}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
 
-                <div className="flex items-center space-x-2">
+                <div className="flex items-center space-x-2 rtl:space-x-reverse">
                   <input
                     type="checkbox"
                     id="is-active"
@@ -2885,24 +3221,24 @@ export function Settings() {
                     onChange={(e) => setIntegrationForm({...integrationForm, is_active: e.target.checked})}
                     className="h-4 w-4"
                   />
-                  <Label htmlFor="is-active">Enable this integration</Label>
+                  <Label htmlFor="is-active">{t('enableThisIntegration')}</Label>
                 </div>
 
                 {editingIntegration && (
                   <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded p-3">
                     <p className="text-sm text-yellow-800 dark:text-yellow-200">
-                      <AlertCircle className="h-4 w-4 inline mr-2" />
-                      Leave the API token blank to keep the existing token. Only enter a new token if you want to change it.
+                      <AlertCircle className="h-4 w-4 inline mr-2 rtl:mr-0 rtl:ml-2" />
+                      {t('leaveApiTokenBlank')}
                     </p>
                   </div>
                 )}
               </div>
               <DialogFooter>
                 <Button variant="outline" onClick={() => setIsIntegrationFormOpen(false)}>
-                  Cancel
+                  {t('cancel')}
                 </Button>
                 <Button onClick={handleSaveIntegration}>
-                  {editingIntegration ? 'Update Integration' : 'Create Integration'}
+                  {editingIntegration ? t('updateIntegration') : t('createIntegration')}
                 </Button>
               </DialogFooter>
             </DialogContent>
@@ -2914,104 +3250,11 @@ export function Settings() {
             <CardHeader className="border-b border-gray-100 dark:border-gray-800">
               <div className="flex items-center space-x-2 rtl:space-x-reverse">
                 <Users className="h-5 w-5 text-purple-600" />
-                <CardTitle>User Management</CardTitle>
+                <CardTitle>{t('userManagement')}</CardTitle>
               </div>
             </CardHeader>
             <CardContent className="pt-6">
               <UserManagement />
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="system" className="space-y-6">
-          <Card>
-            <CardHeader className="border-b border-gray-100 dark:border-gray-800">
-              <div className="flex items-center space-x-2 rtl:space-x-reverse">
-                <SettingsIcon className="h-5 w-5 text-gray-600 dark:text-gray-400" />
-                <CardTitle>System Configuration</CardTitle>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-6 pt-6">
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <Label className="text-base">Maintenance Mode</Label>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">Temporarily disable access to the application</p>
-                  </div>
-                  <Switch 
-                    checked={maintenanceMode} 
-                    onCheckedChange={async (checked) => {
-                      setMaintenanceMode(checked);
-                      try {
-                        await systemSettingsAPI.updateSetting('maintenance_mode', checked.toString(), 'Enable/disable maintenance mode');
-                        toast({
-                          title: 'Success',
-                          description: 'Maintenance mode updated',
-                        });
-                      } catch (error) {
-                        toast({
-                          title: 'Error',
-                          description: 'Failed to update maintenance mode',
-                          variant: 'destructive',
-                        });
-                        setMaintenanceMode(!checked); // Revert on error
-                      }
-                    }} 
-                  />
-                </div>
-                <div className="flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <Label className="text-base">New User Registration</Label>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">Allow new users to register</p>
-                  </div>
-                  <Switch 
-                    checked={newUserRegistration} 
-                    onCheckedChange={async (checked) => {
-                      setNewUserRegistration(checked);
-                      try {
-                        await systemSettingsAPI.updateSetting('signup_enabled', checked.toString(), 'Enable/disable public user registration');
-                        toast({
-                          title: 'Success',
-                          description: 'User registration setting updated',
-                        });
-                      } catch (error) {
-                        toast({
-                          title: 'Error',
-                          description: 'Failed to update user registration setting',
-                          variant: 'destructive',
-                        });
-                        setNewUserRegistration(!checked); // Revert on error
-                      }
-                    }} 
-                  />
-                </div>
-                <div className="flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <Label className="text-base">Debug Logging</Label>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">Enable detailed logging for troubleshooting</p>
-                  </div>
-                  <Switch 
-                    checked={debugLogging} 
-                    onCheckedChange={async (checked) => {
-                      setDebugLogging(checked);
-                      try {
-                        await systemSettingsAPI.updateSetting('debug_logging', checked.toString(), 'Enable detailed logging for troubleshooting');
-                        toast({
-                          title: 'Success',
-                          description: 'Debug logging updated',
-                        });
-                      } catch (error) {
-                        toast({
-                          title: 'Error',
-                          description: 'Failed to update debug logging',
-                          variant: 'destructive',
-                        });
-                        setDebugLogging(!checked); // Revert on error
-                      }
-                    }} 
-                  />
-                </div>
-              </div>
             </CardContent>
           </Card>
         </TabsContent>
@@ -3031,7 +3274,7 @@ export function Settings() {
                     onClick={handleResetAuditTrailConfig}
                     disabled={savingAuditConfig || loadingAuditConfig}
                   >
-                    <RefreshCw className="h-4 w-4 mr-2" />
+                    <RefreshCw className="h-4 w-4 mr-2 rtl:mr-0 rtl:ml-2" />
                     {t('resetToDefaults')}
                   </Button>
                   <Button
@@ -3042,7 +3285,7 @@ export function Settings() {
                     {savingAuditConfig ? (
                       <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                     ) : (
-                      <CheckCircle className="h-4 w-4 mr-2" />
+                      <CheckCircle className="h-4 w-4 mr-2 rtl:mr-0 rtl:ml-2" />
                     )}
                     {t('saveConfiguration')}
                   </Button>
@@ -3146,7 +3389,7 @@ export function Settings() {
                         {savingAuditConfig ? (
                           <Loader2 className="h-4 w-4 animate-spin mr-2" />
                         ) : (
-                          <Trash2 className="h-4 w-4 mr-2" />
+                          <Trash2 className="h-4 w-4 mr-2 rtl:mr-0 rtl:ml-2" />
                         )}
                         {t('deleteAllAuditTrails')}
                       </Button>

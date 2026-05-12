@@ -4,6 +4,11 @@ import { useAuthStore } from "@/stores/authStore";
 
 // System Settings API
 export const systemSettingsAPI = {
+  getPublicSetting: async (key: string) => {
+    const response = await api.get(`/system/settings/public/${encodeURIComponent(key)}`);
+    return response.data;
+  },
+
   getSetting: async (key: string) => {
     const response = await api.get(`/system/settings/${key}`);
     return response.data;
@@ -37,7 +42,7 @@ export const systemSettingsAPI = {
   },
 };
 
-const API_BASE_URL = "http://localhost:8000";
+const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -688,6 +693,25 @@ export const customFieldsAPI = {
     const response = await api.delete(`/custom-fields/definitions/${id}`);
     return response.data;
   },
+  getValues: async (testCaseId?: number, fieldDefinitionId?: number) => {
+    const params = new URLSearchParams();
+    if (testCaseId) params.append('test_case_id', testCaseId.toString());
+    if (fieldDefinitionId) params.append('field_definition_id', fieldDefinitionId.toString());
+    const response = await api.get(`/custom-field-values/?${params}`);
+    return response.data;
+  },
+  createValue: async (value: any) => {
+    const response = await api.post('/custom-field-values/', value);
+    return response.data;
+  },
+  updateValue: async (id: number, value: any) => {
+    const response = await api.put(`/custom-field-values/${id}`, value);
+    return response.data;
+  },
+  deleteValue: async (id: number) => {
+    const response = await api.delete(`/custom-field-values/${id}`);
+    return response.data;
+  },
 };
 
 // Jira API
@@ -816,6 +840,8 @@ export const testManagementAPI = {
   },
 };
 
+let testTypesRequest: Promise<any> | null = null;
+
 // Enums API
 export const enumsAPI = {
   getPriorities: async () => {
@@ -823,8 +849,16 @@ export const enumsAPI = {
     return response.data;
   },
   getTestTypes: async () => {
-    const response = await api.get('/enums/test-types');
-    return response.data;
+    if (!testTypesRequest) {
+      testTypesRequest = api.get('/enums/test-types')
+        .then((response) => response.data)
+        .catch((error) => {
+          testTypesRequest = null;
+          throw error;
+        });
+    }
+
+    return testTypesRequest;
   },
 };
 

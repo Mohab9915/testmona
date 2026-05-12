@@ -1,26 +1,70 @@
-import { useState, useEffect } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useEffect, useMemo, useState } from 'react';
+import type { ReactNode } from 'react';
+import { Link, useNavigate, useParams } from 'react-router-dom';
+import {
+  ArrowLeft,
+  ArrowRight,
+  AlertTriangle,
+  CheckCircle,
+  Edit,
+  Eye,
+  FileText,
+  History,
+  Play,
+  Share2,
+  Tag,
+} from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { 
-  ArrowLeft, ArrowRight, Edit, Play, Share2, Clock, User, 
-  FileText, Tag, Calendar, AlertTriangle, CheckCircle, XCircle, History, ExternalLink, Eye
-} from 'lucide-react';
 import { useTranslation } from '@/hooks/useTranslation';
-import { testCasesAPI, testSuitesAPI, api, requirementsAPI, sectionsAPI } from '@/lib/api';
-import { TestCase, TestSuite, Requirement } from '@/types';
-import { useAuthStore } from '@/stores/authStore';
+import { useToast } from '@/hooks/use-toast';
+import { api, customFieldsAPI, requirementsAPI, sectionsAPI, testCasesAPI, testSuitesAPI } from '@/lib/api';
+import { CustomFieldDefinition, CustomFieldValue, Requirement, TestCase, TestSuite } from '@/types';
+
+type SectionCrumb = { id: number; name: string };
+type CustomFieldDisplayRow = { field: CustomFieldDefinition | null; value: string; valueId?: number; fieldDefinitionId: number };
+
+const formatDateTime = (value?: string | null) => {
+  if (!value) return 'N/A';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'N/A';
+  return date.toLocaleString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+};
+
+const formatStatusLabel = (status?: string | null) => {
+  if (!status) return 'Unknown';
+  return status.replace(/[-_]/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase());
+};
+
+
+const getCustomFieldOptions = (field: CustomFieldDefinition): string[] => {
+  if (!field.options) return [];
+  if (Array.isArray(field.options)) return field.options.map(String);
+
+  const optionValues = Array.isArray(field.options.values)
+    ? field.options.values
+    : Array.isArray(field.options.options)
+      ? field.options.options
+      : [];
+
+  return optionValues.map(String);
+};
 
 export function TestCaseDetail() {
   const { t, isRTL } = useTranslation();
-  const { id } = useParams<{ id: string }>();
-  const { projectId } = useParams<{ projectId?: string }>();
+  const { toast } = useToast();
+  const { id, projectId } = useParams<{ id: string; projectId?: string }>();
   const navigate = useNavigate();
-  const { user } = useAuthStore();
   const [testCase, setTestCase] = useState<TestCase | null>(null);
   const [testSuite, setTestSuite] = useState<TestSuite | null>(null);
-  const [section, setSection] = useState<any>(null);
+  const [section, setSection] = useState<{ name: string; path: SectionCrumb[] } | null>(null);
   const [testSteps, setTestSteps] = useState<Array<{
     step_number: number;
     action: string;
@@ -28,537 +72,461 @@ export function TestCaseDetail() {
     step_type: string;
   }>>([]);
   const [loading, setLoading] = useState(true);
-  const [executing, setExecuting] = useState(false);
   const [revisions, setRevisions] = useState<any[]>([]);
   const [revisionsLoading, setRevisionsLoading] = useState(false);
-  const [revisionsError, setRevisionsError] = useState<string | null>(null);
   const [testRunHistory, setTestRunHistory] = useState<any[]>([]);
   const [linkedRequirement, setLinkedRequirement] = useState<Requirement | null>(null);
+  const [customFields, setCustomFields] = useState<CustomFieldDefinition[]>([]);
+  const [customFieldsLoading, setCustomFieldsLoading] = useState(false);
   const [isValidatingProject, setIsValidatingProject] = useState(false);
 
-  // Helper function to navigate back to the correct test cases page
+  const isMultistepCase = useMemo(() => {
+    if (!testCase) return false;
+    const rawValue = (testCase as any).is_multistep;
+    if (typeof rawValue === 'boolean') return rawValue;
+    if (typeof rawValue === 'string') return rawValue.toLowerCase() === 'true';
+    return Boolean(rawValue);
+  }, [testCase]);
+
+  const effectiveProjectId = projectId || testSuite?.project_id?.toString() || (testCase as any)?.project_id?.toString();
+
   const navigateBack = () => {
-    if (projectId) {
-      navigate(`/projects/${projectId}/test-cases`);
-    } else if (testSuite?.project_id) {
-      navigate(`/projects/${testSuite.project_id}/test-cases`);
-    } else {
-      navigate('/test-cases');
+    if (effectiveProjectId) {
+      navigate(`/projects/${effectiveProjectId}/test-cases`);
+      return;
     }
+    navigate('/test-cases');
   };
 
   useEffect(() => {
+    let isMounted = true;
+
     const fetchTestCaseAndSuite = async () => {
       setLoading(true);
       setIsValidatingProject(true);
+
+      const testCaseId = Number(id);
+      if (!testCaseId || Number.isNaN(testCaseId)) {
+        setTestCase(null);
+        setLoading(false);
+        setIsValidatingProject(false);
+        return;
+      }
+
       try {
-        // Use real API call to fetch test case details
-        const testCaseData = await testCasesAPI.getById(parseInt(id || '1'));
-        
-        // Always fetch test suite if test case has one
-        let testSuiteData = null;
+        const testCaseData = await testCasesAPI.getById(testCaseId);
+        let testSuiteData: TestSuite | null = null;
+
         if (testCaseData.test_suite_id) {
           try {
             testSuiteData = await testSuitesAPI.getById(testCaseData.test_suite_id);
-            setTestSuite(testSuiteData);
           } catch (suiteError) {
             console.error('Failed to fetch test suite:', suiteError);
           }
         }
-        
+
+        if (projectId && testSuiteData?.project_id && Number(projectId) !== Number(testSuiteData.project_id)) {
+          if (!isMounted) return;
+          setTestCase(null);
+          return;
+        }
+
+        if (!isMounted) return;
         setTestCase(testCaseData);
-        
-        // Fetch section hierarchy to get the full section path
-        // Try multiple sources for project ID
-        const projectForSections = projectId || testSuiteData?.project_id || testCaseData.project_id;
-        
+        setTestSuite(testSuiteData);
+
+        const projectForCustomFields = Number(projectId || testSuiteData?.project_id || testCaseData.test_suite?.project_id || (testCaseData as any).project_id);
+        if (projectForCustomFields && !Number.isNaN(projectForCustomFields)) {
+          setCustomFieldsLoading(true);
+          customFieldsAPI.getDefinitions(projectForCustomFields)
+            .then((fields) => {
+              if (isMounted) setCustomFields(Array.isArray(fields) ? fields : []);
+            })
+            .catch((customFieldError) => {
+              console.error('Failed to fetch custom field definitions:', customFieldError);
+              if (isMounted) setCustomFields([]);
+            })
+            .finally(() => {
+              if (isMounted) setCustomFieldsLoading(false);
+            });
+        } else {
+          setCustomFields([]);
+        }
+
+        const projectForSections = projectId || testSuiteData?.project_id || (testCaseData as any).project_id;
         if (testCaseData.section_id && projectForSections) {
           try {
-            const hierarchyData = await sectionsAPI.getProjectSectionHierarchy(parseInt(projectForSections));
-            
+            const hierarchyData = await sectionsAPI.getProjectSectionHierarchy(Number(projectForSections));
             const allSections: any[] = [];
-            
-            // Flatten sections from hierarchy to find the section
+
             const flattenSections = (hierarchy: any[]) => {
               hierarchy.forEach((item: any) => {
-                if (item.sections) {
-                  item.sections.forEach((section: any) => {
-                    allSections.push({
-                      id: section.id,
-                      name: section.name,
-                      parent_section_id: section.parent_section_id,
-                      test_suite_id: section.test_suite_id
-                    });
-                    // Recursively flatten nested sections
-                    if (section.sections && section.sections.length > 0) {
-                      flattenSections([{ sections: section.sections }]);
-                    }
-                  });
-                }
+                (item.sections || []).forEach((currentSection: any) => {
+                  allSections.push(currentSection);
+                  if (currentSection.sections?.length) {
+                    flattenSections([{ sections: currentSection.sections }]);
+                  }
+                });
               });
             };
-            
-            flattenSections(hierarchyData.hierarchy || []);
-            
-            // Find the section and build the full path
-            const findSectionPath = (sectionId: number, sections: any[]): string => {
-              const section = sections.find(s => s.id === sectionId);
-              if (!section) return '';
-              
-              let path = section.name;
-              
-              // If this section has a parent, recursively build the path
-              if (section.parent_section_id) {
-                const parentPath = findSectionPath(section.parent_section_id, sections);
-                if (parentPath) {
-                  path = `${parentPath} > ${path}`;
-                }
-              }
-              
-              return path;
+
+            const findSectionPath = (sectionId: number): SectionCrumb[] => {
+              const currentSection = allSections.find((candidate) => Number(candidate.id) === Number(sectionId));
+              if (!currentSection) return [];
+              const currentCrumb = { id: Number(currentSection.id), name: currentSection.name };
+              if (!currentSection.parent_section_id) return [currentCrumb];
+              const parentPath = findSectionPath(currentSection.parent_section_id);
+              return parentPath.length > 0 ? [...parentPath, currentCrumb] : [currentCrumb];
             };
-            
-            let sectionPath = findSectionPath(testCaseData.section_id, allSections);
-            
-            // If section not found in hierarchy, fetch it directly
-            if (!sectionPath) {
-              try {
-                // Try to fetch section details
-                const sectionData = await sectionsAPI.getSectionDetails(testCaseData.section_id);
-                
-                // The API returns a nested structure with section data in .section
-                const actualSection = sectionData.section || sectionData;
-                
-                if (actualSection && actualSection.name) {
-                  // Build path with parent if exists
-                  if (sectionData.parent_section && sectionData.parent_section.name) {
-                    sectionPath = `${sectionData.parent_section.name} > ${actualSection.name}`;
-                  } else if (actualSection.parent_section_id) {
-                    const parentPath = findSectionPath(actualSection.parent_section_id, allSections);
-                    sectionPath = parentPath ? `${parentPath} > ${actualSection.name}` : actualSection.name;
-                  } else {
-                    sectionPath = actualSection.name;
-                  }
-                }
-              } catch (directFetchError) {
-                // Fallback: Try to fetch all sections and find by ID
-                try {
-                  const allSectionsData = await sectionsAPI.getAll(projectForSections, undefined, 0, 1000);
-                  
-                  const foundSection = allSectionsData.find((s: any) => s.id === testCaseData.section_id);
-                  if (foundSection) {
-                    sectionPath = foundSection.name;
-                  }
-                } catch (allSectionsError) {
-                  console.error('Failed to fetch all sections:', allSectionsError);
-                }
-              }
+
+            flattenSections(hierarchyData.hierarchy || []);
+            let sectionPath = findSectionPath(testCaseData.section_id);
+
+            if (sectionPath.length === 0) {
+              const sectionData = await sectionsAPI.getSectionDetails(testCaseData.section_id);
+              const actualSection = sectionData.section || sectionData;
+              sectionPath = [
+                ...(sectionData.parent_section?.id ? [{ id: Number(sectionData.parent_section.id), name: sectionData.parent_section.name }] : []),
+                ...(actualSection?.id ? [{ id: Number(actualSection.id), name: actualSection.name }] : []),
+              ];
             }
-            
-            setSection({ name: sectionPath });
+
+            if (isMounted) {
+              setSection(sectionPath.length > 0 ? {
+                name: sectionPath.map((crumb) => crumb.name).join(' > '),
+                path: sectionPath,
+              } : null);
+            }
           } catch (sectionError) {
-            console.error('Failed to fetch section hierarchy:', sectionError);
-            setSection(null);
+            console.error('Failed to fetch section details:', sectionError);
+            if (isMounted) setSection(null);
           }
-        } else {
+        } else if (isMounted) {
           setSection(null);
         }
-        
-        // If multistep, fetch the steps
-        if (testCaseData.is_multistep) {
+
+        const rawIsMultistep = (testCaseData as any).is_multistep;
+        const isMultistep = typeof rawIsMultistep === 'string'
+          ? rawIsMultistep.toLowerCase() === 'true'
+          : Boolean(rawIsMultistep);
+
+        if (isMultistep) {
           try {
-            const steps = await testCasesAPI.getSteps(parseInt(id || '1'));
-            setTestSteps(steps);
+            const steps = await testCasesAPI.getSteps(testCaseId);
+            if (isMounted) setTestSteps(steps || []);
           } catch (stepsError) {
             console.error('Failed to fetch test steps:', stepsError);
-            setTestSteps([]);
+            if (isMounted) setTestSteps([]);
           }
-        } else {
+        } else if (isMounted) {
           setTestSteps([]);
         }
 
-        const fetchRevisions = async () => {
-          if (!id) return;
-          
-          setRevisionsLoading(true);
-          setRevisionsError(null);
-          
-          try {
-            const response = await api.get(`/test-cases/${id}/revisions`);
-            setRevisions(response.data || []);
-          } catch (error: any) {
-            console.error('Failed to fetch revisions:', error);
-            // Don't show error message, just don't display revisions section
-            setRevisions([]);
-            setRevisionsError(null);
-          } finally {
-            setRevisionsLoading(false);
-          }
-        };
+        setRevisionsLoading(true);
+        api.get(`/test-cases/${testCaseId}/revisions`)
+          .then((response) => {
+            if (isMounted) setRevisions(response.data || []);
+          })
+          .catch((revisionError) => {
+            console.error('Failed to fetch revisions:', revisionError);
+            if (isMounted) setRevisions([]);
+          })
+          .finally(() => {
+            if (isMounted) setRevisionsLoading(false);
+          });
 
-        fetchRevisions();
-
-        // Fetch test run history
-        try {
-          const historyData = await api.get(`/test-results?test_case_id=${id}`);
-          setTestRunHistory(historyData.data || []);
-        } catch (error) {
-          console.log('No test run history available:', error);
-          setTestRunHistory([]);
-        }
-
-        // Fetch requirement details if reference exists and looks like a requirement ID
-        if (testCaseData.reference) {
-          const reference = testCaseData.reference;
-          
-          // Check if it's a requirement ID (not a JIRA link)
-          if (!reference.includes('http') && !reference.includes('jira') && !/^[A-Z]+-\d+$/.test(reference)) {
-            // We'll fetch this after we have the test suite data
-            console.log('Will fetch requirement details for:', reference);
-          } else {
-            setLinkedRequirement(null);
-          }
-        }
+        testCasesAPI.getExecutionHistory(testCaseId, 50)
+          .then((historyData) => {
+            if (isMounted) setTestRunHistory(historyData || []);
+          })
+          .catch((historyError) => {
+            console.error('Failed to fetch execution history:', historyError);
+            if (isMounted) setTestRunHistory([]);
+          });
       } catch (error) {
         console.error('Failed to fetch test case:', error);
-        setTestCase(null);
+        if (isMounted) setTestCase(null);
       } finally {
-        setLoading(false);
-        setIsValidatingProject(false);
+        if (isMounted) {
+          setLoading(false);
+          setIsValidatingProject(false);
+        }
       }
     };
 
     fetchTestCaseAndSuite();
-  }, [id]);
 
-  // Fetch requirement details when test case and test suite are loaded
+    return () => {
+      isMounted = false;
+    };
+  }, [id, projectId]);
+
   useEffect(() => {
-    if (testCase?.reference && testSuite) {
-      const reference = testCase.reference;
-      
-      // Check if it's a requirement ID (not a JIRA link)
-      if (!reference.includes('http') && !reference.includes('jira') && !/^[A-Z]+-\d+$/.test(reference)) {
-        const fetchRequirementDetails = async () => {
-          try {
-            // Get the project ID for fetching requirements
-            const projectForRequirements = projectId ? parseInt(projectId) : testSuite.project_id;
-            
-            // Try to fetch requirement by ID
-            const requirements = await requirementsAPI.getAll(projectForRequirements, 0, 100);
-            
-            const requirement = requirements.find(req => req.requirement_id === reference);
-            if (requirement) {
-              setLinkedRequirement(requirement);
-            } else {
-              setLinkedRequirement(null);
-            }
-          } catch (error) {
-            console.log('No requirement found for reference:', reference);
-            setLinkedRequirement(null);
-          }
-        };
+    if (!testCase?.reference || !testSuite) return;
 
-        fetchRequirementDetails();
-      } else {
+    const reference = testCase.reference;
+    if (reference.includes('http') || reference.includes('jira') || /^[A-Z]+-\d+$/.test(reference)) {
+      setLinkedRequirement(null);
+      return;
+    }
+
+    const fetchRequirementDetails = async () => {
+      try {
+        const requirements = await requirementsAPI.getAll(Number(effectiveProjectId || testSuite.project_id), 0, 100);
+        const requirement = requirements.find((item) => item.requirement_id === reference);
+        setLinkedRequirement(requirement || null);
+      } catch (error) {
+        console.log('No requirement found for reference:', reference);
         setLinkedRequirement(null);
       }
-    }
-  }, [testCase?.reference, testSuite, projectId]);
+    };
+
+    fetchRequirementDetails();
+  }, [effectiveProjectId, testCase?.reference, testSuite]);
+
+  const displaySteps = useMemo(() => {
+    if (isMultistepCase) return testSteps;
+    return (testCase?.steps || '')
+      .split('\n')
+      .map((step) => step.trim())
+      .filter(Boolean)
+      .map((step, index) => ({
+        step_number: index + 1,
+        action: step.replace(/^\d+\.\s*/, ''),
+        expected_result: testCase?.expected_result || '',
+        step_type: 'manual',
+      }));
+  }, [isMultistepCase, testCase, testSteps]);
+
+  const latestExecution = testRunHistory[0];
+  const uniqueRunCount = new Set(testRunHistory.map((item) => item.test_run_id).filter(Boolean)).size;
+  const uniqueExecutors = new Set(
+    testRunHistory
+      .map((item) => item.executed_by_full_name || item.executed_by || item.executed_by_email)
+      .filter(Boolean)
+  ).size;
+
+  const tags = useMemo(() => {
+    if (!testCase?.tags) return [];
+    return testCase.tags.split(',').map((tag) => tag.trim()).filter(Boolean);
+  }, [testCase?.tags]);
+  const hasReference = Boolean(testCase?.reference?.trim());
+
+  const customFieldRows = useMemo<CustomFieldDisplayRow[]>(() => {
+    const savedValues = ((testCase as any)?.custom_field_values || []) as CustomFieldValue[];
+    const valuesByFieldId = new Map(savedValues.map((value) => [value.field_definition_id, value]));
+    const definitionsById = new Map(customFields.map((field) => [field.id, field]));
+
+    const rows = customFields.map((field) => ({
+      field,
+      value: valuesByFieldId.get(field.id)?.value || '',
+      valueId: valuesByFieldId.get(field.id)?.id,
+      fieldDefinitionId: field.id,
+    }));
+
+    savedValues.forEach((value) => {
+      if (!definitionsById.has(value.field_definition_id)) {
+        rows.push({
+          field: null,
+          value: value.value || '',
+          valueId: value.id,
+          fieldDefinitionId: value.field_definition_id,
+        });
+      }
+    });
+
+    return rows.filter((row) => row.value.trim() || row.field?.is_required || !row.field);
+  }, [customFields, testCase]);
+
+  const hasCustomFieldRows = customFieldsLoading || customFieldRows.length > 0;
 
   const handleExecute = () => {
     if (!testCase) return;
-    const executeProjectId = projectId || testSuite?.project_id;
-    if (executeProjectId) {
-      navigate(`/projects/${executeProjectId}/test-cases/${testCase.id}/execute`);
-    } else {
-      navigate(`/test-cases/${testCase.id}/execute`);
+    if (effectiveProjectId) {
+      navigate(`/projects/${effectiveProjectId}/test-cases/${testCase.id}/execute`);
+      return;
     }
+    navigate(`/test-cases/${testCase.id}/execute`);
   };
 
   const handleEdit = () => {
-    const editProjectId = projectId || testSuite?.project_id;
-    if (editProjectId) {
-      navigate(`/projects/${editProjectId}/test-cases/${id}/edit`);
-    } else {
-      navigate(`/test-cases/${id}/edit`);
+    if (effectiveProjectId) {
+      navigate(`/projects/${effectiveProjectId}/test-cases/${id}/edit`);
+      return;
+    }
+    navigate(`/test-cases/${id}/edit`);
+  };
+
+  const handleShare = async () => {
+    try {
+      await navigator.clipboard.writeText(window.location.href);
+      toast({
+        title: t('copied'),
+        description: t('urlCopied'),
+        variant: 'success',
+      });
+    } catch {
+      toast({
+        title: t('copyLink'),
+        description: window.location.href,
+      });
     }
   };
 
-  const handleShare = () => {
-    const url = window.location.href;
-    navigator.clipboard.writeText(url);
-    alert(t('urlCopied'));
-  };
-
-  const getStatusBadge = (status: string) => {
-    const variants: Record<string, string> = {
-      // Real API status values
-      active: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400',
-      inactive: 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300',
-      archived: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400',
-      // Mock status values (for backward compatibility)
-      draft: 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300',
-      ready: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400',
-      deprecated: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400'
-    };
-    return variants[status] || 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300';
-  };
-
-  const getStepStatusIcon = (status: string) => {
-    switch (status) {
-      case 'pass':
-        return <CheckCircle className="h-4 w-4 text-green-600" />;
-      case 'fail':
-        return <XCircle className="h-4 w-4 text-red-600" />;
-      default:
-        return <AlertTriangle className="h-4 w-4 text-yellow-600" />;
-    }
-  };
+  const revisionsPath = effectiveProjectId ? `/projects/${effectiveProjectId}/test-cases/${testCase?.id}/revisions` : `/test-cases/${testCase?.id}/revisions`;
+  const executionHistoryPath = effectiveProjectId ? `/projects/${effectiveProjectId}/test-cases/${testCase?.id}/execution-history` : `/test-cases/${testCase?.id}/execution-history`;
+  const openRevisionsPage = () => navigate(revisionsPath);
+  const openExecutionHistoryPage = () => navigate(executionHistoryPath);
 
   if (loading || isValidatingProject) {
     return (
-      <div className="container mx-auto p-6">
-        <div className="animate-pulse">
-          <div className="h-8 bg-gray-200 rounded w-1/4 mb-4"></div>
-          <div className="h-64 bg-gray-200 rounded"></div>
+      <div className="mx-auto max-w-7xl space-y-6 px-4 py-6">
+        <div className="h-44 animate-pulse rounded-3xl bg-slate-200 dark:bg-slate-800" />
+        <div className="grid gap-5 lg:grid-cols-[1fr_360px]">
+          <div className="h-96 animate-pulse rounded-2xl bg-slate-200 dark:bg-slate-800" />
+          <div className="h-96 animate-pulse rounded-2xl bg-slate-200 dark:bg-slate-800" />
         </div>
       </div>
     );
   }
 
-  if (!testCase) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <h2 className="text-2xl font-bold text-gray-900 dark:text-white">{t('testCaseNotFound')}</h2>
-          <p className="text-gray-600 dark:text-gray-400 mt-2">{t('testCaseNotFoundDesc')}</p>
-          <Button onClick={() => navigateBack()} className="mt-4">
-            {t('backToTestCases')}
-          </Button>
-        </div>
-      </div>
-    );
-  }
-
-  // Additional safety check
   if (!testCase || typeof testCase !== 'object') {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <h2 className="text-2xl font-bold text-gray-900 dark:text-white">{t('invalidTestCaseData')}</h2>
-          <p className="text-gray-600 dark:text-gray-400 mt-2">{t('unableToLoadDetails')}</p>
-          <Button onClick={() => navigateBack()} className="mt-4">
-            {t('backToTestCases')}
-          </Button>
-        </div>
+      <div className="flex min-h-[60vh] items-center justify-center px-4">
+        <Card className="max-w-lg text-center">
+          <CardHeader>
+            <CardTitle>{testCase ? t('invalidTestCaseData') : t('testCaseNotFound')}</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              {testCase ? t('unableToLoadDetails') : t('testCaseNotFoundDesc')}
+            </p>
+            <Button onClick={navigateBack}>{t('backToTestCases')}</Button>
+          </CardContent>
+        </Card>
       </div>
     );
   }
 
   return (
-    <div className="max-w-7xl mx-auto px-4 py-6 space-y-6" dir={isRTL ? 'rtl' : 'ltr'}>
-      {/* Header */}
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-4" dir={isRTL ? 'rtl' : 'ltr'}>
-        <div className={`flex flex-col lg:items-center gap-4 ${isRTL ? 'lg:flex-row-reverse' : 'lg:flex-row'}`} dir={isRTL ? 'rtl' : 'ltr'}>
-          <div className="flex-1 space-y-3">
-            <div className="space-y-2">
-              <Button 
-                variant="ghost" 
-                onClick={navigateBack}
-                className="w-fit hover:bg-gray-100 dark:hover:bg-gray-700 text-sm"
-              >
-                {isRTL ? <ArrowRight className="h-3.5 w-3.5 ml-2" /> : <ArrowLeft className="h-3.5 w-3.5 mr-2" />}
-                {t('backToTestCases')}
-              </Button>
-              <h1 className="text-lg lg:text-xl font-bold text-gray-900 dark:text-white leading-tight">
-                TC-{testCase.id.toString().padStart(3, '0')}: {testCase.title}
-              </h1>
-              <div className="flex items-center gap-2 flex-wrap">
-                <Badge className={`${getStatusBadge(testCase.status)} px-2 py-0.5 text-xs font-medium`}>
-                  {testCase.status}
-                </Badge>
-                {testCase.priority && (
-                  <Badge className={`${getPriorityBadge(testCase.priority)} px-2 py-0.5 text-xs font-medium`}>
-                    {testCase.priority}
-                  </Badge>
-                )}
+    <div className="min-h-screen bg-gradient-to-b from-slate-50 via-white to-white px-4 py-6 dark:from-slate-950 dark:via-slate-950 dark:to-slate-900" dir={isRTL ? 'rtl' : 'ltr'}>
+      <div className="mx-auto max-w-7xl space-y-6">
+        <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          <div className="border-b border-slate-200 bg-[radial-gradient(circle_at_top_left,_rgba(59,130,246,0.18),_transparent_34%),linear-gradient(135deg,_rgba(15,23,42,0.04),_transparent)] p-6 dark:border-slate-800 dark:bg-[radial-gradient(circle_at_top_left,_rgba(59,130,246,0.18),_transparent_34%),linear-gradient(135deg,_rgba(255,255,255,0.04),_transparent)]">
+            <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+              <div className="space-y-4">
+                <Button variant="ghost" onClick={navigateBack} className="-mx-3 h-9 text-slate-600 dark:text-slate-300">
+                  {isRTL ? <ArrowRight className="ml-2 h-4 w-4" /> : <ArrowLeft className="mr-2 h-4 w-4" />}
+                  {t('backToTestCases')}
+                </Button>
+                <div className="space-y-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge variant="outline" className="rounded-full border-slate-300 bg-white/80 px-3 py-1 text-xs font-semibold dark:border-slate-700 dark:bg-slate-950/80">
+                      TC-{testCase.id.toString().padStart(3, '0')}
+                    </Badge>
+                    <Badge className={`${getStatusBadge(testCase.status)} rounded-full px-3 py-1 text-xs font-semibold`}>
+                      {formatStatusLabel(testCase.status)}
+                    </Badge>
+                    <Badge className={`${getPriorityBadge(testCase.priority)} rounded-full px-3 py-1 text-xs font-semibold`}>
+                      {formatStatusLabel(testCase.priority)}
+                    </Badge>
+                  </div>
+                  <h1 className="max-w-4xl text-3xl font-semibold tracking-tight text-slate-950 dark:text-white lg:text-4xl">
+                    {testCase.title}
+                  </h1>
+                  <p className="max-w-3xl text-sm leading-6 text-slate-600 dark:text-slate-300">
+                    {testCase.description || t('noDescription')}
+                  </p>
+                </div>
               </div>
-              <p className="text-sm text-gray-600 dark:text-gray-300 leading-relaxed max-w-4xl">
-                {testCase.description || t('noDescription')}
-              </p>
+              <div className="grid gap-2 sm:grid-cols-3 lg:min-w-[380px] lg:grid-cols-1">
+                <Button onClick={handleExecute} className="h-10 justify-center bg-blue-600 hover:bg-blue-700">
+                  <Play className={`${isRTL ? 'ml-2' : 'mr-2'} h-4 w-4`} />
+                  {t('execute')}
+                </Button>
+                <Button variant="outline" onClick={handleEdit} className="h-10 justify-center">
+                  <Edit className={`${isRTL ? 'ml-2' : 'mr-2'} h-4 w-4`} />
+                  {t('edit')}
+                </Button>
+                <Button variant="outline" onClick={handleShare} className="h-10 justify-center">
+                  <Share2 className={`${isRTL ? 'ml-2' : 'mr-2'} h-4 w-4`} />
+                  {t('copyLink')}
+                </Button>
+              </div>
             </div>
           </div>
-          <div className={`flex flex-col gap-2 ${isRTL ? 'lg:items-start' : 'lg:items-end'}`}>
-            <Button 
-              variant="outline" 
-              onClick={handleShare}
-              className="w-full sm:w-fit lg:w-full hover:bg-gray-50 dark:hover:bg-gray-700 text-sm h-9"
-            >
-              <Share2 className={`h-3.5 w-3.5 ${isRTL ? 'ml-2' : 'mr-2'}`} />
-              {t('share')}
-            </Button>
-            {!revisionsLoading && revisions.length > 0 && (
-              <Button 
-                variant="outline" 
-                onClick={() => {
-                  const element = document.getElementById('revision-history');
-                  if (element) {
-                    element.scrollIntoView({ behavior: 'smooth' });
-                  }
-                }}
-                className="w-full sm:w-fit lg:w-full hover:bg-gray-50 dark:hover:bg-gray-700 text-sm h-9"
-              >
-                <History className={`h-3.5 w-3.5 ${isRTL ? 'ml-2' : 'mr-2'}`} />
-                {t('viewRevisions')}
-              </Button>
-            )}
-            <Button 
-              variant="outline" 
-              onClick={handleEdit}
-              className="w-full sm:w-fit lg:w-full hover:bg-gray-50 dark:hover:bg-gray-700 text-sm h-9"
-            >
-              <Edit className={`h-3.5 w-3.5 ${isRTL ? 'ml-2' : 'mr-2'}`} />
-              {t('edit')}
-            </Button>
-            <Button 
-              onClick={handleExecute} 
-              disabled={executing}
-              className="w-full sm:w-fit lg:w-full bg-blue-600 hover:bg-blue-700 text-white text-sm h-9"
-            >
-              <Play className={`h-3.5 w-3.5 ${isRTL ? 'ml-2' : 'mr-2'}`} />
-              {executing ? t('executing') : t('execute')}
-            </Button>
+
+          <div className="grid gap-px bg-slate-200 dark:bg-slate-800 sm:grid-cols-2 lg:grid-cols-4">
+            <MetricCard label={t('stepCount')} value={displaySteps.length.toString()} />
+            <MetricCard label={t('totalRuns')} value={uniqueRunCount.toString()} />
+            <MetricCard label={t('latestResult')} value={latestExecution ? formatStatusLabel(latestExecution.status) : t('neverExecuted')} />
+            <MetricCard label={t('revisionCount')} value={revisions.length.toString()} />
           </div>
         </div>
-      </div>
 
-      {/* Test Case Details */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Main Content */}
-        <div className="lg:col-span-2 space-y-6">
-          {/* Linked Requirement */}
-          {linkedRequirement && (
-            <Card className="shadow-sm border-0 bg-white dark:bg-gray-800">
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_380px]">
+          <div className="space-y-6">
+            <Card className="border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
               <CardHeader className="pb-3">
-                <CardTitle className="flex items-center gap-2 text-base font-semibold text-gray-900 dark:text-white">
-                  <div className="p-1.5 bg-green-100 dark:bg-green-900/30 rounded-lg">
-                    <FileText className="h-4 w-4 text-green-600 dark:text-green-400" />
-                  </div>
-                  {t('linkedRequirement')}
+                <CardTitle className="flex items-center gap-2 text-base font-semibold text-slate-950 dark:text-white">
+                  <span className="rounded-lg bg-amber-100 p-1.5 dark:bg-amber-900/30">
+                    <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-300" />
+                  </span>
+                  {t('preconditions')}
                 </CardTitle>
               </CardHeader>
               <CardContent className="pt-0">
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Badge variant="outline" className="text-xs">
-                        {linkedRequirement.requirement_id}
-                      </Badge>
-                      <h4 className="font-medium text-sm">{linkedRequirement.title}</h4>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Badge 
-                        className={`text-xs ${
-                          linkedRequirement.priority === 'critical' ? 'bg-red-100 text-red-800' :
-                          linkedRequirement.priority === 'high' ? 'bg-orange-100 text-orange-800' :
-                          linkedRequirement.priority === 'medium' ? 'bg-yellow-100 text-yellow-800' :
-                          'bg-gray-100 text-gray-800'
-                        }`}
-                      >
-                        {linkedRequirement.priority}
-                      </Badge>
-                      <Badge 
-                        className={`text-xs ${
-                          linkedRequirement.status === 'approved' ? 'bg-green-100 text-green-800' :
-                          linkedRequirement.status === 'reviewed' ? 'bg-blue-100 text-blue-800' :
-                          linkedRequirement.status === 'draft' ? 'bg-gray-100 text-gray-800' :
-                          'bg-purple-100 text-purple-800'
-                        }`}
-                      >
-                        {linkedRequirement.status}
-                      </Badge>
-                    </div>
-                  </div>
-                  {linkedRequirement.description && (
-                    <div className="text-sm text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-gray-900/50 p-3 rounded-lg border border-gray-200 dark:border-gray-700">
-                      {linkedRequirement.description}
-                    </div>
-                  )}
-                  {linkedRequirement.acceptance_criteria && (
-                    <div>
-                      <h5 className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">{t('acceptanceCriteria')}</h5>
-                      <div className="text-sm text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-gray-900/50 p-3 rounded-lg border border-gray-200 dark:border-gray-700">
-                        {linkedRequirement.acceptance_criteria}
-                      </div>
-                    </div>
-                  )}
+                <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4 dark:border-slate-800 dark:bg-slate-950/60">
+                  <p className="whitespace-pre-wrap break-words text-[15px] leading-7 text-slate-700 dark:text-slate-300">
+                    {testCase.preconditions || t('noPreconditions')}
+                  </p>
                 </div>
               </CardContent>
             </Card>
-          )}
 
-          {/* Preconditions */}
-          <Card className="shadow-sm border-0 bg-white dark:bg-gray-800">
-            <CardHeader className="pb-3">
-              <CardTitle className="flex items-center gap-2 text-base font-semibold text-gray-900 dark:text-white">
-                <div className="p-1.5 bg-yellow-100 dark:bg-yellow-900/30 rounded-lg">
-                  <AlertTriangle className="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
-                </div>
-                {t('preconditions')}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="pt-0">
-              <div className="prose prose-sm max-w-none dark:prose-invert">
-                <div className="whitespace-pre-line text-sm leading-relaxed text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-gray-900/50 p-3 rounded-lg border border-gray-200 dark:border-gray-700">
-                  {testCase.preconditions || t('noPreconditions')}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Test Steps */}
-          <Card className="shadow-sm border-0 bg-white dark:bg-gray-800">
-            <CardHeader className="pb-3">
-              <CardTitle className="flex items-center gap-2 text-base font-semibold text-gray-900 dark:text-white">
-                <div className="p-1.5 bg-blue-100 dark:bg-blue-900/30 rounded-lg">
-                  <FileText className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-                </div>
-                {t('testSteps')}
-                {testCase.is_multistep && (
-                  <Badge className="bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400 px-2 py-0.5 text-xs">
-                    {t('multistep')}
-                  </Badge>
-                )}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="pt-0">
-              <div className="prose prose-sm max-w-none dark:prose-invert">
-                {testCase.is_multistep ? (
+            <Card className="border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+              <CardHeader className="pb-3">
+                <CardTitle className="flex flex-wrap items-center gap-2 text-base font-semibold text-slate-950 dark:text-white">
+                  <span className="rounded-lg bg-blue-100 p-1.5 dark:bg-blue-900/30">
+                    <FileText className="h-4 w-4 text-blue-600 dark:text-blue-300" />
+                  </span>
+                  {t('testSteps')}
+                  {isMultistepCase && (
+                    <Badge className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                      {t('multistep')}
+                    </Badge>
+                  )}
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="pt-0">
+                {isMultistepCase ? (
                   testSteps.length > 0 ? (
                     <div className="space-y-4">
                       {testSteps.map((step) => (
-                        <div key={step.step_number} className="border border-gray-200 dark:border-gray-700 rounded-lg p-4 bg-gray-50 dark:bg-gray-900/50">
-                          <div className="flex items-center justify-between mb-3">
+                        <div key={step.step_number} className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4 dark:border-slate-800 dark:bg-slate-950/60">
+                          <div className="mb-3 flex items-center justify-between gap-3">
                             <div className="flex items-center gap-2">
-                              <span className="flex items-center justify-center w-6 h-6 bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 text-xs font-bold rounded-full">
+                              <span className="flex h-7 w-7 items-center justify-center rounded-full bg-blue-100 text-xs font-bold text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
                                 {step.step_number}
                               </span>
-                              <Badge className="bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-400 px-2 py-0.5 text-xs">
-                                {step.step_type}
-                              </Badge>
+                              {step.step_type && (
+                                <Badge variant="secondary" className="rounded-full px-2 py-0.5 text-xs">
+                                  {step.step_type}
+                                </Badge>
+                              )}
                             </div>
                           </div>
                           <div className="space-y-3">
                             <div>
-                              <h5 className="font-medium text-sm text-gray-700 dark:text-gray-300 mb-1">{t('action')}</h5>
-                              <p className="text-sm text-gray-600 dark:text-gray-400">
-                                {step.action}
+                              <h5 className="mb-1 text-sm font-medium text-slate-700 dark:text-slate-300">{t('action')}</h5>
+                              <p className="whitespace-pre-wrap break-words text-sm leading-7 text-slate-600 dark:text-slate-300">
+                                {step.action || t('noStepsDefined')}
                               </p>
                             </div>
                             <div>
-                              <h5 className="font-medium text-sm text-gray-700 dark:text-gray-300 mb-1">{t('expectedResult')}</h5>
-                              <p className="text-sm text-gray-600 dark:text-gray-400">
-                                {step.expected_result}
+                              <h5 className="mb-1 text-sm font-medium text-slate-700 dark:text-slate-300">{t('expectedResult')}</h5>
+                              <p className="whitespace-pre-wrap break-words text-sm leading-7 text-slate-600 dark:text-slate-300">
+                                {step.expected_result || t('noExpectedResults')}
                               </p>
                             </div>
                           </div>
@@ -566,426 +534,400 @@ export function TestCaseDetail() {
                       ))}
                     </div>
                   ) : (
-                    <div className="text-center py-6 text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-900/50 rounded-lg border border-gray-200 dark:border-gray-700">
-                      <FileText className="h-10 w-10 mx-auto mb-2 text-gray-400" />
-                      <p className="text-sm">{t('noMultistepData')}</p>
+                    <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50/80 p-8 text-center text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-950/60">
+                      <FileText className="mx-auto mb-2 h-10 w-10 text-slate-400" />
+                      <p>{t('noMultistepData')}</p>
                     </div>
                   )
                 ) : testCase.steps ? (
-                  <div className="whitespace-pre-wrap text-sm leading-relaxed text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-gray-900/50 p-3 rounded-lg border border-gray-200 dark:border-gray-700">
-                    {testCase.steps}
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4 dark:border-slate-800 dark:bg-slate-950/60">
+                    <p className="whitespace-pre-wrap break-words text-sm leading-7 text-slate-700 dark:text-slate-300">
+                      {testCase.steps}
+                    </p>
                   </div>
                 ) : (
-                  <div className="text-center py-6 text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-900/50 rounded-lg border border-gray-200 dark:border-gray-700">
-                    <FileText className="h-10 w-10 mx-auto mb-2 text-gray-400" />
-                    <p className="text-sm">{t('noStepsDefined')}</p>
+                  <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50/80 p-8 text-center text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-950/60">
+                    <FileText className="mx-auto mb-2 h-10 w-10 text-slate-400" />
+                    <p>{t('noStepsDefined')}</p>
                   </div>
                 )}
-              </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
 
-          {/* Expected Results - Only show for non-multistep test cases */}
-          {!testCase.is_multistep && (
-            <Card className="shadow-sm border-0 bg-white dark:bg-gray-800">
-              <CardHeader className="pb-3">
-                <CardTitle className="flex items-center gap-2 text-base font-semibold text-gray-900 dark:text-white">
-                  <div className="p-1.5 bg-green-100 dark:bg-green-900/30 rounded-lg">
-                    <CheckCircle className="h-4 w-4 text-green-600 dark:text-green-400" />
-                  </div>
-                  {t('expectedResults')}
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="pt-0">
-                <div className="prose prose-sm max-w-none dark:prose-invert">
+            {!isMultistepCase && (
+              <Card className="border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+                <CardHeader className="pb-3">
+                  <CardTitle className="flex items-center gap-2 text-base font-semibold text-slate-950 dark:text-white">
+                    <span className="rounded-lg bg-emerald-100 p-1.5 dark:bg-emerald-900/30">
+                      <CheckCircle className="h-4 w-4 text-emerald-600 dark:text-emerald-300" />
+                    </span>
+                    {t('expectedResults')}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="pt-0">
                   {testCase.expected_result ? (
-                    <div className="whitespace-pre-wrap text-sm leading-relaxed text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-gray-900/50 p-3 rounded-lg border border-gray-200 dark:border-gray-700">
-                      {testCase.expected_result}
-                    </div>
-                  ) : (
-                    <div className="text-center py-6 text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-900/50 rounded-lg border border-gray-200 dark:border-gray-700">
-                      <CheckCircle className="h-10 w-10 mx-auto mb-2 text-gray-400" />
-                      <p className="text-sm">{t('noExpectedResults')}</p>
-                    </div>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          )}
-        </div>
-
-        {/* Sidebar */}
-        <div className="space-y-6">
-          {/* Properties */}
-          <Card className="shadow-sm border-0 bg-white dark:bg-gray-800">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base font-semibold text-gray-900 dark:text-white">{t('properties')}</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex justify-between items-center py-2 border-b border-gray-100 dark:border-gray-700">
-                <span className="text-xs font-medium text-gray-600 dark:text-gray-400">{t('type')}</span>
-                <Badge className="bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400 px-2 py-0.5 text-xs">
-                  {testCase.test_type || 'manual'}
-                </Badge>
-              </div>
-              
-              {testCase.reference && (
-                <div className="flex justify-between items-center py-2 border-b border-gray-100 dark:border-gray-700">
-                  <span className="text-xs font-medium text-gray-600 dark:text-gray-400">{t('reference')}</span>
-                  <div className="flex items-center gap-2">
-                    {testCase.reference.includes('http') ? (
-                      <a
-                        href={testCase.reference}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-xs text-blue-600 hover:text-blue-800 underline flex items-center gap-1"
-                      >
-                        {t('jiraLink')}
-                        <ExternalLink className="h-3 w-3" />
-                      </a>
-                    ) : /^[A-Z]+-\d+$/.test(testCase.reference) ? (
-                      <span className="font-mono text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded">
-                        {testCase.reference}
-                      </span>
-                    ) : linkedRequirement ? (
-                      <Link
-                        to={`/projects/${testSuite?.project_id || projectId}/requirements/${linkedRequirement.id}`}
-                        className="text-xs text-blue-600 dark:text-blue-400 hover:underline font-medium flex items-center gap-1"
-                      >
-                        {linkedRequirement.title}
-                        <ExternalLink className="h-3 w-3" />
-                      </Link>
-                    ) : (
-                      <span className="text-xs text-gray-900 dark:text-gray-100 font-medium">
-                        {testCase.reference}
-                      </span>
-                    )}
-                  </div>
-                </div>
-              )}
-              
-              <div className="flex justify-between items-center py-2 border-b border-gray-100 dark:border-gray-700">
-                <span className="text-xs font-medium text-gray-600 dark:text-gray-400">{t('priority')}</span>
-                <Badge className={`${getPriorityBadge(testCase.priority)} px-2 py-0.5 text-xs`}>
-                  {testCase.priority}
-                </Badge>
-              </div>
-              
-              <div className="flex flex-col gap-1 py-3 border-b border-gray-100 dark:border-gray-700">
-                <span className="text-xs font-medium text-gray-600 dark:text-gray-400 pl-1">{t('section')}</span>
-                <div className="text-xs font-medium break-words leading-relaxed">
-                  {section ? (
-                    section.name.includes(' > ') ? (
-                      section.name.split(' > ').map((part, index, array) => (
-                        <span key={index}>
-                          {index === 0 ? (
-                            <Link
-                              to={projectId ? `/projects/${projectId}/test-cases` : '/test-cases'}
-                              className="text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
-                            >
-                              {part}
-                            </Link>
-                          ) : (
-                            <span className={
-                              index === array.length - 1 ? 'text-gray-900 dark:text-gray-100' :
-                              'text-purple-600 dark:text-purple-400'
-                            }>
-                              {part}
-                            </span>
-                          )}
-                          {index < array.length - 1 && ' > '}
-                        </span>
-                      ))
-                    ) : (
-                      <Link
-                        to={projectId ? `/projects/${projectId}/test-cases` : '/test-cases'}
-                        className="text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
-                      >
-                        {section.name}
-                      </Link>
-                    )
-                  ) : (
-                    <span className="text-gray-900 dark:text-gray-100">{t('noSection')}</span>
-                  )}
-                </div>
-              </div>
-              
-              <div className="flex justify-between items-center py-2 border-b border-gray-100 dark:border-gray-700">
-                <span className="text-xs font-medium text-gray-600 dark:text-gray-400">{t('testSuite')}</span>
-                {testSuite ? (
-                  <Link
-                    to={`/projects/${testSuite.project_id}/test-suites/${testSuite.id}`}
-                    className="text-xs text-blue-600 dark:text-blue-400 hover:underline font-medium flex items-center gap-1"
-                  >
-                    {testSuite.name}
-                    <ExternalLink className="h-3 w-3" />
-                  </Link>
-                ) : (
-                  <span className="text-xs text-gray-900 dark:text-gray-100 font-medium">
-                    {t('suite')} {testCase.test_suite_id || t('nA')}
-                  </span>
-                )}
-              </div>
-              
-              {testRunHistory.length > 0 && (
-                <div className="flex justify-between items-center py-2 border-b border-gray-100 dark:border-gray-700">
-                  <span className="text-xs font-medium text-gray-600 dark:text-gray-400">{t('latestTestRun')}</span>
-                  <Link
-                    to={`/projects/${projectId || testSuite?.project_id}/test-runs/${testRunHistory[0].test_run_id}`}
-                    className="text-xs text-blue-600 dark:text-blue-400 hover:underline font-medium flex items-center gap-1"
-                  >
-                    {t('testRun')} #{testRunHistory[0].test_run_id}
-                    <ExternalLink className="h-3 w-3" />
-                  </Link>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Metadata */}
-          <Card className="shadow-sm border-0 bg-white dark:bg-gray-800">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base font-semibold text-gray-900 dark:text-white">{t('metadata')}</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex items-center gap-3">
-                <div className="p-1.5 bg-gray-100 dark:bg-gray-700 rounded-lg">
-                  <User className="h-4 w-4 text-gray-600 dark:text-gray-400" />
-                </div>
-                <div className="flex-1">
-                  <p className="text-xs font-medium text-gray-900 dark:text-white">{t('createdBy')}</p>
-                  <p className="text-xs text-gray-600 dark:text-gray-400">
-                    {testCase.creator ? 
-                      (testCase.creator.full_name || testCase.creator.username || `User ${testCase.creator.id}`) : 
-                      t('unknown')
-                    }
-                  </p>
-                </div>
-              </div>
-              
-              <div className="flex items-center gap-3">
-                <div className="p-1.5 bg-gray-100 dark:bg-gray-700 rounded-lg">
-                  <Calendar className="h-4 w-4 text-gray-600 dark:text-gray-400" />
-                </div>
-                <div className="flex-1">
-                  <p className="text-xs font-medium text-gray-900 dark:text-white">{t('created')}</p>
-                  <p className="text-xs text-gray-600 dark:text-gray-400">
-                    {new Date(testCase.created_at).toLocaleDateString('en-US', {
-                      year: 'numeric',
-                      month: 'short',
-                      day: 'numeric'
-                    })}
-                  </p>
-                </div>
-              </div>
-              
-              {testCase.updated_at && (
-                <div className="flex items-center gap-3">
-                  <div className="p-1.5 bg-gray-100 dark:bg-gray-700 rounded-lg">
-                    <Clock className="h-4 w-4 text-gray-600 dark:text-gray-400" />
-                  </div>
-                  <div className="flex-1">
-                    <p className="text-xs font-medium text-gray-900 dark:text-white">{t('updated')}</p>
-                    <p className="text-xs text-gray-600 dark:text-gray-400">
-                      {new Date(testCase.updated_at).toLocaleDateString('en-US', {
-                        year: 'numeric',
-                        month: 'short',
-                        day: 'numeric'
-                      })}
-                    </p>
-                  </div>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Tags - Only show if there are tags */}
-          {testCase.tags && testCase.tags.trim() && (
-            <Card className="shadow-sm border-0 bg-white dark:bg-gray-800">
-              <CardHeader className="pb-3">
-                <CardTitle className="flex items-center gap-2 text-base font-semibold text-gray-900 dark:text-white">
-                  <div className="p-1.5 bg-purple-100 dark:bg-purple-900/30 rounded-lg">
-                    <Tag className="h-4 w-4 text-purple-600 dark:text-purple-400" />
-                  </div>
-                  {t('tags')}
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="flex flex-wrap gap-1.5">
-                  {testCase.tags.split(',').map((tag, index) => (
-                    <Badge 
-                      key={index} 
-                      variant="secondary" 
-                      className="px-2 py-0.5 text-xs bg-purple-50 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300 border-purple-200 dark:border-purple-700"
-                    >
-                      {tag.trim()}
-                    </Badge>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Revision History - Only show if user has access and revisions exist */}
-          {revisions.length > 0 && (
-          <Card className="shadow-sm border-0 bg-white dark:bg-gray-800" id="revision-history">
-            <CardHeader className="pb-3">
-              <div className="flex items-center justify-between">
-                <CardTitle className="flex items-center gap-2 text-base font-semibold text-gray-900 dark:text-white">
-                  <div className="p-1.5 bg-orange-100 dark:bg-orange-900/30 rounded-lg">
-                    <History className="h-4 w-4 text-orange-600 dark:text-orange-400" />
-                  </div>
-                  {t('revisionHistory')}
-                </CardTitle>
-                {revisions.length > 0 && (
-                  <Link
-                    to={`/projects/${projectId || testSuite?.project_id}/test-cases/${id}/revisions`}
-                    className="text-xs text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1"
-                  >
-                    <Eye className="h-3.5 w-3.5" />
-                    {t('viewAllRevisions')}
-                  </Link>
-                )}
-              </div>
-              </CardHeader>
-              <CardContent className="pt-0">
-                {revisionsLoading ? (
-                  <div className="text-center py-6 text-gray-500 dark:text-gray-400">
-                    <div className="animate-spin rounded-full h-6 w-6 mx-auto mb-2 border-b-2 border-gray-300"></div>
-                    <p className="text-sm">{t('loadingRevisionHistory')}</p>
-                  </div>
-                ) : revisions.length > 0 ? (
-                  <div className="space-y-3">
-                    {revisions.slice(0, 5).map((revision: any) => (
-                      <div key={revision.id} className="flex items-start gap-3 pb-3 border-b border-gray-100 dark:border-gray-700 last:border-0">
-                        <div className="p-1.5 bg-gray-100 dark:bg-gray-700 rounded-lg mt-0.5">
-                          <User className="h-3.5 w-3.5 text-gray-600 dark:text-gray-400" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-xs font-medium text-gray-900 dark:text-white">
-                            {t('revision')} #{revision.revision_number}
-                          </p>
-                          <p className="text-xs text-gray-600 dark:text-gray-400">
-                            {new Date(revision.created_at).toLocaleDateString()} at {new Date(revision.created_at).toLocaleTimeString()}
-                          </p>
-                          {revision.change_reason && (
-                            <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">
-                              {revision.change_reason}
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                    {revisions.length > 5 && (
-                      <p className="text-xs text-gray-500 dark:text-gray-400 text-center pt-2">
-                        +{revisions.length - 5} {t('moreRevisions')}
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4 dark:border-slate-800 dark:bg-slate-950/60">
+                      <p className="whitespace-pre-wrap break-words text-sm leading-7 text-slate-700 dark:text-slate-300">
+                        {testCase.expected_result}
                       </p>
-                    )}
+                    </div>
+                  ) : (
+                    <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50/80 p-8 text-center text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-950/60">
+                      <CheckCircle className="mx-auto mb-2 h-10 w-10 text-slate-400" />
+                      <p>{t('noExpectedResults')}</p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+
+            {linkedRequirement && (
+              <Card className="border-slate-200 shadow-sm dark:border-slate-800">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-lg">
+                    <FileText className="h-5 w-5 text-violet-600" />
+                    {t('linkedRequirement')}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge variant="outline">{linkedRequirement.requirement_id}</Badge>
+                    <Badge>{linkedRequirement.priority}</Badge>
+                    <Badge variant="secondary">{linkedRequirement.status}</Badge>
+                  </div>
+                  <h3 className="font-semibold text-slate-950 dark:text-white">{linkedRequirement.title}</h3>
+                  {linkedRequirement.description && <p className="text-sm leading-6 text-slate-600 dark:text-slate-300">{linkedRequirement.description}</p>}
+                  {linkedRequirement.acceptance_criteria && (
+                    <div className="rounded-xl bg-slate-50 p-3 text-sm dark:bg-slate-950">
+                      <p className="mb-1 font-semibold">{t('acceptanceCriteria')}</p>
+                      <p className="whitespace-pre-wrap text-slate-600 dark:text-slate-300">{linkedRequirement.acceptance_criteria}</p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+          </div>
+
+          <aside className="space-y-6">
+            <Card className="border-slate-200 shadow-sm dark:border-slate-800">
+              <CardHeader>
+                <CardTitle className="text-base">{t('properties')}</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3 text-sm">
+                <PropertyRow label={t('testType')} value={formatStatusLabel(testCase.test_type)} />
+                <PropertyRow
+                  label={t('section')}
+                  value={section?.path?.length ? (
+                    <span className="flex flex-wrap justify-end gap-1">
+                      {section.path.map((crumb, index) => (
+                        <span key={crumb.id} className="inline-flex items-center gap-1">
+                          {index > 0 && <span className="text-slate-400">/</span>}
+                          <Link
+                            to={effectiveProjectId ? `/projects/${effectiveProjectId}/sections/${crumb.id}` : '/test-cases'}
+                            className="text-blue-600 hover:underline dark:text-blue-400"
+                          >
+                            {crumb.name}
+                          </Link>
+                        </span>
+                      ))}
+                    </span>
+                  ) : t('noSection')}
+                />
+                <PropertyRow label={t('testSuite')} value={testSuite?.name || `${t('suite')} ${testCase.test_suite_id}`} />
+                {hasReference && (
+                  <PropertyRow label={t('reference')} value={testCase.reference as string} />
+                )}
+                <PropertyRow label={t('createdBy')} value={testCase.creator?.full_name || testCase.creator?.username || t('unknown')} />
+                <PropertyRow label={t('created')} value={formatDateTime(testCase.created_at)} />
+                <PropertyRow label={t('updated')} value={formatDateTime(testCase.updated_at)} />
+              </CardContent>
+            </Card>
+
+            {tags.length > 0 && (
+              <Card className="border-slate-200 shadow-sm dark:border-slate-800">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <Tag className="h-4 w-4 text-slate-500" />
+                    {t('tags')}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex flex-wrap gap-2">
+                    {tags.map((tag) => <Badge key={tag} variant="secondary">{tag}</Badge>)}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {hasCustomFieldRows && (
+              <Card className="border-slate-200 shadow-sm dark:border-slate-800">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <Tag className="h-4 w-4 text-blue-600" />
+                    {t('customFields')}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {customFieldsLoading ? (
+                    <p className="text-sm text-slate-500">{t('loadingCustomFields')}</p>
+                  ) : (
+                    <div className="space-y-3">
+                      {customFieldRows.map((row) => (
+                        <CustomFieldValueRow
+                          key={`${row.fieldDefinitionId}-${row.valueId || 'definition'}`}
+                          row={row}
+                          notSetLabel={t('notSet')}
+                          trueLabel={t('true')}
+                          falseLabel={t('false')}
+                          requiredLabel={t('requiredBadge')}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+
+            <Card className="border-slate-200 shadow-sm dark:border-slate-800">
+              <CardHeader>
+                <div className="flex items-center justify-between gap-3">
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <Play className="h-4 w-4 text-blue-600" />
+                    {t('executionCoverage')}
+                  </CardTitle>
+                  {testRunHistory.length > 0 && (
+                    <Button variant="ghost" size="sm" className="h-8 px-2 text-xs" onClick={openExecutionHistoryPage}>
+                      {t('viewAll')}
+                    </Button>
+                  )}
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-3 gap-2 text-center">
+                  <MiniStat label={t('totalRuns')} value={uniqueRunCount.toString()} />
+                  <MiniStat label={t('totalExecutions')} value={testRunHistory.length.toString()} />
+                  <MiniStat label={t('uniqueExecutors')} value={uniqueExecutors.toString()} />
+                </div>
+                {testRunHistory.length === 0 ? (
+                  <div className="rounded-xl border border-dashed border-slate-300 p-4 text-center text-sm text-slate-500 dark:border-slate-700">
+                    {t('noExecutionHistory')}
                   </div>
                 ) : (
-                  <div className="text-center py-6 text-gray-500 dark:text-gray-400">
-                    <History className="h-10 w-10 mx-auto mb-2 text-gray-400" />
-                    <p className="text-sm">{t('noRevisionHistoryAvailable')}</p>
-                    <p className="text-xs mt-1">{t('editToCreateRevision')}</p>
+                  <div className="space-y-3">
+                    {testRunHistory.slice(0, 6).map((result) => (
+                      <Link
+                        key={result.id}
+                        to={`/projects/${result.project_id || effectiveProjectId}/test-runs/${result.test_run_id}/test-cases/${testCase.id}`}
+                        className="block rounded-2xl border border-slate-200 p-3 transition hover:border-blue-300 hover:bg-blue-50/50 dark:border-slate-800 dark:hover:border-blue-800 dark:hover:bg-blue-950/20"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-semibold text-slate-900 dark:text-white">
+                              {result.test_run_name || `${t('testRun')} #${result.test_run_id}`}
+                            </p>
+                            <p className="mt-1 text-xs text-slate-500">
+                              {result.executed_by_full_name || result.executed_by || t('unknown')} • {formatDateTime(result.executed_at || result.created_at)}
+                            </p>
+                          </div>
+                          <Badge className={getStatusBadgeClass(result.status)}>{formatStatusLabel(result.status)}</Badge>
+                        </div>
+                      </Link>
+                    ))}
+                    {testRunHistory.length > 6 && (
+                      <Button variant="outline" size="sm" className="w-full" onClick={openExecutionHistoryPage}>
+                        +{testRunHistory.length - 6} {t('moreExecutions')}
+                      </Button>
+                    )}
                   </div>
                 )}
               </CardContent>
             </Card>
-          )}
 
-          {/* Test Run History */}
-          {testRunHistory.length > 0 && (
-            <Card className="shadow-sm border-0 bg-white dark:bg-gray-800">
-              <CardHeader className="pb-3">
-                <CardTitle className="flex items-center gap-2 text-base font-semibold text-gray-900 dark:text-white">
-                  <div className="p-1.5 bg-blue-100 dark:bg-blue-900/30 rounded-lg">
-                    <Play className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-                  </div>
-                  {t('testRunHistory')}
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  {testRunHistory.slice(0, 5).map((result: any) => (
-                    <Link
-                      key={result.id}
-                      to={`/projects/${projectId || testSuite?.project_id}/test-runs/${result.test_run_id}`}
-                      className="flex items-start gap-3 pb-3 border-b border-gray-100 dark:border-gray-700 last:border-0 hover:bg-gray-50 dark:hover:bg-gray-700/50 -mx-2 px-2 py-2 rounded transition-colors"
-                    >
-                      <div className={`p-1.5 rounded-lg mt-0.5 ${getResultStatusBg(result.status)}`}>
-                        {getStepStatusIcon(result.status)}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <p className="text-xs font-medium text-gray-900 dark:text-white">
-                            {t('testRun')} #{result.test_run_id}
-                          </p>
-                          <ExternalLink className="h-3 w-3 text-gray-400" />
-                        </div>
-                        <Badge className={`${getStatusBadgeClass(result.status)} px-1.5 py-0 text-xs mt-1`}>
-                          {result.status}
-                        </Badge>
-                        {result.executed_by && (
-                          <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">
-                            {t('by')} {result.executed_by}
-                          </p>
-                        )}
-                        <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">
-                          {new Date(result.executed_at || result.created_at).toLocaleDateString('en-US', {
-                            year: 'numeric',
-                            month: 'short',
-                            day: 'numeric',
-                            hour: '2-digit',
-                            minute: '2-digit'
-                          })}
-                        </p>
-                      </div>
-                    </Link>
-                  ))}
-                  {testRunHistory.length > 5 && (
-                    <p className="text-xs text-gray-500 dark:text-gray-400 text-center pt-2">
-                      +{testRunHistory.length - 5} {t('moreExecutions')}
-                    </p>
+            {(revisionsLoading || revisions.length > 0) && (
+              <Card id="revision-history" className="border-slate-200 shadow-sm dark:border-slate-800">
+                <CardHeader className="flex flex-row items-center justify-between gap-3">
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <History className="h-4 w-4 text-amber-600" />
+                    {t('revisionHistory')}
+                  </CardTitle>
+                  {!revisionsLoading && revisions.length > 0 && (
+                    <Button variant="ghost" size="sm" className="h-8 px-2" onClick={openRevisionsPage}>
+                      <Eye className="h-4 w-4" />
+                    </Button>
                   )}
-                </div>
-              </CardContent>
-            </Card>
-          )}
+                </CardHeader>
+                <CardContent>
+                  {revisionsLoading ? (
+                    <p className="text-sm text-slate-500">{t('loadingRevisionHistory')}</p>
+                  ) : (
+                    <div className="space-y-3">
+                      {revisions.slice(0, 5).map((revision) => (
+                        <Link
+                          key={revision.id}
+                          to={revisionsPath}
+                          className="block rounded-xl border border-slate-200 p-3 text-sm transition hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800"
+                        >
+                          <div className="flex items-center justify-between gap-3">
+                            <span className="font-medium">{t('revision')} {revision.revision_number}</span>
+                            <span className="text-xs text-slate-500">{formatDateTime(revision.created_at)}</span>
+                          </div>
+                          {revision.change_reason && <p className="mt-1 text-xs text-slate-500">{revision.change_reason}</p>}
+                        </Link>
+                      ))}
+                    </div>
+                  )}
+                  {!revisionsLoading && revisions.length > 5 && (
+                    <Button variant="outline" size="sm" className="mt-3 w-full" onClick={openRevisionsPage}>
+                      +{revisions.length - 5} {t('moreRevisions')}
+                    </Button>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+          </aside>
         </div>
       </div>
     </div>
   );
 }
 
-// Helper functions
+function MetricCard({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="bg-white p-5 dark:bg-slate-900">
+      <p className="text-xs font-medium uppercase tracking-wide text-slate-500">{label}</p>
+      <p className="mt-2 text-2xl font-semibold text-slate-950 dark:text-white">{value}</p>
+    </div>
+  );
+}
+
+function MiniStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-xl bg-slate-50 p-3 dark:bg-slate-950">
+      <p className="text-lg font-semibold text-slate-950 dark:text-white">{value}</p>
+      <p className="mt-1 text-[11px] text-slate-500">{label}</p>
+    </div>
+  );
+}
+
+function CustomFieldValueRow({
+  row,
+  notSetLabel,
+  trueLabel,
+  falseLabel,
+  requiredLabel,
+}: {
+  row: CustomFieldDisplayRow;
+  notSetLabel: string;
+  trueLabel: string;
+  falseLabel: string;
+  requiredLabel: string;
+}) {
+  const fieldType = row.field?.field_type;
+  const displayName = row.field?.name || `Field #${row.fieldDefinitionId}`;
+  const hasValue = row.value.trim().length > 0;
+
+  return (
+    <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-3 dark:border-slate-800 dark:bg-slate-950/60">
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+        <div className="min-w-0">
+          <p className="break-words text-sm font-semibold text-slate-900 dark:text-white">{displayName}</p>
+          {row.field?.description && (
+            <p className="mt-1 break-words text-xs leading-5 text-slate-500 dark:text-slate-400">{row.field.description}</p>
+          )}
+        </div>
+        <div className="flex shrink-0 flex-wrap gap-1">
+          {fieldType && <Badge variant="outline" className="rounded-full text-[10px]">{formatStatusLabel(fieldType)}</Badge>}
+          {row.field?.is_required && <Badge className="rounded-full bg-amber-100 text-[10px] text-amber-800 dark:bg-amber-900/30 dark:text-amber-300">{requiredLabel}</Badge>}
+        </div>
+      </div>
+      <CustomFieldValueDisplay field={row.field} value={row.value} notSetLabel={notSetLabel} trueLabel={trueLabel} falseLabel={falseLabel} hasValue={hasValue} />
+    </div>
+  );
+}
+
+function CustomFieldValueDisplay({
+  field,
+  value,
+  notSetLabel,
+  trueLabel,
+  falseLabel,
+  hasValue,
+}: {
+  field: CustomFieldDefinition | null;
+  value: string;
+  notSetLabel: string;
+  trueLabel: string;
+  falseLabel: string;
+  hasValue: boolean;
+}) {
+  if (!hasValue) {
+    return <p className="text-sm text-slate-500">{notSetLabel}</p>;
+  }
+
+  if (field?.field_type === 'boolean') {
+    const isTrue = value.toLowerCase() === 'true';
+    return <Badge className={isTrue ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300' : 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300'}>{isTrue ? trueLabel : falseLabel}</Badge>;
+  }
+
+  if (field?.field_type === 'multiselect') {
+    const selectedValues = value.split(',').map((item) => item.trim()).filter(Boolean);
+    return (
+      <div className="flex flex-wrap gap-2">
+        {selectedValues.map((item) => <Badge key={item} variant="secondary">{item}</Badge>)}
+      </div>
+    );
+  }
+
+  if (field?.field_type === 'select') {
+    const knownOption = getCustomFieldOptions(field).find((option) => option === value) || value;
+    return <Badge variant="secondary">{knownOption}</Badge>;
+  }
+
+  return <p className="whitespace-pre-wrap break-words text-sm leading-6 text-slate-700 dark:text-slate-300">{value}</p>;
+}
+
+function PropertyRow({ label, value }: { label: string; value: ReactNode }) {
+  return (
+    <div className="flex items-start justify-between gap-4 border-b border-slate-100 py-2 last:border-0 dark:border-slate-800">
+      <span className="text-slate-500">{label}</span>
+      <span className="max-w-[210px] text-right font-medium text-slate-900 dark:text-white">{value}</span>
+    </div>
+  );
+}
+
 function getPriorityBadge(priority: string) {
   const variants: Record<string, string> = {
-    low: 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300',
-    medium: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400',
-    high: 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400',
-    critical: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400'
+    low: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300',
+    medium: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300',
+    high: 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300',
+    critical: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300',
   };
-  return variants[priority] || 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300';
+  return variants[priority] || variants.medium;
+}
+
+function getStatusBadge(status: string) {
+  const variants: Record<string, string> = {
+    active: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300',
+    inactive: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300',
+    archived: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300',
+    draft: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300',
+    ready: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300',
+  };
+  return variants[status] || variants.inactive;
 }
 
 function getStatusBadgeClass(status: string) {
   const variants: Record<string, string> = {
-    pass: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400',
-    fail: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400',
-    skip: 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300',
-    block: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400',
-    not_tested: 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300'
+    pass: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300',
+    passed: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300',
+    fail: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300',
+    failed: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300',
+    skip: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300',
+    skipped: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300',
+    block: 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300',
+    blocked: 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300',
+    pending: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300',
+    not_tested: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300',
   };
-  return variants[status] || 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300';
-}
-
-function getResultStatusBg(status: string) {
-  const variants: Record<string, string> = {
-    pass: 'bg-green-100 dark:bg-green-900/30',
-    fail: 'bg-red-100 dark:bg-red-900/30',
-    skip: 'bg-gray-100 dark:bg-gray-700',
-    block: 'bg-yellow-100 dark:bg-yellow-900/30',
-    not_tested: 'bg-gray-100 dark:bg-gray-700'
-  };
-  return variants[status] || 'bg-gray-100 dark:bg-gray-700';
+  return variants[status] || variants.pending;
 }

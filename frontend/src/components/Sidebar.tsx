@@ -25,6 +25,7 @@ import { Button } from '@/components/ui/button';
 import { useAuthStore } from '@/stores/authStore';
 import { useProjectStore } from '@/stores/projectStore';
 import { useTranslation } from '@/hooks/useTranslation';
+import { getAppInitials, useAppName } from '@/hooks/useAppName';
 
 interface NavigationItem {
   name: string;
@@ -64,6 +65,7 @@ export function Sidebar({
   const { logout } = useAuthStore();
   const { selectedProject, projects } = useProjectStore();
   const { t, isRTL } = useTranslation();
+  const { appName, appLogoUrl } = useAppName(false);
 
   // Build project-scoped navigation based on selected project and available projects
   const buildNavigation = (): NavigationGroup[] => {
@@ -194,9 +196,13 @@ export function Sidebar({
             showCollapsed ? 'opacity-0' : 'opacity-100'
           }`}>
             <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center flex-shrink-0">
-              <span className="text-white font-bold text-sm">TM</span>
+              {appLogoUrl ? (
+                <img src={appLogoUrl} alt={appName} className="h-full w-full rounded-lg object-cover" />
+              ) : (
+                <span className="text-white font-bold text-sm">{getAppInitials(appName)}</span>
+              )}
             </div>
-            <span className="text-xl font-bold text-gray-900 dark:text-white whitespace-nowrap">TestMona</span>
+            <span className="text-xl font-bold text-gray-900 dark:text-white whitespace-nowrap">{appName}</span>
           </div>
 
           {/* Mobile close button */}

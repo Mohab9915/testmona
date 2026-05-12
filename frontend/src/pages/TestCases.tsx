@@ -103,6 +103,8 @@ import { CustomFieldDefinition, TestCase } from '@/types';
 import { ImportPreview } from '@/components/ImportPreview';
 
 const API_BASE_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:8000';
+const CUSTOM_FIELD_FILTER_ALL = 'all';
+const CUSTOM_FIELD_FILTER_ANY_VALUE = '__any__';
 
 // Sortable Row Component
 const SortableRow = ({ 
@@ -426,6 +428,8 @@ export function TestCases() {
 
   // Search and pagination state
   const [searchQuery, setSearchQuery] = useState('');
+  const [customFieldFilterId, setCustomFieldFilterId] = useState<string>(CUSTOM_FIELD_FILTER_ALL);
+  const [customFieldFilterValue, setCustomFieldFilterValue] = useState<string>(CUSTOM_FIELD_FILTER_ANY_VALUE);
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
   const [totalCount, setTotalCount] = useState(0);
@@ -642,6 +646,7 @@ export function TestCases() {
         
         setPriorityOptions(priorityOptions);
         setTestTypeOptions(testTypeOptions);
+        setTestTypes(testTypeOptions.map((option) => option.value));
         
         // Set default priority from database
         const defaultPriority = prioritiesData.find((p: any) => p.is_default && p.is_active);
@@ -675,6 +680,7 @@ export function TestCases() {
         ];
         setPriorityOptions(fallbackPriorities);
         setTestTypeOptions(fallbackTestTypes);
+        setTestTypes(fallbackTestTypes.map((option) => option.value));
       } finally {
         setIsEnumsLoading(false);
       }
@@ -727,6 +733,7 @@ export function TestCases() {
             label: testType.name
           }));
         setTestTypeOptions(testTypeOptions);
+        setTestTypes(testTypeOptions.map((option) => option.value));
 
         // Select the newly created test type
         handleTestTypeChange(newTestTypeName.toLowerCase());
@@ -1041,7 +1048,10 @@ export function TestCases() {
       setTotalCount(count.count);
       
       // Extract test types from loaded data
-      const types = extractTestTypes(testCases);
+      const types = Array.from(new Set([
+        ...testTypeOptions.map((option) => option.value),
+        ...extractTestTypes(testCases),
+      ])).sort();
       setTestTypes(types);
     } catch (error) {
       console.log('Failed to load test cases from API:', error);
@@ -1301,39 +1311,8 @@ export function TestCases() {
       const fields = await customFieldsAPI.getDefinitions(currentProjectId);
       setCustomFields(fields);
     } catch (error) {
-      console.log('Using mock custom fields - API not available:', error);
-      // Mock custom fields for demonstration
-      const mockCustomFields: CustomFieldDefinition[] = [
-        {
-          id: 1,
-          name: 'Test Environment',
-          field_type: 'select',
-          description: 'Select the test environment',
-          project_id: currentProjectId,
-          is_required: true,
-          options: ['Development', 'Staging', 'Production'],
-          created_at: new Date().toISOString()
-        },
-        {
-          id: 2,
-          name: 'Estimated Duration',
-          field_type: 'number',
-          description: 'Estimated test duration in minutes',
-          project_id: currentProjectId,
-          is_required: false,
-          created_at: new Date().toISOString()
-        },
-        {
-          id: 3,
-          name: 'Automation Status',
-          field_type: 'boolean',
-          description: 'Whether this test is automated',
-          project_id: currentProjectId,
-          is_required: false,
-          created_at: new Date().toISOString()
-        }
-      ];
-      setCustomFields(mockCustomFields);
+      console.error('Failed to load custom fields:', error);
+      setCustomFields([]);
     }
   };
 
@@ -1548,15 +1527,137 @@ export function TestCases() {
   // Mock test cases (not currently used - using API data instead)
   // const mockTestCases: TestCase[] = [];
 
-  // Filtered and sorted test cases (client-side filtering only for search)
+  const customFieldById = useMemo(() => {
+    return customFields.reduce<Record<number, CustomFieldDefinition>>((fieldsById, field) => {
+      fieldsById[field.id] = field;
+      return fieldsById;
+    }, {});
+  }, [customFields]);
+
+  const normalizeSearchValue = (value: unknown) => String(value ?? '').toLowerCase().trim();
+
+  const selectedCustomFieldFilter = useMemo(() => {
+    if (customFieldFilterId === CUSTOM_FIELD_FILTER_ALL) {
+      return undefined;
+    }
+
+    return customFieldById[Number(customFieldFilterId)];
+  }, [customFieldById, customFieldFilterId]);
+
+  useEffect(() => {
+    if (
+      customFieldFilterId !== CUSTOM_FIELD_FILTER_ALL &&
+      !customFields.some((field) => String(field.id) === customFieldFilterId)
+    ) {
+      setCustomFieldFilterId(CUSTOM_FIELD_FILTER_ALL);
+      setCustomFieldFilterValue(CUSTOM_FIELD_FILTER_ANY_VALUE);
+    }
+  }, [customFieldFilterId, customFields]);
+
+  const getCustomFieldOptions = (field?: CustomFieldDefinition): string[] => {
+    const options = field?.options;
+    if (!options) {
+      return [];
+    }
+
+    if (Array.isArray(options)) {
+      return options.map(String);
+    }
+
+    const optionValues = Array.isArray(options.values)
+      ? options.values
+      : Array.isArray(options.options)
+        ? options.options
+        : [];
+
+    return optionValues.map(String);
+  };
+
+  const getTestCaseCustomFieldValue = (testCase: TestCase, fieldId: number): unknown => {
+    return (testCase.custom_field_values || []).find(
+      (fieldValue) => fieldValue.field_definition_id === fieldId
+    )?.value;
+  };
+
+  const parseMultiSelectCustomFieldValue = (value: unknown): string[] => {
+    if (Array.isArray(value)) {
+      return value.map((item) => normalizeSearchValue(item));
+    }
+
+    if (typeof value !== 'string') {
+      return normalizeSearchValue(value) ? [normalizeSearchValue(value)] : [];
+    }
+
+    try {
+      const parsedValue = JSON.parse(value);
+      if (Array.isArray(parsedValue)) {
+        return parsedValue.map((item) => normalizeSearchValue(item));
+      }
+    } catch {
+      // Fall back to comma-separated values for legacy serialized data.
+    }
+
+    return value.split(',').map((item) => normalizeSearchValue(item)).filter(Boolean);
+  };
+
+  const isTruthyCustomFieldValue = (value: unknown): boolean => {
+    return ['true', '1', 'yes', 'on'].includes(normalizeSearchValue(value));
+  };
+
+  const matchesCustomFieldFilter = (testCase: TestCase): boolean => {
+    if (!selectedCustomFieldFilter) {
+      return true;
+    }
+
+    const rawValue = getTestCaseCustomFieldValue(testCase, selectedCustomFieldFilter.id);
+    const normalizedValue = normalizeSearchValue(rawValue);
+    const normalizedFilterValue = normalizeSearchValue(customFieldFilterValue);
+
+    if (!normalizedValue) {
+      return false;
+    }
+
+    if (
+      !normalizedFilterValue ||
+      customFieldFilterValue === CUSTOM_FIELD_FILTER_ANY_VALUE
+    ) {
+      return true;
+    }
+
+    if (selectedCustomFieldFilter.field_type === 'boolean') {
+      return isTruthyCustomFieldValue(rawValue) === (customFieldFilterValue === 'true');
+    }
+
+    if (selectedCustomFieldFilter.field_type === 'multiselect') {
+      return parseMultiSelectCustomFieldValue(rawValue).includes(normalizedFilterValue);
+    }
+
+    if (selectedCustomFieldFilter.field_type === 'select') {
+      return normalizedValue === normalizedFilterValue;
+    }
+
+    return normalizedValue.includes(normalizedFilterValue);
+  };
+
+  // Filtered and sorted test cases (client-side filtering only for search and filters)
   const filteredAndSortedTestCases = useMemo(() => {
     console.log('Filtering test cases. selectedTestSuite:', selectedTestSuite);
     // Use API data instead of mock data
+    const normalizedSearchQuery = normalizeSearchValue(searchQuery);
+
     let filtered = apiTestCases.filter(testCase => {
-      const matchesSearch = testCase.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                           (testCase.description && testCase.description.toLowerCase().includes(searchQuery.toLowerCase()));
+      const standardSearchText = [
+        testCase.title,
+        testCase.description,
+        testCase.reference,
+        testCase.preconditions,
+        testCase.steps,
+        testCase.expected_result,
+      ].filter(Boolean).join(' ').toLowerCase();
+      const matchesSearch = !normalizedSearchQuery || standardSearchText.includes(normalizedSearchQuery);
+      const matchesCustomField = matchesCustomFieldFilter(testCase);
       
-      const matchesType = filterType === 'all' || testCase.test_type === filterType;
+      const matchesType = filterType === 'all' || normalizeSearchValue(testCase.test_type) === normalizeSearchValue(filterType);
       const matchesPriority = filterPriority === 'all' || testCase.priority === filterPriority;
       const matchesSuite = selectedTestSuite === 'all' || 
                            testCase.test_suite_id === parseInt(selectedTestSuite) ||
@@ -1564,17 +1665,17 @@ export function TestCases() {
       
       console.log('TestCase:', testCase.title, 'suite_id:', testCase.test_suite_id, 'section_id:', testCase.section_id, 'matchesSuite:', matchesSuite);
       
-      return matchesSearch && matchesType && matchesPriority && matchesSuite;
+      return matchesSearch && matchesCustomField && matchesType && matchesPriority && matchesSuite;
     });
 
     console.log('Filtered test cases count:', filtered.length);
     return filtered;
-  }, [apiTestCases, searchQuery, filterType, filterPriority, selectedTestSuite]);
+  }, [apiTestCases, searchQuery, customFieldFilterId, customFieldFilterValue, filterType, filterPriority, selectedTestSuite, selectedCustomFieldFilter]);
 
   // Reset page when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, filterType, filterPriority, selectedTestSuite]);
+  }, [searchQuery, customFieldFilterId, customFieldFilterValue, filterType, filterPriority, selectedTestSuite]);
 
   // Pagination logic using filtered data
   const totalPages = Math.ceil(filteredAndSortedTestCases.length / itemsPerPage);
@@ -2013,6 +2114,17 @@ export function TestCases() {
 
       // Call the real API (test_steps are included in the request)
       const createdTestCase = await testCasesAPI.create(newTestCase);
+      const customFieldValueRequests = Object.entries(customFieldValues)
+        .filter(([, value]) => value !== undefined && value !== null && value !== '')
+        .map(([fieldDefinitionId, value]) => customFieldsAPI.createValue({
+          field_definition_id: Number(fieldDefinitionId),
+          test_case_id: createdTestCase.id,
+          value: String(value),
+        }));
+
+      if (customFieldValueRequests.length > 0) {
+        await Promise.all(customFieldValueRequests);
+      }
       
       // Reset form fields
       setTestCaseForm({
@@ -2370,6 +2482,12 @@ export function TestCases() {
       environment: '', // Environment not available in TestCase type yet
       is_multistep: testCase.is_multistep || false
     });
+
+    const existingCustomFieldValues = (testCase.custom_field_values || []).reduce<Record<string, any>>((values, fieldValue) => {
+      values[fieldValue.field_definition_id] = fieldValue.value;
+      return values;
+    }, {});
+    setCustomFieldValues(existingCustomFieldValues);
 
     // Load steps if multistep
     if (testCase.is_multistep) {
@@ -3702,14 +3820,16 @@ export function TestCases() {
           {/* Search Bar and Bulk Actions */}
           <div className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow">
             <div className="flex items-center justify-between mb-4">
-              <div className="relative flex-1 max-w-md">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-                <Input
-                  placeholder={t('searchTestCases')}
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-10"
-                />
+              <div className="flex flex-1">
+                <div className="relative flex-1 max-w-md">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                  <Input
+                    placeholder={t('searchTestCases')}
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="pl-10"
+                  />
+                </div>
               </div>
               {selectedTestCases.length > 0 && (
                 <div className="flex items-center gap-2">
@@ -3730,7 +3850,7 @@ export function TestCases() {
             </div>
 
             {/* Filters */}
-            <div className="flex items-center gap-4">
+            <div className="flex flex-wrap items-center gap-4">
               <div className="flex items-center gap-2">
                 <Filter className="h-4 w-4 text-gray-500" />
                 <span className="text-sm font-medium">{t('filters')}</span>
@@ -3741,7 +3861,7 @@ export function TestCases() {
                   <SelectItem value="all">{t('allTypes')}</SelectItem>
                   {testTypes.map((type) => (
                     <SelectItem key={type} value={type}>
-                      {type.charAt(0).toUpperCase() + type.slice(1)}
+                      {testTypeOptions.find((option) => option.value === type)?.label || type.charAt(0).toUpperCase() + type.slice(1)}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -3757,6 +3877,65 @@ export function TestCases() {
                   ))}
                 </SelectContent>
               </Select>
+              {customFields.length > 0 && (
+                <div className="flex flex-wrap items-center gap-2">
+                  <Select
+                    value={customFieldFilterId}
+                    onValueChange={(value) => {
+                      setCustomFieldFilterId(value);
+                      setCustomFieldFilterValue(CUSTOM_FIELD_FILTER_ANY_VALUE);
+                    }}
+                  >
+                    <SelectTrigger className="w-48">
+                      <SelectValue placeholder={t('customFieldFilter')} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={CUSTOM_FIELD_FILTER_ALL}>{t('allCustomFields')}</SelectItem>
+                      {customFields.map((field) => (
+                        <SelectItem key={field.id} value={String(field.id)}>
+                          {field.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {selectedCustomFieldFilter && selectedCustomFieldFilter.field_type === 'boolean' && (
+                    <Select value={customFieldFilterValue} onValueChange={setCustomFieldFilterValue}>
+                      <SelectTrigger className="w-36">
+                        <SelectValue placeholder={t('customFieldValue')} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={CUSTOM_FIELD_FILTER_ANY_VALUE}>{t('anyCustomFieldValue')}</SelectItem>
+                        <SelectItem value="true">{t('yes')}</SelectItem>
+                        <SelectItem value="false">{t('no')}</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  )}
+                  {selectedCustomFieldFilter && ['select', 'multiselect'].includes(selectedCustomFieldFilter.field_type) && (
+                    <Select value={customFieldFilterValue} onValueChange={setCustomFieldFilterValue}>
+                      <SelectTrigger className="w-44">
+                        <SelectValue placeholder={t('customFieldValue')} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={CUSTOM_FIELD_FILTER_ANY_VALUE}>{t('anyCustomFieldValue')}</SelectItem>
+                        {getCustomFieldOptions(selectedCustomFieldFilter).map((option) => (
+                          <SelectItem key={option} value={option}>
+                            {option}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                  {selectedCustomFieldFilter && !['boolean', 'select', 'multiselect'].includes(selectedCustomFieldFilter.field_type) && (
+                    <Input
+                      type={selectedCustomFieldFilter.field_type === 'number' ? 'number' : selectedCustomFieldFilter.field_type === 'date' ? 'date' : 'text'}
+                      placeholder={t('enterCustomFieldValue')}
+                      value={customFieldFilterValue === CUSTOM_FIELD_FILTER_ANY_VALUE ? '' : customFieldFilterValue}
+                      onChange={(event) => setCustomFieldFilterValue(event.target.value)}
+                      className="w-44"
+                    />
+                  )}
+                </div>
+              )}
             </div>
           </div>
 

@@ -8,6 +8,7 @@ import { NotificationDropdown } from '@/components/NotificationDropdown';
 import { ProjectSelector } from '@/components/ProjectSelector';
 import { api } from '@/lib/api';
 import { useTranslation } from '@/hooks/useTranslation';
+import { getAppInitials, useAppName } from '@/hooks/useAppName';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -37,6 +38,7 @@ export function Navbar({
   const { logout, user } = useAuthStore();
   const { selectedProject, projects } = useProjectStore();
   const { t } = useTranslation();
+  const { appName, appLogoUrl } = useAppName(false);
   const [unreadCount, setUnreadCount] = useState(0);
 
   const navigation = [
@@ -130,10 +132,14 @@ export function Navbar({
           {/* Brand/Logo */}
           <Link to="/dashboard" className="flex items-center gap-2.5 group flex-shrink-0">
             <div className="w-8 h-8 bg-gradient-to-br from-blue-600 to-blue-700 rounded-lg flex items-center justify-center shadow-sm group-hover:shadow-md transition-all duration-200 group-hover:scale-105">
-              <span className="text-white font-bold text-sm">TM</span>
+              {appLogoUrl ? (
+                <img src={appLogoUrl} alt={appName} className="h-full w-full rounded-lg object-cover" />
+              ) : (
+                <span className="text-white font-bold text-sm">{getAppInitials(appName)}</span>
+              )}
             </div>
             <div className="hidden sm:block">
-              <span className="text-xl font-bold bg-gradient-to-r from-blue-600 to-blue-700 bg-clip-text text-transparent tracking-tight">TestMona</span>
+              <span className="text-xl font-bold bg-gradient-to-r from-blue-600 to-blue-700 bg-clip-text text-transparent tracking-tight">{appName}</span>
             </div>
           </Link>
 

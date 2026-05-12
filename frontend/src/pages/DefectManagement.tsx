@@ -25,6 +25,7 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
 import { useTranslation } from '@/hooks/useTranslation';
+import { useAppName } from '@/hooks/useAppName';
 import { 
   Plus, 
   Bug, 
@@ -54,6 +55,7 @@ export function DefectManagement() {
   const selectedProject = useRequireProjectSelection();
   const { toast } = useToast();
   const { t, isRTL } = useTranslation();
+  const { appName } = useAppName(false);
   
   // State for defects
   const [defects, setDefects] = useState<any[]>([]);
@@ -789,8 +791,8 @@ export function DefectManagement() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="import">{t('importOnly')}</SelectItem>
-                      <SelectItem value="export">{t('exportOnly')}</SelectItem>
+                      <SelectItem value="import">{t('importOnly', { appName })}</SelectItem>
+                      <SelectItem value="export">{t('exportOnly', { appName })}</SelectItem>
                       <SelectItem value="bidirectional">{t('bidirectional')}</SelectItem>
                     </SelectContent>
                   </Select>

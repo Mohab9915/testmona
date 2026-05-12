@@ -35,6 +35,7 @@ import { projectsAPI } from '@/lib/api';
 import { validateProject, getCharacterCount, sanitizeInput } from '@/utils/validation';
 import { useNetworkStatus } from '@/hooks/useNetworkStatus';
 import { useEnhancedApiCall } from '@/hooks/useEnhancedApiCall';
+import { useAppName } from '@/hooks/useAppName';
 import { getQueueSize } from '@/utils/requestQueue';
 import { projectImportExportAPI } from '@/api/projectImportExport';
 import { useAuthStore } from '@/stores/authStore';
@@ -45,6 +46,7 @@ export function Projects() {
   const navigate = useNavigate();
   const { toast } = useToast();
   const { t, isRTL } = useTranslation();
+  const { appName } = useAppName(false);
   const { selectedProject, setSelectedProject, projects: storeProjects, setProjects: setStoreProjects } = useProjectStore();
   const { user } = useAuthStore();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -1452,7 +1454,7 @@ export function Projects() {
                   </div>
                   <h3 className="text-3xl font-black tracking-tight text-foreground">{t('startFirstProject')}</h3>
                   <p className="mt-4 text-muted-foreground leading-7">
-                    {t('startFirstProjectDesc')}
+                    {t('startFirstProjectDesc', { appName })}
                   </p>
                   <div className="mt-7 space-y-4">
                     <Dialog open={isDialogOpen} onOpenChange={handleDialogClose}>
