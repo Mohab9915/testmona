@@ -40,7 +40,7 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Plus, MoreHorizontal, Trash2, Edit, Mail, Copy, Check } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { USER_ROLES, isAdminRole, normalizeRole } from '@/utils/roles';
+import { USER_ROLES, isAdminRole, isAdminUser, normalizeRole } from '@/utils/roles';
 
 interface User {
   id: number;
@@ -118,8 +118,12 @@ export function UserManagement() {
   };
 
   useEffect(() => {
-    loadData();
-  }, []);
+    if (isAdminUser(currentUser)) {
+      loadData();
+    } else {
+      setLoading(false);
+    }
+  }, [currentUser]);
 
   const loadData = async () => {
     setLoading(true);
@@ -347,6 +351,14 @@ export function UserManagement() {
         : [...prev, projectId]
     );
   };
+
+  if (!isAdminUser(currentUser)) {
+    return (
+      <div className="rounded-lg border border-dashed p-6 text-sm text-muted-foreground">
+        {t('accessDenied')}
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

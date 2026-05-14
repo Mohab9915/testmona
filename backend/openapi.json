@@ -4255,10 +4255,27 @@
         }
       }
     },
+    "/system/settings/public/demo-credentials-status": {
+      "get": {
+        "summary": "Get Demo Credentials Status",
+        "description": "Check if demo credentials should be shown on login page.\n\nReturns false if any admin user has changed their default password (force_password_change = false),\nindicating that the system has been configured and demo credentials should be hidden.\nReturns true if all admin users still have force_password_change = true, indicating fresh install.\n\nSECURITY: This endpoint is safe to expose publicly as it only reveals whether demo credentials\nshould be shown, not sensitive user information.",
+        "operationId": "get_demo_credentials_status_system_settings_public_demo_credentials_status_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
     "/system/settings/public/{key}": {
       "get": {
         "summary": "Get Public System Setting",
-        "description": "Get a system setting that is publicly accessible (no auth required).\n\nSECURITY: Only settings that are safe for public consumption should be accessible here.\nCurrently allowed: signup_enabled (to show/hide signup button on login page)\n\nDo NOT add settings that could:\n- Reveal system configuration details\n- Expose internal infrastructure information\n- Help attackers enumerate the system\n- Contain sensitive data\n\nSECURITY CONSIDERATIONS:\n- This is a GET endpoint and must be idempotent (no database writes)\n- Returns default values for missing settings instead of creating them\n- Whitelist approach prevents unauthorized setting access\n- Input validation prevents injection attacks\n- 404 responses prevent setting enumeration",
+        "description": "Get a system setting that is publicly accessible (no auth required).\n\nSECURITY: Only settings that are safe for public consumption should be accessible here.\nCurrently allowed: signup_enabled (to show/hide signup button), public branding settings\n\nDo NOT add settings that could:\n- Reveal system configuration details\n- Expose internal infrastructure information\n- Help attackers enumerate the system\n- Contain sensitive data\n\nSECURITY CONSIDERATIONS:\n- This is a GET endpoint and must be idempotent (no database writes)\n- Returns default values for missing settings instead of creating them\n- Whitelist approach prevents unauthorized setting access\n- Input validation prevents injection attacks\n- 404 responses prevent setting enumeration",
         "operationId": "get_public_system_setting_system_settings_public__key__get",
         "parameters": [
           {
@@ -6421,7 +6438,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/TestCase"
+                  "$ref": "#/components/schemas/TestCaseWithRelations"
                 }
               }
             }
@@ -6629,7 +6646,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/TestCase"
+                  "$ref": "#/components/schemas/TestCaseWithRelations"
                 }
               }
             }
@@ -6681,7 +6698,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/TestCase"
+                  "$ref": "#/components/schemas/TestCaseWithRelations"
                 }
               }
             }
@@ -6838,7 +6855,14 @@
             "in": "query",
             "required": false,
             "schema": {
-              "type": "integer",
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
               "title": "Project Id"
             }
           },
@@ -6848,6 +6872,7 @@
             "required": false,
             "schema": {
               "type": "integer",
+              "minimum": 0,
               "default": 0,
               "title": "Skip"
             }
@@ -6858,9 +6883,85 @@
             "required": false,
             "schema": {
               "type": "integer",
+              "maximum": 500,
+              "minimum": 1,
               "default": 100,
               "title": "Limit"
             }
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Search test runs by name or description",
+              "title": "Search"
+            },
+            "description": "Search test runs by name or description"
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by test run status",
+              "title": "Status"
+            },
+            "description": "Filter by test run status"
+          },
+          {
+            "name": "priority",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by priority",
+              "title": "Priority"
+            },
+            "description": "Filter by priority"
+          },
+          {
+            "name": "assigned_to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by assigned user ID",
+              "title": "Assigned To"
+            },
+            "description": "Filter by assigned user ID"
           }
         ],
         "responses": {
@@ -6989,6 +7090,49 @@
       "delete": {
         "summary": "Delete Test Run",
         "operationId": "delete_test_run_test_runs__test_run_id__delete",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "test_run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Test Run Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/test-runs/{test_run_id}/reset-time": {
+      "put": {
+        "summary": "Reset Test Run Time",
+        "description": "Reset all timing data for a test run and its test results",
+        "operationId": "reset_test_run_time_test_runs__test_run_id__reset_time_put",
         "security": [
           {
             "OAuth2PasswordBearer": []
@@ -8496,6 +8640,189 @@
         }
       }
     },
+    "/test-results/{test_result_id}/pause": {
+      "put": {
+        "summary": "Pause Test Execution",
+        "description": "Pause a test execution",
+        "operationId": "pause_test_execution_test_results__test_result_id__pause_put",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "test_result_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Test Result Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/test-results/{test_result_id}/resume": {
+      "put": {
+        "summary": "Resume Test Execution",
+        "description": "Resume a paused test execution",
+        "operationId": "resume_test_execution_test_results__test_result_id__resume_put",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "test_result_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Test Result Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/test-results/{test_result_id}/add-time": {
+      "put": {
+        "summary": "Add Manual Time",
+        "description": "Add manual time adjustment to test execution",
+        "operationId": "add_manual_time_test_results__test_result_id__add_time_put",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "test_result_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Test Result Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "title": "Time Data"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/test-results/{test_result_id}/reset-time": {
+      "put": {
+        "summary": "Reset Test Result Time",
+        "description": "Reset timing data for a specific test result",
+        "operationId": "reset_test_result_time_test_results__test_result_id__reset_time_put",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "test_result_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Test Result Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/test-cases/{test_case_id}/execution-history": {
       "get": {
         "summary": "Get Test Case Execution History",
@@ -8522,6 +8849,8 @@
             "required": false,
             "schema": {
               "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
               "default": 50,
               "title": "Limit"
             }
@@ -16607,6 +16936,17 @@
       },
       "CustomFieldValueUpdate": {
         "properties": {
+          "test_case_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Test Case Id"
+          },
           "value": {
             "anyOf": [
               {
@@ -21454,10 +21794,14 @@
         "properties": {
           "name": {
             "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
             "title": "Name"
           },
           "value": {
             "type": "integer",
+            "maximum": 10.0,
+            "minimum": 1.0,
             "title": "Value"
           },
           "color": {
@@ -21468,7 +21812,8 @@
           "description": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "maxLength": 1000
               },
               {
                 "type": "null"
@@ -21526,10 +21871,14 @@
         "properties": {
           "name": {
             "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
             "title": "Name"
           },
           "value": {
             "type": "integer",
+            "maximum": 10.0,
+            "minimum": 1.0,
             "title": "Value"
           },
           "color": {
@@ -21540,7 +21889,8 @@
           "description": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "maxLength": 1000
               },
               {
                 "type": "null"
@@ -21576,7 +21926,9 @@
           "name": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "maxLength": 100,
+                "minLength": 1
               },
               {
                 "type": "null"
@@ -21587,7 +21939,9 @@
           "value": {
             "anyOf": [
               {
-                "type": "integer"
+                "type": "integer",
+                "maximum": 10.0,
+                "minimum": 1.0
               },
               {
                 "type": "null"
@@ -21609,7 +21963,8 @@
           "description": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "maxLength": 1000
               },
               {
                 "type": "null"
@@ -23324,163 +23679,6 @@
         "type": "object",
         "title": "SystemSettingsUpdate"
       },
-      "TestCase": {
-        "properties": {
-          "title": {
-            "type": "string",
-            "title": "Title"
-          },
-          "description": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Description"
-          },
-          "test_type": {
-            "type": "string",
-            "title": "Test Type",
-            "default": "manual"
-          },
-          "preconditions": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Preconditions"
-          },
-          "steps": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Steps"
-          },
-          "expected_result": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Expected Result"
-          },
-          "priority": {
-            "type": "string",
-            "title": "Priority",
-            "default": "medium"
-          },
-          "status": {
-            "type": "string",
-            "title": "Status",
-            "default": "active"
-          },
-          "reference": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Reference"
-          },
-          "tags": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Tags"
-          },
-          "section_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Section Id"
-          },
-          "order_index": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Order Index",
-            "default": 0
-          },
-          "is_multistep": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Is Multistep",
-            "default": false
-          },
-          "id": {
-            "type": "integer",
-            "title": "Id"
-          },
-          "test_suite_id": {
-            "type": "integer",
-            "title": "Test Suite Id"
-          },
-          "created_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Created At"
-          },
-          "updated_at": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "date-time"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Updated At"
-          }
-        },
-        "type": "object",
-        "required": [
-          "title",
-          "id",
-          "test_suite_id",
-          "created_at"
-        ],
-        "title": "TestCase"
-      },
       "TestCaseCreate": {
         "properties": {
           "title": {
@@ -23987,7 +24185,14 @@
             "default": 0
           },
           "test_case_id": {
-            "type": "integer",
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Test Case Id"
           }
         },
@@ -23995,8 +24200,7 @@
         "required": [
           "step_number",
           "action",
-          "expected_result",
-          "test_case_id"
+          "expected_result"
         ],
         "title": "TestCaseStepCreate"
       },
@@ -24445,6 +24649,17 @@
             "type": "integer",
             "title": "Test Suite Id"
           },
+          "created_by": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By"
+          },
           "created_at": {
             "type": "string",
             "format": "date-time",
@@ -24610,6 +24825,17 @@
             "type": "integer",
             "title": "Test Suite Id"
           },
+          "created_by": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By"
+          },
           "created_at": {
             "type": "string",
             "format": "date-time",
@@ -24653,6 +24879,14 @@
             },
             "type": "array",
             "title": "Test Steps",
+            "default": []
+          },
+          "custom_field_values": {
+            "items": {
+              "$ref": "#/components/schemas/CustomFieldValue"
+            },
+            "type": "array",
+            "title": "Custom Field Values",
             "default": []
           },
           "creator": {
@@ -25772,7 +26006,20 @@
                 "type": "null"
               }
             ],
-            "title": "Execution Time"
+            "title": "Execution Time",
+            "description": "Elapsed execution time in seconds"
+          },
+          "execution_started_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Execution Started At"
           },
           "executed_by": {
             "anyOf": [
@@ -25784,6 +26031,53 @@
               }
             ],
             "title": "Executed By"
+          },
+          "execution_state": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Execution State"
+          },
+          "paused_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Paused At"
+          },
+          "total_paused_time": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Paused Time",
+            "default": 0.0
+          },
+          "manual_time_adjustment": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Manual Time Adjustment",
+            "default": 0.0
           },
           "id": {
             "type": "integer",
@@ -25868,7 +26162,20 @@
                 "type": "null"
               }
             ],
-            "title": "Execution Time"
+            "title": "Execution Time",
+            "description": "Elapsed execution time in seconds"
+          },
+          "execution_started_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Execution Started At"
           },
           "executed_by": {
             "anyOf": [
@@ -25880,6 +26187,56 @@
               }
             ],
             "title": "Executed By"
+          },
+          "execution_state": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Execution State",
+            "description": "Execution state: idle, running, paused, completed"
+          },
+          "paused_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Paused At"
+          },
+          "total_paused_time": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Paused Time",
+            "description": "Total time spent in paused state (seconds)",
+            "default": 0.0
+          },
+          "manual_time_adjustment": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Manual Time Adjustment",
+            "description": "Manual time adjustments (seconds)",
+            "default": 0.0
           },
           "test_case_id": {
             "type": "integer",
@@ -25942,7 +26299,20 @@
                 "type": "null"
               }
             ],
-            "title": "Execution Time"
+            "title": "Execution Time",
+            "description": "Elapsed execution time in seconds"
+          },
+          "execution_started_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Execution Started At"
           },
           "executed_by": {
             "anyOf": [
@@ -25954,6 +26324,55 @@
               }
             ],
             "title": "Executed By"
+          },
+          "execution_state": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Execution State",
+            "description": "Execution state: idle, running, paused, completed"
+          },
+          "paused_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Paused At"
+          },
+          "total_paused_time": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Paused Time",
+            "description": "Total time spent in paused state (seconds)"
+          },
+          "manual_time_adjustment": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Manual Time Adjustment",
+            "description": "Manual time adjustments (seconds)"
           }
         },
         "type": "object",
@@ -25996,7 +26415,20 @@
                 "type": "null"
               }
             ],
-            "title": "Execution Time"
+            "title": "Execution Time",
+            "description": "Elapsed execution time in seconds"
+          },
+          "execution_started_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Execution Started At"
           },
           "executed_by": {
             "anyOf": [
@@ -26008,6 +26440,53 @@
               }
             ],
             "title": "Executed By"
+          },
+          "execution_state": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Execution State"
+          },
+          "paused_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Paused At"
+          },
+          "total_paused_time": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Paused Time",
+            "default": 0.0
+          },
+          "manual_time_adjustment": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Manual Time Adjustment",
+            "default": 0.0
           },
           "id": {
             "type": "integer",
@@ -27153,12 +27632,15 @@
         "properties": {
           "name": {
             "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
             "title": "Name"
           },
           "description": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "maxLength": 1000
               },
               {
                 "type": "null"
@@ -27173,6 +27655,8 @@
           },
           "icon": {
             "type": "string",
+            "maxLength": 10,
+            "minLength": 1,
             "title": "Icon",
             "default": "\ud83d\uddb1\ufe0f"
           },
@@ -27225,12 +27709,15 @@
         "properties": {
           "name": {
             "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
             "title": "Name"
           },
           "description": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "maxLength": 1000
               },
               {
                 "type": "null"
@@ -27245,6 +27732,8 @@
           },
           "icon": {
             "type": "string",
+            "maxLength": 10,
+            "minLength": 1,
             "title": "Icon",
             "default": "\ud83d\uddb1\ufe0f"
           },
@@ -27270,7 +27759,9 @@
           "name": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "maxLength": 100,
+                "minLength": 1
               },
               {
                 "type": "null"
@@ -27281,7 +27772,8 @@
           "description": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "maxLength": 1000
               },
               {
                 "type": "null"
@@ -27303,7 +27795,9 @@
           "icon": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "maxLength": 10,
+                "minLength": 1
               },
               {
                 "type": "null"
@@ -27709,7 +28203,7 @@
           "role": {
             "type": "string",
             "title": "Role",
-            "default": "TESTER"
+            "default": "tester"
           },
           "project_ids": {
             "anyOf": [
@@ -27821,7 +28315,7 @@
           "role": {
             "type": "string",
             "title": "Role",
-            "default": "TESTER"
+            "default": "tester"
           },
           "project_ids": {
             "anyOf": [

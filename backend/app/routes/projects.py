@@ -48,7 +48,7 @@ def register_project_routes(app):
         current_user: schemas.User = Depends(get_current_active_user)
     ):
         try:
-            projects = db.query(Project).offset(skip).limit(limit).all()
+            projects = rbac.get_accessible_projects(current_user, db)[skip:skip + limit]
             # Convert to dict to avoid serialization issues
             result = []
             for project in projects:
@@ -165,8 +165,13 @@ def register_project_routes(app):
         db: Session = Depends(get_db),
         current_user: schemas.User = Depends(get_current_active_user)
     ):
-        if not rbac.has_permission(current_user, "read"):
+        if project_id is not None:
+            if not rbac.has_permission(current_user, "read", project_id, db):
+                raise HTTPException(status_code=403, detail="Insufficient permissions")
+        elif user_id is not None and user_id != current_user.id and not rbac.has_permission(current_user, "manage_users"):
             raise HTTPException(status_code=403, detail="Insufficient permissions")
+        elif user_id is None and not rbac.has_permission(current_user, "manage_users"):
+            user_id = current_user.id
         
         return crud_rbac.get_project_assignments(db, project_id=project_id, user_id=user_id, skip=skip, limit=limit)
 

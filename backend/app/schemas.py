@@ -488,6 +488,12 @@ class UserBase(BaseModel):
     do_not_disturb: bool = False
     notification_sound_enabled: bool = True
 
+    @field_validator('role', mode='before')
+    @classmethod
+    def normalize_role_value(cls, value: Any) -> str:
+        from .rbac import role_value
+        return role_value(value)
+
     @model_validator(mode='before')
     @classmethod
     def sanitize_html(cls, data):
@@ -515,6 +521,14 @@ class UserUpdate(BaseModel):
     location: Optional[str] = None
     website: Optional[str] = None
     company: Optional[str] = None
+
+    @field_validator('role', mode='before')
+    @classmethod
+    def normalize_role_value(cls, value: Any) -> Optional[str]:
+        if value is None:
+            return value
+        from .rbac import role_value
+        return role_value(value)
 
     @model_validator(mode='before')
     @classmethod
@@ -660,8 +674,14 @@ class User(UserBase):
 # User Invitation Schemas
 class UserInvitationBase(BaseModel):
     email: EmailStr
-    role: str = "TESTER"
+    role: str = Role.TESTER.value
     project_ids: Optional[List[int]] = Field(default_factory=list, json_schema_extra={"default": []})
+
+    @field_validator('role')
+    @classmethod
+    def validate_role(cls, value: str) -> str:
+        from .rbac import role_value
+        return role_value(value)
 
 
 class UserInvitationCreate(UserInvitationBase):
@@ -702,6 +722,12 @@ class ProjectAssignmentBase(BaseModel):
     project_id: int
     role: Role = Role.TESTER
 
+    @field_validator('role', mode='before')
+    @classmethod
+    def normalize_role_value(cls, value: Any) -> str:
+        from .rbac import role_value
+        return role_value(value)
+
 
 class ProjectAssignmentCreate(ProjectAssignmentBase):
     assigned_by: Optional[int] = None
@@ -720,6 +746,14 @@ class ProjectAssignmentUpdate(BaseModel):
     user_id: Optional[int] = None
     project_id: Optional[int] = None
     role: Optional[Role] = None
+
+    @field_validator('role', mode='before')
+    @classmethod
+    def normalize_role_value(cls, value: Any) -> Optional[str]:
+        if value is None:
+            return value
+        from .rbac import role_value
+        return role_value(value)
 
 
 class TestScheduleBase(BaseModel):
@@ -1943,6 +1977,12 @@ class User(BaseModel):
     force_password_change: bool = False
     created_at: datetime
     updated_at: Optional[datetime] = None
+
+    @field_validator('role', mode='before')
+    @classmethod
+    def normalize_role_value(cls, value: Any) -> str:
+        from .rbac import role_value
+        return role_value(value)
 
     class Config:
         from_attributes = True

@@ -38,6 +38,7 @@ import { useEnhancedApiCall } from '@/hooks/useEnhancedApiCall';
 import { useAppName } from '@/hooks/useAppName';
 import { getQueueSize } from '@/utils/requestQueue';
 import { projectImportExportAPI } from '@/api/projectImportExport';
+import { isAdminUser, normalizeRole, USER_ROLES } from '@/utils/roles';
 import { useAuthStore } from '@/stores/authStore';
 import { ProjectImportPreview } from '@/components/ProjectImportPreview';
 
@@ -110,8 +111,8 @@ export function Projects() {
   const [validationResult, setValidationResult] = useState<any>(null);
 
   // Check if user has admin/manager role
-  const userRole = user?.role?.toLowerCase();
-  const canImportExport = userRole === 'admin' || userRole === 'manager';
+  const userRole = normalizeRole(user?.role);
+  const canImportExport = isAdminUser(user) || userRole === USER_ROLES.MANAGER;
 
   // Initialize projects on component mount with enhanced error handling
   useEffect(() => {

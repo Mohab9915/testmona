@@ -1,6 +1,6 @@
 from sqlalchemy.orm import Session
 from typing import List, Optional
-from .models import ProjectAssignment, TestSchedule, TestExecution, User, Role
+from .models import ProjectAssignment, TestSchedule, TestExecution, User
 from .schemas import (
     ProjectAssignmentCreate, ProjectAssignmentUpdate,
     TestScheduleCreate, TestScheduleUpdate,
@@ -128,14 +128,16 @@ def delete_test_execution(db: Session, execution_id: int):
 def update_user_role(db: Session, user_id: int, role: str):
     db_user = db.query(User).filter(User.id == user_id).first()
     if db_user:
-        db_user.role = role
+        from .rbac import role_value
+        db_user.role = role_value(role)
         db.commit()
         db.refresh(db_user)
     return db_user
 
 
 def get_users_by_role(db: Session, role: str, skip: int = 0, limit: int = 100):
-    return db.query(User).filter(User.role == role).offset(skip).limit(limit).all()
+    from .rbac import role_value
+    return db.query(User).filter(User.role == role_value(role)).offset(skip).limit(limit).all()
 
 
 def has_project_permission(db: Session, user_id: int, project_id: int, permission: str) -> bool:
@@ -143,43 +145,9 @@ def has_project_permission(db: Session, user_id: int, project_id: int, permissio
     Check if a user has permission to access a project.
     Proper RBAC implementation based on project assignments and user roles.
     """
-    # Get user
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         return False
-    
-    # Superusers have full access to all projects
-    if hasattr(user, 'is_superuser') and user.is_superuser:
-        return True
-    
-    # Global admins have full access to all projects
-    if user.role == Role.ADMIN:
-        return True
-    
-    # Global managers have full access to all projects
-    if user.role == Role.MANAGER:
-        return True
-    
-    # For other roles, check project assignment
-    assignment = db.query(ProjectAssignment).filter(
-        ProjectAssignment.user_id == user_id,
-        ProjectAssignment.project_id == project_id
-    ).first()
-    
-    if not assignment:
-        return False
-    
-    # Check permissions based on assignment role
-    assignment_role = assignment.role
-    
-    # Define permissions per role
-    role_permissions = {
-        Role.VIEWER: ["view"],
-        Role.TESTER: ["view", "write"],
-        Role.MANAGER: ["view", "write", "delete", "manage_projects"],
-        Role.ADMIN: ["view", "write", "delete", "manage_projects"]
-    }
-    
-    # Check if the role has the requested permission
-    allowed_permissions = role_permissions.get(assignment_role, [])
-    return permission in allowed_permissions
+
+    from .rbac import has_permission
+    return has_permission(user, permission, project_id, db)

@@ -1,82 +1,101 @@
 from functools import wraps
-from fastapi import HTTPException, status, Depends
+from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
-from .database import get_db
 from .models import User, Role, Project, ProjectAssignment
-from .auth import get_current_user
-from typing import List
+from typing import List, Optional
+
+
+PROJECT_PERMISSION_ALIASES = {
+    "view": "read",
+}
+
+
+ROLE_PERMISSIONS = {
+    Role.ADMIN: {"read", "write", "delete", "execute", "manage_users", "manage_projects"},
+    Role.MANAGER: {"read", "write", "delete", "execute", "manage_projects"},
+    Role.TESTER: {"read", "write", "execute"},
+    Role.VIEWER: {"read"},
+}
+
+
+def normalize_permission(permission: str) -> str:
+    normalized = permission.strip().lower()
+    return PROJECT_PERMISSION_ALIASES.get(normalized, normalized)
+
+
+def normalize_role(role: object) -> Optional[Role]:
+    """Normalize DB strings, enum names, and enum values to a Role enum."""
+    if isinstance(role, Role):
+        return role
+    if not isinstance(role, str):
+        return None
+
+    normalized = role.strip().lower()
+    for candidate in Role:
+        if normalized in {candidate.value.lower(), candidate.name.lower()}:
+            return candidate
+    return None
+
+
+def role_value(role: object, default: Role = Role.TESTER) -> str:
+    normalized_role = normalize_role(role)
+    return (normalized_role or default).value
+
+
+def is_role(user: User, role: Role) -> bool:
+    return normalize_role(getattr(user, "role", None)) == role
+
+
+def has_global_permission(user: User, permission: str) -> bool:
+    if getattr(user, "is_superuser", False):
+        return True
+    normalized_role = normalize_role(getattr(user, "role", None))
+    if not normalized_role:
+        return False
+    return normalize_permission(permission) in ROLE_PERMISSIONS.get(normalized_role, set())
 
 
 def has_permission(user: User, permission: str, project_id: int = None, db: Session = None) -> bool:
     """Check if user has required permission"""
+    permission = normalize_permission(permission)
     
     # Superusers have all permissions
-    if user.is_superuser:
+    if getattr(user, "is_superuser", False):
         return True
+
+    normalized_role = normalize_role(getattr(user, "role", None))
+    global_permissions = ROLE_PERMISSIONS.get(normalized_role, set())
     
-    # Define role permissions
-    role_permissions = {
-        Role.ADMIN: [
-            "read", "write", "delete", "execute", 
-            "manage_users", "manage_projects"
-        ],
-        Role.MANAGER: [
-            "read", "write", "delete", "execute", "manage_projects"
-        ],
-        Role.TESTER: [
-            "read", "write", "execute"
-        ],
-        Role.VIEWER: [
-            "read"
-        ]
-    }
+    # Non-project permissions use the user's global role only.
+    if project_id is None:
+        return permission in global_permissions
     
-    # Handle both enum and string role values
-    if isinstance(user.role, str):
-        # Convert string role to enum
-        role_enum = None
-        for role in Role:
-            if role.value == user.role:
-                role_enum = role
-                break
-        user_permissions = role_permissions.get(role_enum, [])
-    else:
-        user_permissions = role_permissions.get(user.role, [])
-    
-    # Check basic permission
-    if permission not in user_permissions:
+    if db is None:
         return False
-    
-    # If project-specific permission is required, check project access
-    if project_id is not None:
-        if db is None:
-            # If no db session provided, skip project-specific checks
-            # This is a safe fallback - we require db for proper permission checks
-            return False
-        
-        # Check if user is project owner
-        project = db.query(Project).filter(Project.id == project_id).first()
-        if project and project.owner_id == user.id:
-            return True
-        
-        # Check project assignment
-        assignment = db.query(ProjectAssignment).filter(
-            ProjectAssignment.user_id == user.id,
-            ProjectAssignment.project_id == project_id
-        ).first()
-        
-        if not assignment:
-            return False
-        
-        # Check if user has sufficient role in the project
-        if permission == "delete" and assignment.role not in [Role.ADMIN, Role.MANAGER]:
-            return False
-        if permission == "execute" and assignment.role not in [Role.ADMIN, Role.MANAGER, Role.TESTER]:
-            return False
-        
+
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        return False
+
+    # Global admin/manager permissions apply to all projects.
+    if normalized_role in {Role.ADMIN, Role.MANAGER} and permission in global_permissions:
         return True
-    
-    return True
+
+    # Project owners can manage their own project, but not global user admin.
+    if project.owner_id == user.id and permission != "manage_users":
+        return True
+
+    assignment = db.query(ProjectAssignment).filter(
+        ProjectAssignment.user_id == user.id,
+        ProjectAssignment.project_id == project_id
+    ).first()
+
+    if not assignment:
+        return False
+
+    assignment_role = normalize_role(assignment.role)
+    assignment_permissions = ROLE_PERMISSIONS.get(assignment_role, set())
+    return permission in assignment_permissions
 
 
 def require_permission(permission: str, project_id_param: str = None):
@@ -109,7 +128,7 @@ def require_permission(permission: str, project_id_param: str = None):
 
 def get_accessible_projects(user: User, db: Session) -> List[Project]:
     """Get projects that user has access to"""
-    if user.is_superuser:
+    if getattr(user, "is_superuser", False) or is_role(user, Role.ADMIN) or is_role(user, Role.MANAGER):
         return db.query(Project).all()
     
     # Get projects through assignments
@@ -123,44 +142,19 @@ def get_accessible_projects(user: User, db: Session) -> List[Project]:
 
 def can_manage_project(user: User, project_id: int, db: Session) -> bool:
     """Check if user can manage a specific project"""
-    if user.is_superuser:
-        return True
-    
-    # Check if user is the owner
-    project = db.query(Project).filter(Project.id == project_id).first()
-    if project and project.owner_id == user.id:
-        return True
-    
-    # Check assignment with admin/manager role
-    assignment = db.query(ProjectAssignment).filter(
-        ProjectAssignment.user_id == user.id,
-        ProjectAssignment.project_id == project_id,
-        ProjectAssignment.role.in_([Role.ADMIN, Role.MANAGER])
-    ).first()
-    
-    return assignment is not None
+    return has_permission(user, "manage_projects", project_id, db)
 
 
 def can_assign_users(user: User, project_id: int, db: Session) -> bool:
     """Check if user can assign other users to a project"""
-    if user.is_superuser:
-        return True
-    
-    # Only admins and managers can assign users
-    assignment = db.query(ProjectAssignment).filter(
-        ProjectAssignment.user_id == user.id,
-        ProjectAssignment.project_id == project_id,
-        ProjectAssignment.role.in_([Role.ADMIN, Role.MANAGER])
-    ).first()
-    
-    return assignment is not None
+    return can_manage_project(user, project_id, db)
 
 
 def get_user_projects(user: User, db: Session):
     """Get projects with user's role in each project"""
-    if user.is_superuser:
+    if getattr(user, "is_superuser", False) or is_role(user, Role.ADMIN) or is_role(user, Role.MANAGER):
         projects = db.query(Project).all()
-        return [{"project": p, "role": Role.ADMIN} for p in projects]
+        return [{"project": p, "role": role_value(getattr(user, "role", None), Role.ADMIN)} for p in projects]
     
     assignments = db.query(ProjectAssignment).filter(
         ProjectAssignment.user_id == user.id

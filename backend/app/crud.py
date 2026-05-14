@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 import re
 from . import schemas
 from .services.execution_timing import apply_test_result_execution_timing
-from .models import Project, TestSuite, TestCase, TestCaseStep, TestRun, TestResult, User, CustomFieldDefinition, CustomFieldValue, CustomFieldType, JiraIntegration, JiraIssue, Requirement, Defect, TestPlan, Milestone, TraceabilityMatrix, CoverageReport, Notification, TestCaseSection, SharedStep, GlobalParameter, TestMindmap, ImpactAnalysis, ExecutionEnvironment, ExecutionLog, TestSchedule, ExecutionEngine, TestRunEnvironment, DefectComment, DefectAttachment, DefectHistory, DefectWorkflow, DefectTemplate, IssueTrackerIntegration, SyncLog, KPIData, TestStepResult, ShareableReport, RootCauseAnalysis, DashboardWidget, TestCaseRevision, RequirementStatus, Priority, TestTypeDefinition, PriorityDefinition, SharedStepTemplate, TestExecutionSettings, NotificationSettings, AutomationSettings, SystemSettings, OnboardingChecklist
+from .models import Project, TestSuite, TestCase, TestCaseStep, TestRun, TestResult, User, Role, CustomFieldDefinition, CustomFieldValue, CustomFieldType, JiraIntegration, JiraIssue, Requirement, Defect, TestPlan, Milestone, TraceabilityMatrix, CoverageReport, Notification, TestCaseSection, SharedStep, GlobalParameter, TestMindmap, ImpactAnalysis, ExecutionEnvironment, ExecutionLog, TestSchedule, ExecutionEngine, TestRunEnvironment, DefectComment, DefectAttachment, DefectHistory, DefectWorkflow, DefectTemplate, IssueTrackerIntegration, SyncLog, KPIData, TestStepResult, ShareableReport, RootCauseAnalysis, DashboardWidget, TestCaseRevision, RequirementStatus, Priority, TestTypeDefinition, PriorityDefinition, SharedStepTemplate, TestExecutionSettings, NotificationSettings, AutomationSettings, SystemSettings, OnboardingChecklist
 from .schemas import (
     ProjectCreate, ProjectUpdate,
     TestSuiteCreate, TestSuiteUpdate,
@@ -540,13 +540,16 @@ def get_users(db: Session, skip: int = 0, limit: int = 100):
 
 def create_user(db: Session, user: UserCreate):
     from .auth import get_password_hash
+    from .rbac import role_value
     hashed_password = get_password_hash(user.password)
     db_user = User(
         username=user.username,
         email=user.email,
         full_name=user.full_name,
         hashed_password=hashed_password,
-        is_active=user.is_active
+        role=role_value(user.role, Role.TESTER),
+        is_active=user.is_active,
+        force_password_change=user.force_password_change
     )
     db.add(db_user)
     safe_commit(db)
@@ -557,14 +560,15 @@ def create_user(db: Session, user: UserCreate):
 def update_user(db: Session, user_id: int, user: UserUpdate):
     db_user = db.query(User).filter(User.id == user_id).first()
     if db_user:
+        from .rbac import role_value
         update_data = user.model_dump(exclude_unset=True)
         if "password" in update_data:
             from .auth import get_password_hash
             update_data["hashed_password"] = get_password_hash(update_data.pop("password"))
         for key, value in update_data.items():
             # Convert Role enum to string value for database compatibility
-            if key == "role" and hasattr(value, 'value'):
-                value = value.value
+            if key == "role":
+                value = role_value(value)
             setattr(db_user, key, value)
         safe_commit(db)
         db.refresh(db_user)
@@ -2538,6 +2542,7 @@ def update_defect_with_history(db: Session, defect_id: int, defect_data: dict, u
 def create_user_invitation(db: Session, invitation: dict, invited_by_id: int):
     import secrets
     from datetime import timedelta
+    from .rbac import role_value
     
     # Generate a secure token
     token = secrets.token_urlsafe(32)
@@ -2552,7 +2557,7 @@ def create_user_invitation(db: Session, invitation: dict, invited_by_id: int):
     db_invitation = UserInvitation(
         email=invitation['email'],
         token=token,
-        role=invitation.get('role', 'TESTER'),
+        role=role_value(invitation.get('role', Role.TESTER)),
         project_ids=project_ids_str,
         invited_by=invited_by_id,
         expires_at=expires_at,

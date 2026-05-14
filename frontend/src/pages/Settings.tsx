@@ -1800,10 +1800,12 @@ export function Settings() {
             <Link className="h-4 w-4 mr-2 rtl:mr-0 rtl:ml-2" />
             {t('integrations')}
           </TabsTrigger>
-          <TabsTrigger value="users" className="inline-flex items-center justify-center whitespace-nowrap rounded-sm px-4 py-2 text-sm font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm">
-            <Users className="h-4 w-4 mr-2 rtl:mr-0 rtl:ml-2" />
-            {t('users')}
-          </TabsTrigger>
+          {isAdminUser(user) && (
+            <TabsTrigger value="users" className="inline-flex items-center justify-center whitespace-nowrap rounded-sm px-4 py-2 text-sm font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm">
+              <Users className="h-4 w-4 mr-2 rtl:mr-0 rtl:ml-2" />
+              {t('users')}
+            </TabsTrigger>
+          )}
           {isAdminUser(user) && (
             <TabsTrigger value="audit" className="inline-flex items-center justify-center whitespace-nowrap rounded-sm px-4 py-2 text-sm font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm">
               <History className="h-4 w-4 mr-2 rtl:mr-0 rtl:ml-2" />
@@ -3245,19 +3247,21 @@ export function Settings() {
           </Dialog>
         </TabsContent>
 
-        <TabsContent value="users" className="space-y-6">
-          <Card>
-            <CardHeader className="border-b border-gray-100 dark:border-gray-800">
-              <div className="flex items-center space-x-2 rtl:space-x-reverse">
-                <Users className="h-5 w-5 text-purple-600" />
-                <CardTitle>{t('userManagement')}</CardTitle>
-              </div>
-            </CardHeader>
-            <CardContent className="pt-6">
-              <UserManagement />
-            </CardContent>
-          </Card>
-        </TabsContent>
+        {isAdminUser(user) && (
+          <TabsContent value="users" className="space-y-6">
+            <Card>
+              <CardHeader className="border-b border-gray-100 dark:border-gray-800">
+                <div className="flex items-center space-x-2 rtl:space-x-reverse">
+                  <Users className="h-5 w-5 text-purple-600" />
+                  <CardTitle>{t('userManagement')}</CardTitle>
+                </div>
+              </CardHeader>
+              <CardContent className="pt-6">
+                <UserManagement />
+              </CardContent>
+            </Card>
+          </TabsContent>
+        )}
 
         <TabsContent value="audit" className="space-y-6">
           <Card>

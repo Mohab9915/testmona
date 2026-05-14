@@ -666,7 +666,7 @@ class User(Base):
     email = Column(String(100), unique=True, nullable=False)
     hashed_password = Column(String(255), nullable=False)
     full_name = Column(String(100))
-    role = Column(String(7), default="TESTER")
+    role = Column(String(7), default="tester")
     is_active = Column(Boolean, default=True)
     is_superuser = Column(Boolean, default=False)
     force_password_change = Column(Boolean, default=False)
@@ -708,7 +708,7 @@ class UserInvitation(Base):
     id = Column(Integer, primary_key=True, index=True)
     email = Column(String(100), nullable=False, index=True)
     token = Column(String(255), unique=True, nullable=False, index=True)
-    role = Column(String(20), default="TESTER")
+    role = Column(String(20), default="tester")
     project_ids = Column(String(500))  # Comma-separated project IDs
     invited_by = Column(Integer, ForeignKey("users.id"), nullable=False)
     expires_at = Column(DateTime(timezone=True), nullable=False)
@@ -1449,5 +1449,4 @@ TestCase.current_version = relationship(
     uselist=False,
     viewonly=True
 )
-
 

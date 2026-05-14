@@ -9,6 +9,7 @@ from datetime import timedelta
 from .. import crud, schemas, auth
 from ..database import get_db
 from ..config import settings
+from ..models import User, Role
 
 
 def register_auth_routes(app):
@@ -28,8 +29,13 @@ def register_auth_routes(app):
         if db_user:
             raise HTTPException(status_code=400, detail="Email already registered")
         
-        # Create user
+        is_first_user = db.query(User).count() == 0
+        user = user.model_copy(update={"role": Role.ADMIN if is_first_user else Role.TESTER})
         new_user = crud.create_user(db=db, user=user)
+        if is_first_user:
+            new_user.is_superuser = True
+            db.commit()
+            db.refresh(new_user)
         
         # Auto-disable signup after first user creation (with race condition protection)
         from ..models import SystemSettings as SystemSettingsModel

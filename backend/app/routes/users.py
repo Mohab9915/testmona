@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from typing import List
 from datetime import datetime
 
-from .. import crud, schemas, auth, crud_rbac, models
+from .. import crud, schemas, auth, crud_rbac, models, rbac
 from ..database import get_db
 from ..auth import get_current_active_user, check_password_change_required, verify_password, get_password_hash
 from ..security_utils import validate_file_size, validate_file_type, MAX_AVATAR_SIZE
@@ -16,6 +16,10 @@ from ..utils import sanitize_data
 
 def register_user_routes(app):
     """Register user management routes with the FastAPI app."""
+
+    def require_manage_users(current_user: models.User) -> None:
+        if not rbac.has_permission(current_user, "manage_users"):
+            raise HTTPException(status_code=403, detail="Only admins can manage users")
     
     @app.get("/users/check-username/{username}")
     async def check_username_availability(
@@ -283,6 +287,7 @@ def register_user_routes(app):
     def create_user(user: schemas.UserCreate, db: Session = Depends(get_db), current_user: schemas.User = Depends(get_current_active_user)):
         # Check if user needs to change password
         check_password_change_required(current_user)
+        require_manage_users(current_user)
         
         db_user = crud.get_user_by_username(db, username=user.username)
         if db_user:
@@ -322,29 +327,19 @@ def register_user_routes(app):
     def read_users(skip: int = 0, limit: int = 100, db: Session = Depends(get_db), current_user: schemas.User = Depends(get_current_active_user)):
         # Check if user needs to change password
         check_password_change_required(current_user)
+        require_manage_users(current_user)
         
         users = crud.get_users(db, skip=skip, limit=limit)
-        # Convert role to lowercase if it's uppercase
+        # Convert role to lowercase for consistent API responses without changing persisted data here.
         for user in users:
-            if hasattr(user.role, 'value'):
-                user.role = user.role.value.lower()
-            elif isinstance(user.role, str) and user.role.upper() in ['ADMIN', 'MANAGER', 'TESTER', 'VIEWER']:
-                user.role = user.role.lower()
+            user.role = rbac.role_value(user.role)
         return users
 
     @app.get("/users/{user_id}", response_model=schemas.User)
     def read_user(user_id: int, db: Session = Depends(get_db), current_user: schemas.User = Depends(get_current_active_user)):
         # Users can only view their own profile unless they're superuser or admin
-        if not current_user.is_superuser and current_user.id != user_id:
-            # Check if user is admin
-            from ..models import Role
-            if isinstance(current_user.role, str):
-                is_admin = current_user.role.lower() == Role.ADMIN.value
-            else:
-                is_admin = current_user.role == Role.ADMIN
-            
-            if not is_admin:
-                raise HTTPException(status_code=403, detail="Not authorized to view this user")
+        if current_user.id != user_id and not rbac.has_permission(current_user, "manage_users"):
+            raise HTTPException(status_code=403, detail="Not authorized to view this user")
         
         db_user = crud.get_user(db, user_id=user_id)
         if db_user is None:
@@ -358,17 +353,15 @@ def register_user_routes(app):
         db: Session = Depends(get_db),
         current_user: schemas.User = Depends(get_current_active_user)
     ):
-        # Users can only update their own profile unless they're superuser or admin
-        if not current_user.is_superuser and current_user.id != user_id:
-            # Check if user is admin
-            from ..models import Role
-            if isinstance(current_user.role, str):
-                is_admin = current_user.role.lower() == Role.ADMIN.value
-            else:
-                is_admin = current_user.role == Role.ADMIN
-            
-            if not is_admin:
-                raise HTTPException(status_code=403, detail="Not authorized to update this user")
+        can_manage_users = rbac.has_permission(current_user, "manage_users")
+        if current_user.id != user_id and not can_manage_users:
+            raise HTTPException(status_code=403, detail="Not authorized to update this user")
+
+        if current_user.id == user_id and not can_manage_users:
+            update_data = user.model_dump(exclude_unset=True)
+            for restricted_field in ("role", "is_active", "force_password_change"):
+                update_data.pop(restricted_field, None)
+            user = schemas.UserUpdate(**update_data)
         
         # Prevent users from changing their own role (both upgrade and downgrade)
         if current_user.id == user_id and user.role is not None:
@@ -443,8 +436,7 @@ def register_user_routes(app):
         # Check if user needs to change password
         check_password_change_required(current_user)
         
-        if not current_user.is_superuser:
-            raise HTTPException(status_code=403, detail="Only superusers can delete users")
+        require_manage_users(current_user)
         
         if current_user.id == user_id:
             raise HTTPException(status_code=400, detail="Cannot delete yourself")
@@ -486,6 +478,8 @@ def register_user_routes(app):
         db: Session = Depends(get_db),
         current_user: schemas.User = Depends(get_current_active_user)
     ):
+        require_manage_users(current_user)
+
         # Check if user already exists
         existing_user = crud.get_user_by_email(db, email=invitation.email)
         if existing_user:
@@ -526,8 +520,7 @@ def register_user_routes(app):
         db: Session = Depends(get_db),
         current_user: schemas.User = Depends(get_current_active_user)
     ):
-        if not current_user.is_superuser:
-            raise HTTPException(status_code=403, detail="Only superusers can view invitations")
+        require_manage_users(current_user)
         
         invitations = crud.get_user_invitations(db, skip=skip, limit=limit)
         return invitations
@@ -578,7 +571,7 @@ def register_user_routes(app):
             email=invitation.email,
             password=accept_data.password,
             full_name=accept_data.full_name,
-            role=invitation.role,
+            role=rbac.role_value(invitation.role),
             is_active=True
         )
         new_user = crud.create_user(db, user=user_data)
@@ -592,6 +585,7 @@ def register_user_routes(app):
                     crud_rbac.ProjectAssignmentCreate(
                         user_id=new_user.id,
                         project_id=project_id,
+                        role=rbac.role_value(invitation.role),
                 )
             )
         
@@ -623,8 +617,7 @@ def register_user_routes(app):
         db: Session = Depends(get_db),
         current_user: schemas.User = Depends(get_current_active_user)
     ):
-        if not current_user.is_superuser:
-            raise HTTPException(status_code=403, detail="Only superusers can delete invitations")
+        require_manage_users(current_user)
         
         # Store data for audit trail before deletion
         db_invitation = crud.get_user_invitation(db, invitation_id=invitation_id)
