@@ -1825,63 +1825,6 @@ def register_test_management_routes(app):
             execution_time=execution_time
         )
 
-    @app.get("/analytics/test-activity")
-    def get_test_activity(
-        project_id: int,
-        start_date: Optional[str] = None,
-        end_date: Optional[str] = None,
-        granularity: str = 'day',  # day, week, month
-        db: Session = Depends(get_db),
-        current_user: schemas.User = Depends(get_current_active_user)
-    ):
-        """Get test case activity over time (added, modified, executed, deleted)"""
-        
-        # Default date range: last 30 days
-        if not end_date:
-            end_dt = datetime.utcnow()
-        else:
-            end_dt = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
-        
-        if not start_date:
-            start_dt = end_dt - timedelta(days=30)
-        else:
-            start_dt = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
-        
-        # Query test cases created (added)
-        test_cases_added = db.query(
-            func.date(TestCase.created_at).label('date'),
-            func.count(TestCase.id).label('count')
-        ).filter(
-            TestCase.created_at >= start_dt,
-            TestCase.created_at <= end_dt
-        ).group_by(func.date(TestCase.created_at)).all()
-        
-        # Query test cases modified (updated)
-        test_cases_modified = db.query(
-            func.date(TestCase.updated_at).label('date'),
-            func.count(TestCase.id).label('count')
-        ).filter(
-            TestCase.updated_at >= start_dt,
-            TestCase.updated_at <= end_dt,
-            TestCase.updated_at.isnot(None)
-        ).group_by(func.date(TestCase.updated_at)).all()
-        
-        # Query test executions
-        test_executions = db.query(
-            func.date(TestResult.executed_at).label('date'),
-            func.count(TestResult.id).label('count')
-        ).filter(
-            TestResult.executed_at >= start_dt,
-            TestResult.executed_at <= end_dt,
-            TestResult.executed_at.isnot(None)
-        ).group_by(func.date(TestResult.executed_at)).all()
-        
-        return {
-            "test_cases_added": [{"date": str(item.date), "count": item.count} for item in test_cases_added],
-            "test_cases_modified": [{"date": str(item.date), "count": item.count} for item in test_cases_modified],
-            "test_executions": [{"date": str(item.date), "count": item.count} for item in test_executions],
-        }
-
     # User Preferences
     @app.get("/user/preferences/items-per-page")
     def get_items_per_page_preference(

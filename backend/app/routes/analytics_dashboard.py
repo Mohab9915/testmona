@@ -31,95 +31,81 @@ def register_analytics_dashboard_routes(app):
         db: Session = Depends(get_db),
         current_user: schemas.User = Depends(get_current_active_user)
     ):
-        """Get detailed test execution status for a project"""
+        """Get detailed test execution status for a project."""
         if not rbac.has_permission(current_user, "read", project_id, db):
             raise HTTPException(status_code=403, detail="Insufficient permissions")
-        
-        # Get all test cases for the project
+
+        def normalize_status(status: str) -> str:
+            status_map = {
+                "pass": "passed",
+                "passed": "passed",
+                "fail": "failed",
+                "failed": "failed",
+                "block": "blocked",
+                "blocked": "blocked",
+                "skip": "skipped",
+                "skipped": "skipped",
+                "not_tested": "not_tested",
+            }
+            return status_map.get((status or "").lower(), (status or "").lower())
+
         test_cases = db.query(models.TestCase).join(models.TestSuite).filter(
-            models.TestSuite.project_id == project_id
+            models.TestSuite.project_id == project_id,
+            models.TestCase.is_deleted == False,
         ).all()
-        
-        total_test_cases = len(test_cases)
-        executed_test_cases = 0
-        passed_test_cases = 0
-        failed_test_cases = 0
-        blocked_test_cases = 0
-        skipped_test_cases = 0
-        not_tested_test_cases = 0
-        
+
+        counters = {
+            "passed": 0,
+            "failed": 0,
+            "blocked": 0,
+            "skipped": 0,
+            "not_tested": 0,
+        }
         test_case_details = []
-        
-        for tc in test_cases:
-            # Get the latest test result for this test case
+
+        for test_case in test_cases:
             latest_result = db.query(models.TestResult).filter(
-                models.TestResult.test_case_id == tc.id
+                models.TestResult.test_case_id == test_case.id
             ).order_by(models.TestResult.executed_at.desc()).first()
-            
-            status = "not_tested"
-            last_executed = None
-            
-            if latest_result:
-                last_executed = latest_result.executed_at
-                status = latest_result.status
-                
-                # If the status is not_tested, count it as not executed
-                if latest_result.status == "not_tested":
-                    not_tested_test_cases += 1
-                else:
-                    executed_test_cases += 1
-                    if latest_result.status == "pass":
-                        passed_test_cases += 1
-                    elif latest_result.status == "fail":
-                        failed_test_cases += 1
-                    elif latest_result.status == "blocked":
-                        blocked_test_cases += 1
-                    elif latest_result.status == "skip":
-                        skipped_test_cases += 1
-            else:
-                not_tested_test_cases += 1
-            
+            status = normalize_status(latest_result.status) if latest_result else "not_tested"
+            if status not in counters:
+                status = "not_tested"
+            counters[status] += 1
             test_case_details.append({
-                "id": tc.id,
-                "title": tc.title,
+                "id": test_case.id,
+                "title": test_case.title,
                 "status": status,
-                "last_executed": last_executed.isoformat() if last_executed else None,
-                "test_suite": tc.test_suite.name
+                "last_executed": latest_result.executed_at.isoformat() if latest_result and latest_result.executed_at else None,
+                "test_suite": test_case.test_suite.name if test_case.test_suite else None,
             })
-        
-        # Calculate percentages - status breakdown based on executed tests only
-        execution_rate = (executed_test_cases / total_test_cases * 100) if total_test_cases > 0 else 0
+
+        total_test_cases = len(test_cases)
+        executed_test_cases = counters["passed"] + counters["failed"] + counters["blocked"] + counters["skipped"]
         status_percentages = {
-            "passed": (passed_test_cases / executed_test_cases * 100) if executed_test_cases > 0 else 0,
-            "failed": (failed_test_cases / executed_test_cases * 100) if executed_test_cases > 0 else 0,
-            "blocked": (blocked_test_cases / executed_test_cases * 100) if executed_test_cases > 0 else 0,
-            "skipped": (skipped_test_cases / executed_test_cases * 100) if executed_test_cases > 0 else 0,
+            key: (value / executed_test_cases * 100) if executed_test_cases else 0
+            for key, value in counters.items()
+            if key != "not_tested"
         }
-        
-        # Calculate overall percentages including not tested (of all tests)
         overall_percentages = {
-            "passed": (passed_test_cases / total_test_cases * 100) if total_test_cases > 0 else 0,
-            "failed": (failed_test_cases / total_test_cases * 100) if total_test_cases > 0 else 0,
-            "blocked": (blocked_test_cases / total_test_cases * 100) if total_test_cases > 0 else 0,
-            "skipped": (skipped_test_cases / total_test_cases * 100) if total_test_cases > 0 else 0,
-            "not_tested": (not_tested_test_cases / total_test_cases * 100) if total_test_cases > 0 else 0,
+            key: (value / total_test_cases * 100) if total_test_cases else 0
+            for key, value in counters.items()
         }
-        
+
         return {
             "project_id": project_id,
             "summary": {
                 "total_test_cases": total_test_cases,
                 "executed_test_cases": executed_test_cases,
-                "passed_test_cases": passed_test_cases,
-                "failed_test_cases": failed_test_cases,
-                "blocked_test_cases": blocked_test_cases,
-                "skipped_test_cases": skipped_test_cases,
-                "not_tested_test_cases": not_tested_test_cases
+                "passed_test_cases": counters["passed"],
+                "failed_test_cases": counters["failed"],
+                "blocked_test_cases": counters["blocked"],
+                "skipped_test_cases": counters["skipped"],
+                "not_tested_test_cases": counters["not_tested"],
             },
-            "execution_rate": execution_rate,
+            "execution_rate": (executed_test_cases / total_test_cases * 100) if total_test_cases else 0,
             "status_percentages": status_percentages,
             "overall_percentages": overall_percentages,
-            "test_cases": test_case_details
+            "test_cases": test_case_details,
         }
 
     # Dashboard Analytics
@@ -129,117 +115,23 @@ def register_analytics_dashboard_routes(app):
         db: Session = Depends(get_db),
         current_user: schemas.User = Depends(get_current_active_user)
     ):
+        project_id = request.get("project_id")
+        if not isinstance(project_id, int) or project_id <= 0:
+            raise HTTPException(status_code=400, detail="project_id must be a positive integer")
+        if not rbac.has_permission(current_user, "read", project_id, db):
+            raise HTTPException(status_code=403, detail="Insufficient permissions")
+
+        time_period = request.get("time_period", "7d")
+        if time_period not in {"24h", "7d", "30d", "90d"}:
+            raise HTTPException(status_code=400, detail="time_period must be one of 24h, 7d, 30d, or 90d")
+
         try:
-            project_id = request.get("project_id")
-            # Simplified permission check - just check if user is authenticated
-            if not current_user.is_active:
-                raise HTTPException(status_code=403, detail="Insufficient permissions")
-            
-            time_period = request.get("time_period", "7d")
-            metrics = request.get("metrics", [])
-            
-            # Get real test execution data
-            test_cases = db.query(models.TestCase).join(models.TestSuite).filter(
-                models.TestSuite.project_id == project_id
-            ).all()
-            
-            total_test_cases = len(test_cases)
-            executed_test_cases = 0
-            passed_test_cases = 0
-            failed_test_cases = 0
-            blocked_test_cases = 0
-            skipped_test_cases = 0
-            not_tested_test_cases = 0
-            
-            for tc in test_cases:
-                latest_result = db.query(models.TestResult).filter(
-                    models.TestResult.test_case_id == tc.id
-                ).order_by(models.TestResult.executed_at.desc()).first()
-                
-                if latest_result:
-                    if latest_result.status == "not_tested":
-                        not_tested_test_cases += 1
-                    else:
-                        executed_test_cases += 1
-                        if latest_result.status == "pass":
-                            passed_test_cases += 1
-                        elif latest_result.status == "fail":
-                            failed_test_cases += 1
-                        elif latest_result.status == "blocked":
-                            blocked_test_cases += 1
-                        elif latest_result.status == "skip":
-                            skipped_test_cases += 1
-                else:
-                    not_tested_test_cases += 1
-            
-            # Calculate real metrics
-            execution_rate = (executed_test_cases / total_test_cases * 100) if total_test_cases > 0 else 0
-            pass_rate = (passed_test_cases / executed_test_cases * 100) if executed_test_cases > 0 else 0
-            failure_rate = (failed_test_cases / executed_test_cases * 100) if executed_test_cases > 0 else 0
-            flakiness_rate = ((failed_test_cases + blocked_test_cases + skipped_test_cases) / executed_test_cases * 100) if executed_test_cases > 0 else 0
-            
-            # Get coverage data
-            coverage_reports = db.query(models.CoverageReport).filter(
-                models.CoverageReport.project_id == project_id
-            ).order_by(models.CoverageReport.generated_at.desc()).first()
-            
-            coverage_percentage = coverage_reports.coverage_percentage if coverage_reports else 0
-            
-            return {
-                "project_id": project_id,
-                "time_period": time_period,
-                "kpi_data": {
-                    "coverage": {"current": round(coverage_percentage, 1), "trend": "up", "change": 5},
-                    "passRate": {"current": round(pass_rate, 1), "trend": "up", "change": 3},
-                    "failureTrends": {"current": round(failure_rate, 1), "trend": "down", "change": -2},
-                    "flakiness": {"current": round(flakiness_rate, 1), "trend": "down", "change": -4},
-                    "cycleTime": {"current": 2.5, "trend": "down", "change": -0.5}
-                },
-                "recent_activity": {
-                    "test_runs_today": 12,
-                    "tests_executed": executed_test_cases,
-                    "defects_found": failed_test_cases
-                },
-                "team_performance": {
-                    "active_testers": 8,
-                    "avg_execution_time": 2.3,
-                    "productivity_score": round(execution_rate, 0)
-                },
-                "upcoming_items": {
-                    "scheduled_runs": 5,
-                    "pending_reviews": 7,
-                    "release_deadline": "3 days"
-                }
-            }
-        except Exception as e:
-            print(f"Error in get_dashboard_analytics: {e}")
-            # Return fallback data on error
-            return {
-                "project_id": request.get("project_id", 1),
-                "time_period": "7d",
-                "kpi_data": {
-                    "coverage": {"current": 0, "trend": "up", "change": 0},
-                    "passRate": {"current": 0, "trend": "up", "change": 0},
-                    "failureTrends": {"current": 0, "trend": "down", "change": 0},
-                    "flakiness": {"current": 0, "trend": "down", "change": 0},
-                    "cycleTime": {"current": 0, "trend": "down", "change": 0}
-                },
-                "recent_activity": {
-                    "test_runs_today": 0,
-                    "tests_executed": 0,
-                    "defects_found": 0
-                },
-                "team_performance": {
-                    "active_testers": 0,
-                    "avg_execution_time": 0,
-                    "productivity_score": 0
-                },
-                "upcoming_items": {
-                    "scheduled_runs": 0,
-                    "pending_reviews": 0,
-                    "release_deadline": "Unknown"
-                }
-            }
+            return generate_dashboard_analytics(db, project_id, time_period)
+        except HTTPException:
+            raise
+        except Exception as exc:
+            print(f"Error in get_dashboard_analytics: {exc}")
+            raise HTTPException(status_code=500, detail="Failed to generate dashboard analytics")
 
     @app.get("/dashboard/statistics")
     def get_dashboard_statistics(
@@ -550,10 +442,20 @@ def register_analytics_dashboard_routes(app):
     ):
         if not rbac.has_permission(current_user, "write", request.project_id, db):
             raise HTTPException(status_code=403, detail="Insufficient permissions")
+
+        title = request.title.strip()
+        if not title:
+            raise HTTPException(status_code=400, detail="Report title is required")
+        if request.report_type not in {"executive", "technical", "summary"}:
+            raise HTTPException(status_code=400, detail="Invalid report type")
+        if request.access_level not in {"read-only", "edit"}:
+            raise HTTPException(status_code=400, detail="Invalid access level")
+        if request.expires_in_days is not None and not 1 <= request.expires_in_days <= 365:
+            raise HTTPException(status_code=400, detail="expires_in_days must be between 1 and 365")
         
         # Create report content
         report_content = {
-            "title": request.title,
+            "title": title,
             "report_type": request.report_type,
             "generated_at": datetime.now().isoformat(),
             "generated_by": current_user.username,
@@ -567,7 +469,7 @@ def register_analytics_dashboard_routes(app):
         
         report_data = schemas.ShareableReportCreate(
             project_id=request.project_id,
-            title=request.title,
+            title=title,
             report_type=request.report_type,
             report_content=report_content,
             access_level=request.access_level,
@@ -575,7 +477,7 @@ def register_analytics_dashboard_routes(app):
             expires_at=expires_at
         )
         
-        db_report = create_shareable_report(db=db, report=report_data)
+        db_report = create_shareable_report(db=db, report=report_data, created_by=current_user.id)
         
         # Create audit trail
         try:
@@ -621,6 +523,34 @@ def register_analytics_dashboard_routes(app):
             raise HTTPException(status_code=404, detail="Shared report not found or expired")
         
         return report
+
+    @app.get("/analytics/shareable-reports/{report_id}/download")
+    def download_shareable_report(
+        report_id: int,
+        db: Session = Depends(get_db),
+        current_user: schemas.User = Depends(get_current_active_user)
+    ):
+        report = db.query(models.ShareableReport).filter(
+            models.ShareableReport.id == report_id,
+            models.ShareableReport.is_active == True,
+        ).first()
+        if not report:
+            raise HTTPException(status_code=404, detail="Shareable report not found")
+        if not rbac.has_permission(current_user, "read", report.project_id, db):
+            raise HTTPException(status_code=403, detail="Insufficient permissions")
+        if report.expires_at and report.expires_at < datetime.now(report.expires_at.tzinfo):
+            raise HTTPException(status_code=410, detail="Shareable report has expired")
+
+        return {
+            "id": report.id,
+            "project_id": report.project_id,
+            "title": report.title,
+            "report_type": report.report_type,
+            "report_content": report.report_content,
+            "access_level": report.access_level,
+            "shared_with": report.shared_with or [],
+            "generated_at": report.created_at.isoformat() if report.created_at else None,
+        }
 
     @app.put("/analytics/shareable-reports/{report_id}", response_model=schemas.ShareableReport)
     def update_shareable_report_endpoint(
@@ -829,64 +759,65 @@ def register_analytics_dashboard_routes(app):
         db: Session = Depends(get_db),
         current_user: schemas.User = Depends(get_current_active_user)
     ):
-        """Get test case activity over time (added, modified, executed, deleted)"""
+        """Get project-scoped test case activity over time."""
         from sqlalchemy import func
         from datetime import datetime, timedelta
-        from ..models import TestCase, TestResult
+        from ..models import TestCase, TestResult, TestSuite, TestRun
         
+        if granularity != "day":
+            raise HTTPException(status_code=400, detail="Only day granularity is currently supported")
         if not rbac.has_permission(current_user, "read", project_id, db):
             raise HTTPException(status_code=403, detail="Insufficient permissions")
         
-        # Default date range: last 30 days
-        if not end_date:
-            end_dt = datetime.utcnow()
-        else:
-            end_dt = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
+        try:
+            end_dt = datetime.fromisoformat(end_date.replace('Z', '+00:00')) if end_date else datetime.utcnow()
+            start_dt = datetime.fromisoformat(start_date.replace('Z', '+00:00')) if start_date else end_dt - timedelta(days=30)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="start_date and end_date must be valid ISO 8601 datetimes")
+
+        if start_dt > end_dt:
+            raise HTTPException(status_code=400, detail="start_date must be before or equal to end_date")
+        if (end_dt.date() - start_dt.date()).days > 366:
+            raise HTTPException(status_code=400, detail="Date range cannot exceed 366 days")
         
-        if not start_date:
-            start_dt = end_dt - timedelta(days=30)
-        else:
-            start_dt = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
-        
-        # Query test cases created (added)
         test_cases_added = db.query(
             func.date(TestCase.created_at).label('date'),
             func.count(TestCase.id).label('count')
-        ).filter(
+        ).join(TestSuite).filter(
+            TestSuite.project_id == project_id,
             TestCase.created_at >= start_dt,
-            TestCase.created_at <= end_dt
+            TestCase.created_at <= end_dt,
+            TestCase.is_deleted == False,
         ).group_by(func.date(TestCase.created_at)).all()
         
-        # Query test cases modified (updated)
         test_cases_modified = db.query(
             func.date(TestCase.updated_at).label('date'),
             func.count(TestCase.id).label('count')
-        ).filter(
+        ).join(TestSuite).filter(
+            TestSuite.project_id == project_id,
             TestCase.updated_at >= start_dt,
             TestCase.updated_at <= end_dt,
-            TestCase.updated_at.isnot(None)
+            TestCase.updated_at.isnot(None),
+            TestCase.is_deleted == False,
         ).group_by(func.date(TestCase.updated_at)).all()
         
-        # Query test executions
         test_executions = db.query(
             func.date(TestResult.executed_at).label('date'),
             func.count(TestResult.id).label('count')
-        ).filter(
+        ).join(TestRun).filter(
+            TestRun.project_id == project_id,
             TestResult.executed_at >= start_dt,
             TestResult.executed_at <= end_dt,
             TestResult.executed_at.isnot(None)
         ).group_by(func.date(TestResult.executed_at)).all()
         
-        # Convert to dict for easy lookup
         added_dict = {str(item.date): item.count for item in test_cases_added}
         modified_dict = {str(item.date): item.count for item in test_cases_modified}
         executed_dict = {str(item.date): item.count for item in test_executions}
         
-        # Generate date range
         activity_data = []
         current_date = start_dt.date()
         end_date_obj = end_dt.date()
-        
         while current_date <= end_date_obj:
             date_str = str(current_date)
             activity_data.append({
@@ -898,12 +829,21 @@ def register_analytics_dashboard_routes(app):
             })
             current_date += timedelta(days=1)
         
+        summary = {
+            'total_added': sum(item['added'] for item in activity_data),
+            'total_modified': sum(item['modified'] for item in activity_data),
+            'total_executed': sum(item['executed'] for item in activity_data),
+            'total_deleted': sum(item['deleted'] for item in activity_data),
+        }
+
         return {
             'project_id': project_id,
             'start_date': start_dt.isoformat(),
             'end_date': end_dt.isoformat(),
             'granularity': granularity,
-            'activity_data': activity_data
+            'activity_data': activity_data,
+            'activity': activity_data,
+            'summary': summary,
         }
 
     @app.delete("/analytics/dashboard-widgets/{widget_id}")

@@ -1574,11 +1574,11 @@ def get_test_step_results_by_test_result(db: Session, test_result_id: int):
 
 
 # Shareable Reports CRUD
-def create_shareable_report(db: Session, report: ShareableReportCreate):
+def create_shareable_report(db: Session, report: ShareableReportCreate, created_by: int):
     import secrets
     share_token = secrets.token_urlsafe(32)
     
-    db_report = ShareableReport(**report.model_dump(), share_token=share_token)
+    db_report = ShareableReport(**report.model_dump(), share_token=share_token, created_by=created_by)
     db.add(db_report)
     safe_commit(db)
     db.refresh(db_report)
@@ -1682,101 +1682,98 @@ def delete_dashboard_widget(db: Session, widget_id: int):
 
 
 # Analytics aggregation functions
+def _normalized_result_status(status: str) -> str:
+    status_map = {
+        "pass": "passed",
+        "passed": "passed",
+        "fail": "failed",
+        "failed": "failed",
+        "block": "blocked",
+        "blocked": "blocked",
+        "skip": "skipped",
+        "skipped": "skipped",
+        "not_tested": "not_tested",
+    }
+    return status_map.get((status or "").lower(), (status or "").lower())
+
+
 def calculate_project_kpis(db: Session, project_id: int, time_period: str = "7d"):
     from datetime import datetime, timedelta
-    import sqlalchemy as sa
-    from .models import TestRun, TestResult, TestCase, Project
+    from .models import Defect, TestRun, TestResult, TestCase, TestSuite
+    from sqlalchemy import func
     
-    # Calculate time period start date
     time_mapping = {"24h": 1, "7d": 7, "30d": 30, "90d": 90}
     days = time_mapping.get(time_period, 7)
-    start_date = datetime.now() - timedelta(days=days)
+    current_start_date = datetime.now() - timedelta(days=days)
+    previous_start_date = current_start_date - timedelta(days=days)
     
-    # Get total test cases for project
-    total_test_cases = db.query(TestCase).filter(TestCase.project_id == project_id).count()
+    total_test_cases = db.query(TestCase).join(TestSuite).filter(
+        TestSuite.project_id == project_id,
+        TestCase.is_deleted == False,
+    ).count()
     
-    # Get test runs within time period
-    test_runs = db.query(TestRun).filter(
+    current_results = db.query(TestResult).join(TestRun).filter(
         TestRun.project_id == project_id,
-        TestRun.created_at >= start_date
+        TestResult.executed_at >= current_start_date,
     ).all()
-    
-    # Get test results within time period
-    test_results = db.query(TestResult).join(TestRun).filter(
-        TestRun.project_id == project_id,
-        TestResult.executed_at >= start_date
-    ).all()
-    
-    # Calculate basic metrics
-    total_tests = len(test_results)
-    passed_tests = len([r for r in test_results if r.status == 'passed'])
-    failed_tests = len([r for r in test_results if r.status == 'failed'])
-    blocked_tests = len([r for r in test_results if r.status == 'blocked'])
-    
-    # Calculate pass rate
-    pass_rate = (passed_tests / total_tests * 100) if total_tests > 0 else 0
-    
-    # Calculate test coverage (test cases that have been executed)
-    executed_test_cases = len(set([r.test_case_id for r in test_results]))
-    coverage = (executed_test_cases / total_test_cases * 100) if total_test_cases > 0 else 0
-    
-    # Calculate average execution time (from test results with duration)
-    test_results_with_duration = [r for r in test_results if hasattr(r, 'duration') and r.duration]
-    avg_execution_time = sum([r.duration for r in test_results_with_duration]) / len(test_results_with_duration) if test_results_with_duration else 0
-    
-    # Calculate cycle time (average time from test run creation to completion)
-    completed_runs = [run for run in test_runs if run.status == 'completed']
-    cycle_times = []
-    for run in completed_runs:
-        if hasattr(run, 'completed_at') and run.completed_at:
-            duration = (run.completed_at - run.created_at).total_seconds() / 3600  # hours
-            cycle_times.append(duration)
-    
-    cycle_time = sum(cycle_times) / len(cycle_times) if cycle_times else 0
-    
-    # Calculate flakiness (tests that have both passed and failed results)
-    test_case_results = {}
-    for result in test_results:
-        if result.test_case_id not in test_case_results:
-            test_case_results[result.test_case_id] = set()
-        test_case_results[result.test_case_id].add(result.status)
-    
-    flaky_tests = len([tc_id for tc_id, statuses in test_case_results.items() 
-                       if len(statuses) > 1 and ('passed' in statuses and 'failed' in statuses)])
-    flakiness = (flaky_tests / len(test_case_results) * 100) if test_case_results else 0
-    
-    # Calculate failure trends (compare with previous period)
-    previous_start_date = start_date - timedelta(days=days)
     previous_results = db.query(TestResult).join(TestRun).filter(
         TestRun.project_id == project_id,
         TestResult.executed_at >= previous_start_date,
-        TestResult.executed_at < start_date
+        TestResult.executed_at < current_start_date,
     ).all()
     
-    previous_failed = len([r for r in previous_results if r.status == 'failed'])
-    current_failed = failed_tests
-    failure_trend = ((current_failed - previous_failed) / len(previous_results) * 100) if previous_results else 0
+    current_statuses = [_normalized_result_status(result.status) for result in current_results]
+    previous_statuses = [_normalized_result_status(result.status) for result in previous_results]
+    executed_statuses = {"passed", "failed", "blocked", "skipped"}
+    executed_results = [result for result in current_results if _normalized_result_status(result.status) in executed_statuses]
     
-    # Calculate defect density (defects per test case)
-    from .models import Defect
+    total_tests = len(executed_results)
+    passed_tests = current_statuses.count("passed")
+    failed_tests = current_statuses.count("failed")
+    blocked_tests = current_statuses.count("blocked")
+    skipped_tests = current_statuses.count("skipped")
+    pass_rate = (passed_tests / total_tests * 100) if total_tests > 0 else 0
+    
+    executed_test_cases = len({result.test_case_id for result in executed_results})
+    coverage = (executed_test_cases / total_test_cases * 100) if total_test_cases > 0 else 0
+    
+    execution_times = [result.execution_time for result in executed_results if result.execution_time is not None]
+    avg_execution_time = (sum(execution_times) / len(execution_times) / 3600) if execution_times else 0
+    
+    completed_runs = db.query(TestRun).filter(
+        TestRun.project_id == project_id,
+        TestRun.status.in_(["completed", "passed", "failed"]),
+        TestRun.created_at >= current_start_date,
+        TestRun.completed_at.isnot(None),
+    ).all()
+    cycle_times = [
+        (run.completed_at - run.created_at).total_seconds() / 3600
+        for run in completed_runs
+        if run.created_at and run.completed_at
+    ]
+    cycle_time = sum(cycle_times) / len(cycle_times) if cycle_times else 0
+    
+    test_case_results = {}
+    for result in current_results:
+        normalized_status = _normalized_result_status(result.status)
+        if normalized_status in {"passed", "failed"}:
+            test_case_results.setdefault(result.test_case_id, set()).add(normalized_status)
+    flaky_tests = len([
+        test_case_id for test_case_id, statuses in test_case_results.items()
+        if {"passed", "failed"}.issubset(statuses)
+    ])
+    flakiness = (flaky_tests / len(test_case_results) * 100) if test_case_results else 0
+    
+    current_failure_rate = (failed_tests / total_tests * 100) if total_tests else 0
+    
     total_defects = db.query(Defect).filter(Defect.project_id == project_id).count()
     defect_density = (total_defects / total_test_cases) if total_test_cases > 0 else 0
-    
-    # Calculate previous period defect density for trend
-    previous_defects = db.query(Defect).filter(
-        Defect.project_id == project_id,
-        Defect.created_at >= previous_start_date,
-        Defect.created_at < start_date
-    ).count()
-    prev_defect_density = (previous_defects / total_test_cases) if total_test_cases > 0 else 0
-    
-    # Calculate productivity score (based on tests executed per day)
     productivity_score = min(100, (total_tests / days) * 10) if days > 0 else 0
     
     return {
         "coverage": round(coverage, 1),
         "pass_rate": round(pass_rate, 1),
-        "failure_trends": round(failure_trend, 1),
+        "failure_trends": round(current_failure_rate, 1),
         "flakiness": round(flakiness, 1),
         "cycle_time": round(cycle_time, 2),
         "defect_density": round(defect_density, 2),
@@ -1784,6 +1781,7 @@ def calculate_project_kpis(db: Session, project_id: int, time_period: str = "7d"
         "passed_tests": passed_tests,
         "failed_tests": failed_tests,
         "blocked_tests": blocked_tests,
+        "skipped_tests": skipped_tests,
         "avg_execution_time": round(avg_execution_time, 2),
         "productivity_score": round(productivity_score, 1)
     }
@@ -1792,7 +1790,7 @@ def calculate_project_kpis(db: Session, project_id: int, time_period: str = "7d"
 def generate_dashboard_analytics(db: Session, project_id: int, time_period: str = "7d"):
     from datetime import datetime, timedelta
     import sqlalchemy as sa
-    from .models import TestRun, TestResult, TestCase, User
+    from .models import TestRun, TestResult, TestCase, TestSuite
     
     # Get current KPI data
     kpis = calculate_project_kpis(db, project_id, time_period)
@@ -1814,13 +1812,14 @@ def generate_dashboard_analytics(db: Session, project_id: int, time_period: str 
     
     # Calculate previous period metrics
     prev_total_tests = len(previous_results)
-    prev_passed_tests = len([r for r in previous_results if r.status == 'passed'])
-    prev_failed_tests = len([r for r in previous_results if r.status == 'failed'])
+    prev_statuses = [_normalized_result_status(r.status) for r in previous_results]
+    prev_passed_tests = prev_statuses.count('passed')
+    prev_failed_tests = prev_statuses.count('failed')
     
     prev_pass_rate = (prev_passed_tests / prev_total_tests * 100) if prev_total_tests > 0 else 0
     
     # Calculate previous coverage
-    total_test_cases = db.query(TestCase).filter(TestCase.project_id == project_id).count()
+    total_test_cases = db.query(TestCase).join(TestSuite).filter(TestSuite.project_id == project_id, TestCase.is_deleted == False).count()
     prev_executed_test_cases = len(set([r.test_case_id for r in previous_results]))
     prev_coverage = (prev_executed_test_cases / total_test_cases * 100) if total_test_cases > 0 else 0
     
@@ -1829,14 +1828,13 @@ def generate_dashboard_analytics(db: Session, project_id: int, time_period: str 
     for result in previous_results:
         if result.test_case_id not in prev_test_case_results:
             prev_test_case_results[result.test_case_id] = set()
-        prev_test_case_results[result.test_case_id].add(result.status)
+        prev_test_case_results[result.test_case_id].add(_normalized_result_status(result.status))
     
     prev_flaky_tests = len([tc_id for tc_id, statuses in prev_test_case_results.items() 
                            if len(statuses) > 1 and ('passed' in statuses and 'failed' in statuses)])
     prev_flakiness = (prev_flaky_tests / len(prev_test_case_results) * 100) if prev_test_case_results else 0
     
-    # Previous failure trends (just use failed test count)
-    prev_failure_trends = prev_failed_tests
+    prev_failure_trends = (prev_failed_tests / prev_total_tests * 100) if prev_total_tests > 0 else 0
     
     # Previous cycle time
     prev_test_runs = db.query(TestRun).filter(
@@ -1897,14 +1895,22 @@ def generate_dashboard_analytics(db: Session, project_id: int, time_period: str 
     defects_found_today = db.query(TestResult).join(TestRun).filter(
         TestRun.project_id == project_id,
         TestResult.executed_at >= today_start,
-        TestResult.status == 'failed'
+        TestResult.status.in_(['fail', 'failed'])
     ).count()
     
-    # Get team performance data
-    active_testers = db.query(User).join(TestRun).filter(
+    # Get team performance data for the selected period. Prefer actual executors; fallback to assigned runs.
+    current_period_start = datetime.now() - timedelta(days=days)
+    active_testers = db.query(TestResult.executed_by).join(TestRun).filter(
         TestRun.project_id == project_id,
-        TestRun.created_at >= today_start
+        TestResult.executed_at >= current_period_start,
+        TestResult.executed_by.isnot(None)
     ).distinct().count()
+    if active_testers == 0:
+        active_testers = db.query(TestRun.assigned_to).filter(
+            TestRun.project_id == project_id,
+            TestRun.created_at >= current_period_start,
+            TestRun.assigned_to.isnot(None)
+        ).distinct().count()
     
     # Get upcoming items
     scheduled_runs = db.query(TestRun).filter(

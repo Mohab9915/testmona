@@ -81,7 +81,172 @@
       ]
     },
     {
-      "name": "Dashboard Analytics",
+      "name": "Dashboard Analytics (POST)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"project_id\": {{testProjectId}},\n  \"time_period\": \"7d\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/analytics/dashboard",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "analytics",
+            "dashboard"
+          ]
+        },
+        "description": "Get dashboard KPI cards and summary analytics for a project."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "pm.test(\"Response is JSON\", function () {",
+              "    pm.response.to.be.json;",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Dashboard Analytics (Reports GET)",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/analytics/dashboard/analytics?project_id={{testProjectId}}&time_range=7d",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "analytics",
+            "dashboard",
+            "analytics"
+          ],
+          "query": [
+            {
+              "key": "project_id",
+              "value": "{{testProjectId}}"
+            },
+            {
+              "key": "time_range",
+              "value": "7d"
+            }
+          ]
+        },
+        "description": "Endpoint used by the reports page dashboard tab."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "pm.test(\"Response is JSON\", function () {",
+              "    pm.response.to.be.json;",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Traceability Matrix",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/analytics/traceability-matrix?project_id={{testProjectId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "analytics",
+            "traceability-matrix"
+          ],
+          "query": [
+            {
+              "key": "project_id",
+              "value": "{{testProjectId}}"
+            }
+          ]
+        },
+        "description": "Get requirement-to-test-case traceability data shaped for the reports page."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "pm.test(\"Response is JSON\", function () {",
+              "    pm.response.to.be.json;",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Coverage Reports",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/analytics/coverage-reports?project_id={{testProjectId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "analytics",
+            "coverage-reports"
+          ],
+          "query": [
+            {
+              "key": "project_id",
+              "value": "{{testProjectId}}"
+            }
+          ]
+        },
+        "description": "Get the current dynamic coverage report for a project."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "pm.test(\"Response is JSON\", function () {",
+              "    pm.response.to.be.json;",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Generate Coverage Report",
       "request": {
         "method": "POST",
         "header": [
@@ -95,16 +260,17 @@
           "raw": "{\n  \"project_id\": {{testProjectId}}\n}"
         },
         "url": {
-          "raw": "{{baseUrl}}/analytics/dashboard",
+          "raw": "{{baseUrl}}/analytics/coverage-reports/generate",
           "host": [
             "{{baseUrl}}"
           ],
           "path": [
             "analytics",
-            "dashboard"
+            "coverage-reports",
+            "generate"
           ]
         },
-        "description": "Get dashboard analytics for a project"
+        "description": "Generate a fresh coverage report payload."
       },
       "event": [
         {
@@ -114,10 +280,8 @@
               "pm.test(\"Status code is 200\", function () {",
               "    pm.response.to.have.status(200);",
               "});",
-              "",
-              "pm.test(\"Response has analytics data\", function () {",
-              "    var jsonData = pm.response.json();",
-              "    pm.expect(jsonData).to.be.an('object');",
+              "pm.test(\"Response is JSON\", function () {",
+              "    pm.response.to.be.json;",
               "});"
             ],
             "type": "text/javascript"
@@ -126,17 +290,17 @@
       ]
     },
     {
-      "name": "Test Coverage",
+      "name": "Test Execution Status",
       "request": {
         "method": "GET",
         "url": {
-          "raw": "{{baseUrl}}/analytics/coverage?project_id={{testProjectId}}",
+          "raw": "{{baseUrl}}/analytics/test-execution-status?project_id={{testProjectId}}",
           "host": [
             "{{baseUrl}}"
           ],
           "path": [
             "analytics",
-            "coverage"
+            "test-execution-status"
           ],
           "query": [
             {
@@ -145,27 +309,19 @@
             }
           ]
         },
-        "description": "Get test coverage metrics"
+        "description": "Get status counts and percentages for latest test results in a project."
       },
       "event": [
         {
           "listen": "test",
           "script": {
             "exec": [
-              "pm.test(\"Status code is 200 or 404\", function () {",
-              "    pm.expect([200, 404]).to.include(pm.response.code);",
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
               "});",
-              "",
-              "if (pm.response.code === 200) {",
-              "    pm.test(\"Response has coverage data\", function () {",
-              "        var jsonData = pm.response.json();",
-              "        pm.expect(jsonData).to.have.property('coverage');",
-              "    });",
-              "} else {",
-              "    pm.test(\"Coverage endpoint not found - test skipped\", function () {",
-              "        console.log(\"Coverage endpoint not implemented\");",
-              "    });",
-              "}"
+              "pm.test(\"Response is JSON\", function () {",
+              "    pm.response.to.be.json;",
+              "});"
             ],
             "type": "text/javascript"
           }
@@ -173,17 +329,17 @@
       ]
     },
     {
-      "name": "Execution Trends",
+      "name": "Test Activity",
       "request": {
         "method": "GET",
         "url": {
-          "raw": "{{baseUrl}}/analytics/trends?project_id={{testProjectId}}&days=30",
+          "raw": "{{baseUrl}}/analytics/test-activity?project_id={{testProjectId}}&granularity=day",
           "host": [
             "{{baseUrl}}"
           ],
           "path": [
             "analytics",
-            "trends"
+            "test-activity"
           ],
           "query": [
             {
@@ -191,32 +347,140 @@
               "value": "{{testProjectId}}"
             },
             {
-              "key": "days",
-              "value": "30"
+              "key": "granularity",
+              "value": "day"
             }
           ]
         },
-        "description": "Get execution trends over time"
+        "description": "Get project-scoped daily test case activity."
       },
       "event": [
         {
           "listen": "test",
           "script": {
             "exec": [
-              "pm.test(\"Status code is 200 or 404\", function () {",
-              "    pm.expect([200, 404]).to.include(pm.response.code);",
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
               "});",
-              "",
-              "if (pm.response.code === 200) {",
-              "    pm.test(\"Response has trend data\", function () {",
-              "        var jsonData = pm.response.json();",
-              "        pm.expect(jsonData).to.have.property('trends');",
-              "    });",
-              "} else {",
-              "    pm.test(\"Trends endpoint not found - test skipped\", function () {",
-              "        console.log(\"Trends endpoint not implemented\");",
-              "    });",
-              "}"
+              "pm.test(\"Response is JSON\", function () {",
+              "    pm.response.to.be.json;",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Root Cause Analyses",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/analytics/root-cause-analyses?project_id={{testProjectId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "analytics",
+            "root-cause-analyses"
+          ],
+          "query": [
+            {
+              "key": "project_id",
+              "value": "{{testProjectId}}"
+            }
+          ]
+        },
+        "description": "Get root cause analyses for a project."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "pm.test(\"Response is JSON\", function () {",
+              "    pm.response.to.be.json;",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Create Shareable Report",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"project_id\": {{testProjectId}},\n  \"title\": \"Executive QA Report\",\n  \"report_type\": \"executive\",\n  \"shared_with\": [\n    \"demo@testmona.com\"\n  ],\n  \"access_level\": \"read-only\",\n  \"expires_in_days\": 30\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/analytics/shareable-reports",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "analytics",
+            "shareable-reports"
+          ]
+        },
+        "description": "Create a shareable report with validation and creator attribution."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "pm.test(\"Response is JSON\", function () {",
+              "    pm.response.to.be.json;",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "List Shareable Reports",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/analytics/shareable-reports/{{testProjectId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "analytics",
+            "shareable-reports",
+            "{{testProjectId}}"
+          ]
+        },
+        "description": "List active shareable reports for a project."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "pm.test(\"Response is JSON\", function () {",
+              "    pm.response.to.be.json;",
+              "});"
             ],
             "type": "text/javascript"
           }

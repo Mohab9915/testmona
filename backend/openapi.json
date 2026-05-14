@@ -8878,77 +8878,6 @@
         }
       }
     },
-    "/analytics/test-activity": {
-      "get": {
-        "summary": "Get Test Activity",
-        "description": "Get test case activity over time (added, modified, executed, deleted)",
-        "operationId": "get_test_activity_analytics_test_activity_get",
-        "security": [
-          {
-            "OAuth2PasswordBearer": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "project_id",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "title": "Project Id"
-            }
-          },
-          {
-            "name": "start_date",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "title": "Start Date"
-            }
-          },
-          {
-            "name": "end_date",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "title": "End Date"
-            }
-          },
-          {
-            "name": "granularity",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "default": "day",
-              "title": "Granularity"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/user/preferences/items-per-page": {
       "get": {
         "summary": "Get Items Per Page Preference",
@@ -11206,7 +11135,7 @@
     "/test-execution-status": {
       "get": {
         "summary": "Get Test Execution Status",
-        "description": "Get detailed test execution status for a project",
+        "description": "Get detailed test execution status for a project.",
         "operationId": "get_test_execution_status_test_execution_status_get",
         "security": [
           {
@@ -11856,6 +11785,48 @@
         }
       }
     },
+    "/analytics/shareable-reports/{report_id}/download": {
+      "get": {
+        "summary": "Download Shareable Report",
+        "operationId": "download_shareable_report_analytics_shareable_reports__report_id__download_get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "report_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Report Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/analytics/shareable-reports/{report_id}": {
       "put": {
         "summary": "Update Shareable Report Endpoint",
@@ -12258,6 +12229,77 @@
             "schema": {
               "type": "integer",
               "title": "Widget Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/analytics/test-activity": {
+      "get": {
+        "summary": "Get Test Activity",
+        "description": "Get project-scoped test case activity over time.",
+        "operationId": "get_test_activity_analytics_test_activity_get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "start_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "title": "Start Date"
+            }
+          },
+          {
+            "name": "end_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "title": "End Date"
+            }
+          },
+          {
+            "name": "granularity",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "day",
+              "title": "Granularity"
             }
           }
         ],
@@ -12834,7 +12876,7 @@
     "/analytics/traceability-matrix": {
       "get": {
         "summary": "Get Traceability Matrix Get",
-        "description": "Get traceability matrix for a project",
+        "description": "Get a detailed traceability matrix for the reports page.",
         "operationId": "get_traceability_matrix_get_analytics_traceability_matrix_get",
         "security": [
           {
@@ -12877,7 +12919,7 @@
     "/analytics/coverage-reports": {
       "get": {
         "summary": "Get Coverage Reports Get",
-        "description": "Get coverage reports for a project",
+        "description": "Get the current dynamically generated coverage report for a project.",
         "operationId": "get_coverage_reports_get_analytics_coverage_reports_get",
         "security": [
           {
@@ -12920,7 +12962,7 @@
     "/analytics/coverage-reports/generate": {
       "post": {
         "summary": "Generate Coverage Report Post",
-        "description": "Generate a new coverage report",
+        "description": "Generate a fresh coverage report payload for the reports page.",
         "operationId": "generate_coverage_report_post_analytics_coverage_reports_generate_post",
         "requestBody": {
           "content": {
@@ -12963,7 +13005,7 @@
     "/analytics/test-execution-status": {
       "get": {
         "summary": "Get Test Execution Status Get",
-        "description": "Get test execution status for a project",
+        "description": "Get test execution status for a project.",
         "operationId": "get_test_execution_status_get_analytics_test_execution_status_get",
         "security": [
           {

@@ -15,6 +15,98 @@ from ..auth import get_current_active_user
 def register_remaining_routes(app):
     """Register remaining routes with the FastAPI app."""
     
+    def normalize_result_status(status: str) -> str:
+        status_map = {
+            "pass": "passed",
+            "passed": "passed",
+            "fail": "failed",
+            "failed": "failed",
+            "block": "blocked",
+            "blocked": "blocked",
+            "skip": "skipped",
+            "skipped": "skipped",
+            "not_tested": "not_tested",
+        }
+        return status_map.get((status or "").lower(), (status or "").lower())
+
+    def enum_value(value):
+        return getattr(value, "value", value)
+
+    def build_coverage_report(db: Session, project_id: int, generated: bool = False):
+        from ..models import TestCase, TestSuite, TestResult, TestRun, Requirement, TraceabilityMatrix, PriorityDefinition
+
+        test_suite_ids = [row.id for row in db.query(TestSuite.id).filter(TestSuite.project_id == project_id).all()]
+        test_cases_query = db.query(TestCase).filter(TestCase.test_suite_id.in_(test_suite_ids), TestCase.is_deleted == False)
+        test_cases = test_cases_query.all() if test_suite_ids else []
+        test_case_ids = [test_case.id for test_case in test_cases]
+        total_test_cases = len(test_cases)
+
+        test_run_ids = [row.id for row in db.query(TestRun.id).filter(TestRun.project_id == project_id).all()]
+        test_results = db.query(TestResult).filter(TestResult.test_run_id.in_(test_run_ids)).all() if test_run_ids else []
+        latest_by_test_case = {}
+        for result in test_results:
+            current = latest_by_test_case.get(result.test_case_id)
+            if current is None or (result.executed_at and current.executed_at and result.executed_at > current.executed_at):
+                latest_by_test_case[result.test_case_id] = result
+            elif current is None or (result.executed_at and not current.executed_at):
+                latest_by_test_case[result.test_case_id] = result
+
+        normalized_statuses = [normalize_result_status(result.status) for result in latest_by_test_case.values()]
+        executed_statuses = {"passed", "failed", "blocked", "skipped"}
+        executed_test_cases = len([status for status in normalized_statuses if status in executed_statuses])
+        passed_test_cases = normalized_statuses.count("passed")
+        failed_test_cases = normalized_statuses.count("failed")
+        blocked_test_cases = normalized_statuses.count("blocked")
+        skipped_test_cases = normalized_statuses.count("skipped")
+        not_tested_cases = max(total_test_cases - executed_test_cases, 0)
+
+        requirements = db.query(Requirement).filter(Requirement.project_id == project_id).all()
+        total_requirements = len(requirements)
+        requirement_ids = [requirement.id for requirement in requirements]
+        traceability_entries = []
+        if requirement_ids and test_case_ids:
+            traceability_entries = db.query(TraceabilityMatrix).filter(
+                TraceabilityMatrix.requirement_id.in_(requirement_ids),
+                TraceabilityMatrix.test_case_id.in_(test_case_ids),
+            ).all()
+        covered_requirements = len({entry.requirement_id for entry in traceability_entries})
+        coverage_percentage = (covered_requirements / total_requirements * 100) if total_requirements else 0
+
+        priority_definitions = db.query(PriorityDefinition).filter(PriorityDefinition.is_active == True).order_by(PriorityDefinition.value.desc()).all()
+        priority_names = [priority.name.lower() for priority in priority_definitions] or ["critical", "high", "medium", "low"]
+        priority_coverage = {priority_name: 0 for priority_name in priority_names}
+        linked_requirement_ids = {entry.requirement_id for entry in traceability_entries}
+        for priority_name in priority_names:
+            priority_requirements = [
+                requirement for requirement in requirements
+                if str(enum_value(requirement.priority) or "").lower() == priority_name
+            ]
+            if priority_requirements:
+                covered_priority = len([requirement for requirement in priority_requirements if requirement.id in linked_requirement_ids])
+                priority_coverage[priority_name] = round((covered_priority / len(priority_requirements)) * 100, 2)
+
+        return {
+            "id": f"COV-{datetime.now().strftime('%Y%m%d%H%M%S')}" if generated else "COV-DYNAMIC",
+            "title": f"Coverage Report - {datetime.now().strftime('%Y-%m-%d')}" if generated else "Current Coverage Report",
+            "generated_at": datetime.now().isoformat(),
+            "coverage_percentage": round(coverage_percentage, 2),
+            "total_requirements": total_requirements,
+            "covered_requirements": covered_requirements,
+            "test_cases_count": total_test_cases,
+            "executed_tests": executed_test_cases,
+            "report_data": {
+                "by_priority": priority_coverage,
+                "by_status": {
+                    "passed": round((passed_test_cases / executed_test_cases * 100) if executed_test_cases else 0, 2),
+                    "failed": round((failed_test_cases / executed_test_cases * 100) if executed_test_cases else 0, 2),
+                    "blocked": round((blocked_test_cases / executed_test_cases * 100) if executed_test_cases else 0, 2),
+                    "skipped": round((skipped_test_cases / executed_test_cases * 100) if executed_test_cases else 0, 2),
+                    "not_tested": round((not_tested_cases / total_test_cases * 100) if total_test_cases else 0, 2),
+                },
+            },
+        }
+
+    
     # Execution Environment Endpoints
     @app.get("/execution-environments/", response_model=List[schemas.ExecutionEnvironment])
     def get_execution_environments(
@@ -241,6 +333,8 @@ def register_remaining_routes(app):
         current_user: schemas.User = Depends(get_current_active_user)
     ):
         """Get dashboard analytics for a project with time range filtering"""
+        if time_range not in {"24h", "7d", "30d", "90d"}:
+            raise HTTPException(status_code=400, detail="time_range must be one of 24h, 7d, 30d, or 90d")
         if not rbac.has_permission(current_user, "read", project_id, db):
             raise HTTPException(status_code=403, detail="Insufficient permissions")
         
@@ -299,62 +393,79 @@ def register_remaining_routes(app):
         db: Session = Depends(get_db),
         current_user: schemas.User = Depends(get_current_active_user)
     ):
-        """Get traceability matrix for a project"""
+        """Get a detailed traceability matrix for the reports page."""
         if not rbac.has_permission(current_user, "read", project_id, db):
             raise HTTPException(status_code=403, detail="Insufficient permissions")
-        
-        # Use real traceability data from CRUD
-        from ..models import Requirement, TestCase, TraceabilityMatrix, TestSuite
-        
-        # Get all requirements for the project
+
+        from ..models import Requirement, TestCase, TestResult, TestSuite, TraceabilityMatrix
+
         requirements = db.query(Requirement).filter(Requirement.project_id == project_id).all()
-        total_requirements = len(requirements)
-        
-        # Get all test cases for the project (through test suites)
-        test_suite_ids = db.query(TestSuite.id).filter(TestSuite.project_id == project_id).all()
-        test_suite_id_list = [ts.id for ts in test_suite_ids]
-        test_cases = db.query(TestCase).filter(TestCase.test_suite_id.in_(test_suite_id_list)).all()
-        total_test_cases = len(test_cases)
-        
-        # Get traceability matrix entries filtered by project's requirements and test cases
-        requirement_ids = [req.id for req in requirements]
-        test_case_ids = [tc.id for tc in test_cases]
-        
-        if requirement_ids and test_case_ids:
+        requirement_ids = [requirement.id for requirement in requirements]
+        test_suite_ids = [row.id for row in db.query(TestSuite.id).filter(TestSuite.project_id == project_id).all()]
+        project_test_case_ids = [
+            row.id for row in db.query(TestCase.id).filter(
+                TestCase.test_suite_id.in_(test_suite_ids),
+                TestCase.is_deleted == False,
+            ).all()
+        ] if test_suite_ids else []
+
+        traceability_entries = []
+        if requirement_ids and project_test_case_ids:
             traceability_entries = db.query(TraceabilityMatrix).filter(
                 TraceabilityMatrix.requirement_id.in_(requirement_ids),
-                TraceabilityMatrix.test_case_id.in_(test_case_ids)
+                TraceabilityMatrix.test_case_id.in_(project_test_case_ids),
             ).all()
-        else:
-            traceability_entries = []
-        
-        requirements_covered = len(set([entry.requirement_id for entry in traceability_entries]))
-        test_cases_linked = len(set([entry.test_case_id for entry in traceability_entries]))
-        
-        coverage_percentage = (requirements_covered / total_requirements * 100) if total_requirements > 0 else 0
-        
-        # Find uncovered requirements
-        covered_requirement_ids = set([entry.requirement_id for entry in traceability_entries])
-        gaps = []
-        for req in requirements:
-            if req.id not in covered_requirement_ids:
-                gaps.append({
-                    "requirement_id": req.requirement_id or f"REQ-{req.id}",
-                    "requirement_name": req.title,
-                    "status": "uncovered",
-                    "suggested_test_cases": []
+
+        entries_by_requirement = {}
+        for entry in traceability_entries:
+            entries_by_requirement.setdefault(entry.requirement_id, []).append(entry)
+
+        detailed_requirements = []
+        covered_requirements = 0
+        for requirement in requirements:
+            entries = entries_by_requirement.get(requirement.id, [])
+            if entries:
+                covered_requirements += 1
+
+            test_cases = []
+            for entry in entries:
+                test_case = entry.test_case
+                latest_result = db.query(TestResult).filter(
+                    TestResult.test_case_id == test_case.id
+                ).order_by(TestResult.executed_at.desc()).first()
+                status = normalize_result_status(latest_result.status) if latest_result else "not_tested"
+                test_cases.append({
+                    "id": test_case.id,
+                    "title": test_case.title,
+                    "status": status,
+                    "coverage_type": entry.coverage_type or "functional",
+                    "coverage_percentage": entry.coverage_percentage or 0,
+                    "last_executed": latest_result.executed_at.isoformat() if latest_result and latest_result.executed_at else None,
                 })
-        
+
+            detailed_requirements.append({
+                "requirement_id": requirement.id,
+                "requirement_key": requirement.requirement_id,
+                "requirement_title": requirement.title,
+                "requirement_status": enum_value(requirement.status),
+                "requirement_priority": enum_value(requirement.priority),
+                "total_test_cases": len(test_cases),
+                "passed_count": len([test_case for test_case in test_cases if test_case["status"] == "passed"]),
+                "failed_count": len([test_case for test_case in test_cases if test_case["status"] == "failed"]),
+                "blocked_count": len([test_case for test_case in test_cases if test_case["status"] == "blocked"]),
+                "skipped_count": len([test_case for test_case in test_cases if test_case["status"] == "skipped"]),
+                "not_tested_count": len([test_case for test_case in test_cases if test_case["status"] == "not_tested"]),
+                "test_cases": test_cases,
+            })
+
+        total_requirements = len(requirements)
         return {
             "project_id": project_id,
-            "matrix": {
-                "requirements_covered": requirements_covered,
-                "total_requirements": total_requirements,
-                "test_cases_linked": test_cases_linked,
-                "total_test_cases": total_test_cases,
-                "coverage_percentage": round(coverage_percentage, 2)
-            },
-            "gaps": gaps
+            "total_requirements": total_requirements,
+            "covered_requirements": covered_requirements,
+            "uncovered_requirements": max(total_requirements - covered_requirements, 0),
+            "coverage_percentage": round((covered_requirements / total_requirements * 100) if total_requirements else 0, 2),
+            "requirements": detailed_requirements,
         }
 
     @app.get("/analytics/coverage-reports")
@@ -363,95 +474,10 @@ def register_remaining_routes(app):
         db: Session = Depends(get_db),
         current_user: schemas.User = Depends(get_current_active_user)
     ):
-        """Get coverage reports for a project"""
+        """Get the current dynamically generated coverage report for a project."""
         if not rbac.has_permission(current_user, "read", project_id, db):
             raise HTTPException(status_code=403, detail="Insufficient permissions")
-        
-        # Generate coverage report dynamically from test data
-        from ..models import TestCase, TestSuite, TestResult, TestRun, Requirement, TraceabilityMatrix, PriorityDefinition
-        
-        # Get all test cases for the project
-        test_suite_ids = db.query(TestSuite.id).filter(TestSuite.project_id == project_id).all()
-        test_suite_id_list = [ts.id for ts in test_suite_ids]
-        total_test_cases = db.query(TestCase).filter(TestCase.test_suite_id.in_(test_suite_id_list)).count()
-        
-        # Get test results for executed tests
-        test_run_ids = db.query(TestRun.id).filter(TestRun.project_id == project_id).all()
-        test_run_id_list = [tr.id for tr in test_run_ids]
-        test_results = db.query(TestResult).filter(TestResult.test_run_id.in_(test_run_id_list)).all()
-        
-        executed_test_cases = len(set([r.test_case_id for r in test_results]))
-        passed_test_cases = len([r for r in test_results if r.status == 'passed'])
-        failed_test_cases = len([r for r in test_results if r.status == 'failed'])
-        blocked_test_cases = len([r for r in test_results if r.status == 'blocked'])
-        
-        # Get requirements and coverage
-        requirements = db.query(Requirement).filter(Requirement.project_id == project_id).all()
-        total_requirements = len(requirements)
-        
-        # Get traceability entries
-        requirement_ids = [req.id for req in requirements]
-        test_case_ids = [tc.id for tc in db.query(TestCase).filter(TestCase.test_suite_id.in_(test_suite_id_list)).all()]
-        
-        if requirement_ids and test_case_ids:
-            traceability_entries = db.query(TraceabilityMatrix).filter(
-                TraceabilityMatrix.requirement_id.in_(requirement_ids),
-                TraceabilityMatrix.test_case_id.in_(test_case_ids)
-            ).all()
-            covered_requirements = len(set([entry.requirement_id for entry in traceability_entries]))
-        else:
-            covered_requirements = 0
-        
-        coverage_percentage = (covered_requirements / total_requirements * 100) if total_requirements > 0 else 0
-        
-        # Calculate priority-wise coverage using dynamic priorities from PriorityDefinition
-        priority_definitions = db.query(PriorityDefinition).filter(PriorityDefinition.is_active == True).order_by(PriorityDefinition.value.desc()).all()
-        
-        priority_coverage = {}
-        for priority_def in priority_definitions:
-            priority_name = priority_def.name.lower()
-            priority_coverage[priority_name] = 0
-        
-        for priority_def in priority_definitions:
-            priority_name = priority_def.name.lower()
-            # Match requirements by priority name (case-insensitive)
-            reqs_with_priority = [req for req in requirements if req.priority and req.priority.value.lower() == priority_name]
-            total_reqs_priority = len(reqs_with_priority)
-            
-            if total_reqs_priority > 0:
-                req_ids_priority = [req.id for req in reqs_with_priority]
-                if req_ids_priority and test_case_ids:
-                    traceability_priority = db.query(TraceabilityMatrix).filter(
-                        TraceabilityMatrix.requirement_id.in_(req_ids_priority),
-                        TraceabilityMatrix.test_case_id.in_(test_case_ids)
-                    ).all()
-                    covered_priority = len(set([entry.requirement_id for entry in traceability_priority]))
-                    priority_coverage[priority_name] = round((covered_priority / total_reqs_priority) * 100, 2)
-                else:
-                    priority_coverage[priority_name] = 0
-        
-        # Return a single dynamically generated coverage report
-        return [
-            {
-                "id": "COV-DYNAMIC",
-                "title": "Current Coverage Report",
-                "generated_at": datetime.now().isoformat(),
-                "coverage_percentage": round(coverage_percentage, 2),
-                "total_requirements": total_requirements,
-                "covered_requirements": covered_requirements,
-                "test_cases_count": total_test_cases,
-                "executed_tests": executed_test_cases,
-                "report_data": {
-                    "by_priority": priority_coverage,
-                    "by_status": {
-                        "passed": round((passed_test_cases / executed_test_cases * 100) if executed_test_cases > 0 else 0, 2),
-                        "failed": round((failed_test_cases / executed_test_cases * 100) if executed_test_cases > 0 else 0, 2),
-                        "blocked": round((blocked_test_cases / executed_test_cases * 100) if executed_test_cases > 0 else 0, 2),
-                        "not_executed": round(((total_test_cases - executed_test_cases) / total_test_cases * 100) if total_test_cases > 0 else 0, 2)
-                    }
-                }
-            }
-        ]
+        return [build_coverage_report(db, project_id)]
 
     @app.post("/analytics/coverage-reports/generate")
     def generate_coverage_report_post(
@@ -459,94 +485,13 @@ def register_remaining_routes(app):
         db: Session = Depends(get_db),
         current_user: schemas.User = Depends(get_current_active_user)
     ):
-        """Generate a new coverage report"""
+        """Generate a fresh coverage report payload for the reports page."""
         project_id = request.get("project_id")
+        if not isinstance(project_id, int) or project_id <= 0:
+            raise HTTPException(status_code=400, detail="project_id must be a positive integer")
         if not rbac.has_permission(current_user, "read", project_id, db):
             raise HTTPException(status_code=403, detail="Insufficient permissions")
-        
-        # Calculate actual coverage metrics
-        from ..models import TestCase, TestSuite, TestResult, TestRun, Requirement, TraceabilityMatrix, PriorityDefinition
-        
-        # Get all test cases for the project
-        test_suite_ids = db.query(TestSuite.id).filter(TestSuite.project_id == project_id).all()
-        test_suite_id_list = [ts.id for ts in test_suite_ids]
-        total_test_cases = db.query(TestCase).filter(TestCase.test_suite_id.in_(test_suite_id_list)).count()
-        
-        # Get test results for executed tests
-        test_run_ids = db.query(TestRun.id).filter(TestRun.project_id == project_id).all()
-        test_run_id_list = [tr.id for tr in test_run_ids]
-        test_results = db.query(TestResult).filter(TestResult.test_run_id.in_(test_run_id_list)).all()
-        
-        executed_test_cases = len(set([r.test_case_id for r in test_results]))
-        passed_test_cases = len([r for r in test_results if r.status == 'passed'])
-        failed_test_cases = len([r for r in test_results if r.status == 'failed'])
-        blocked_test_cases = len([r for r in test_results if r.status == 'blocked'])
-        
-        # Get requirements and coverage
-        requirements = db.query(Requirement).filter(Requirement.project_id == project_id).all()
-        total_requirements = len(requirements)
-        
-        # Get traceability entries
-        requirement_ids = [req.id for req in requirements]
-        test_case_ids = [tc.id for tc in db.query(TestCase).filter(TestCase.test_suite_id.in_(test_suite_id_list)).all()]
-        
-        if requirement_ids and test_case_ids:
-            traceability_entries = db.query(TraceabilityMatrix).filter(
-                TraceabilityMatrix.requirement_id.in_(requirement_ids),
-                TraceabilityMatrix.test_case_id.in_(test_case_ids)
-            ).all()
-            covered_requirements = len(set([entry.requirement_id for entry in traceability_entries]))
-        else:
-            covered_requirements = 0
-        
-        coverage_percentage = (covered_requirements / total_requirements * 100) if total_requirements > 0 else 0
-        
-        # Calculate priority-wise coverage using dynamic priorities from PriorityDefinition
-        priority_definitions = db.query(PriorityDefinition).filter(PriorityDefinition.is_active == True).order_by(PriorityDefinition.value.desc()).all()
-        
-        priority_coverage = {}
-        for priority_def in priority_definitions:
-            priority_name = priority_def.name.lower()
-            priority_coverage[priority_name] = 0
-        
-        for priority_def in priority_definitions:
-            priority_name = priority_def.name.lower()
-            # Match requirements by priority name (case-insensitive)
-            reqs_with_priority = [req for req in requirements if req.priority and req.priority.value.lower() == priority_name]
-            total_reqs_priority = len(reqs_with_priority)
-            
-            if total_reqs_priority > 0:
-                req_ids_priority = [req.id for req in reqs_with_priority]
-                if req_ids_priority and test_case_ids:
-                    traceability_priority = db.query(TraceabilityMatrix).filter(
-                        TraceabilityMatrix.requirement_id.in_(req_ids_priority),
-                        TraceabilityMatrix.test_case_id.in_(test_case_ids)
-                    ).all()
-                    covered_priority = len(set([entry.requirement_id for entry in traceability_priority]))
-                    priority_coverage[priority_name] = round((covered_priority / total_reqs_priority) * 100, 2)
-                else:
-                    priority_coverage[priority_name] = 0
-        
-        # Generate and return new coverage report with actual data
-        return {
-            "id": f"COV-{datetime.now().strftime('%Y%m%d%H%M%S')}",
-            "title": f"Coverage Report - {datetime.now().strftime('%Y-%m-%d')}",
-            "generated_at": datetime.now().isoformat(),
-            "coverage_percentage": round(coverage_percentage, 2),
-            "total_requirements": total_requirements,
-            "covered_requirements": covered_requirements,
-            "test_cases_count": total_test_cases,
-            "executed_tests": executed_test_cases,
-            "report_data": {
-                "by_priority": priority_coverage,
-                "by_status": {
-                    "passed": round((passed_test_cases / executed_test_cases * 100) if executed_test_cases > 0 else 0, 2),
-                    "failed": round((failed_test_cases / executed_test_cases * 100) if executed_test_cases > 0 else 0, 2),
-                    "blocked": round((blocked_test_cases / executed_test_cases * 100) if executed_test_cases > 0 else 0, 2),
-                    "not_executed": round(((total_test_cases - executed_test_cases) / total_test_cases * 100) if total_test_cases > 0 else 0, 2)
-                }
-            }
-        }
+        return build_coverage_report(db, project_id, generated=True)
 
     @app.get("/analytics/test-execution-status")
     def get_test_execution_status_get(
@@ -554,29 +499,41 @@ def register_remaining_routes(app):
         db: Session = Depends(get_db),
         current_user: schemas.User = Depends(get_current_active_user)
     ):
-        """Get test execution status for a project"""
+        """Get test execution status for a project."""
         if not rbac.has_permission(current_user, "read", project_id, db):
             raise HTTPException(status_code=403, detail="Insufficient permissions")
-        
-        # Use real KPI data from CRUD
-        kpis = crud.calculate_project_kpis(db, project_id, "7d")
-        
-        total_tests = kpis["total_tests"]
-        executed = kpis["passed_tests"] + kpis["failed_tests"] + kpis["blocked_tests"]
-        not_executed = total_tests - executed
-        passed = kpis["passed_tests"]
-        failed = kpis["failed_tests"]
-        blocked = kpis["blocked_tests"]
-        
+
+        from ..models import TestCase, TestResult, TestSuite
+
+        test_cases = db.query(TestCase).join(TestSuite).filter(
+            TestSuite.project_id == project_id,
+            TestCase.is_deleted == False,
+        ).all()
+        latest_statuses = []
+        for test_case in test_cases:
+            latest_result = db.query(TestResult).filter(
+                TestResult.test_case_id == test_case.id
+            ).order_by(TestResult.executed_at.desc()).first()
+            latest_statuses.append(normalize_result_status(latest_result.status) if latest_result else "not_tested")
+
+        total_tests = len(test_cases)
+        passed = latest_statuses.count("passed")
+        failed = latest_statuses.count("failed")
+        blocked = latest_statuses.count("blocked")
+        skipped = latest_statuses.count("skipped")
+        not_tested = latest_statuses.count("not_tested")
+        executed = passed + failed + blocked + skipped
+
         return {
             "project_id": project_id,
             "summary": {
                 "total_test_cases": total_tests,
                 "executed_test_cases": executed,
-                "not_tested_test_cases": not_executed,
+                "not_tested_test_cases": not_tested,
                 "passed_test_cases": passed,
                 "failed_test_cases": failed,
-                "blocked_test_cases": blocked
+                "blocked_test_cases": blocked,
+                "skipped_test_cases": skipped,
             },
             "status": {
                 "total_tests": total_tests,
@@ -584,22 +541,25 @@ def register_remaining_routes(app):
                 "passed": passed,
                 "failed": failed,
                 "blocked": blocked,
-                "not_executed": not_executed
+                "skipped": skipped,
+                "not_tested": not_tested,
             },
-            "execution_rate": round((executed / total_tests) * 100, 1) if total_tests > 0 else 0,
-            "success_rate": round((passed / executed) * 100, 1) if executed > 0 else 0,
+            "execution_rate": round((executed / total_tests) * 100, 1) if total_tests else 0,
+            "success_rate": round((passed / executed) * 100, 1) if executed else 0,
             "status_percentages": {
-                "passed": round((passed / executed) * 100, 1) if executed > 0 else 0,
-                "failed": round((failed / executed) * 100, 1) if executed > 0 else 0,
-                "blocked": round((blocked / executed) * 100, 1) if executed > 0 else 0
+                "passed": round((passed / executed) * 100, 1) if executed else 0,
+                "failed": round((failed / executed) * 100, 1) if executed else 0,
+                "blocked": round((blocked / executed) * 100, 1) if executed else 0,
+                "skipped": round((skipped / executed) * 100, 1) if executed else 0,
             },
             "overall_percentages": {
-                "passed": round((passed / total_tests) * 100, 1) if total_tests > 0 else 0,
-                "failed": round((failed / total_tests) * 100, 1) if total_tests > 0 else 0,
-                "blocked": round((blocked / total_tests) * 100, 1) if total_tests > 0 else 0,
-                "not_executed": round((not_executed / total_tests) * 100, 1) if total_tests > 0 else 0
+                "passed": round((passed / total_tests) * 100, 1) if total_tests else 0,
+                "failed": round((failed / total_tests) * 100, 1) if total_tests else 0,
+                "blocked": round((blocked / total_tests) * 100, 1) if total_tests else 0,
+                "skipped": round((skipped / total_tests) * 100, 1) if total_tests else 0,
+                "not_tested": round((not_tested / total_tests) * 100, 1) if total_tests else 0,
             },
-            "last_execution": datetime.now().isoformat()
+            "last_execution": datetime.now().isoformat(),
         }
 
     @app.get("/analytics/root-cause-analyses")
@@ -638,6 +598,8 @@ def register_remaining_routes(app):
         current_user: schemas.User = Depends(get_current_active_user)
     ):
         """Get project activity summary - direct endpoint to match frontend expectations"""
+        if days < 1 or days > 365:
+            raise HTTPException(status_code=400, detail="days must be between 1 and 365")
         if not rbac.has_permission(current_user, "read", project_id, db):
             raise HTTPException(status_code=403, detail="Insufficient permissions")
         

@@ -1393,7 +1393,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\"project_id\":1}"
+              "raw": "{\n  \"project_id\": 1,\n  \"time_period\": \"7d\"\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/analytics/dashboard",
@@ -1408,17 +1408,44 @@
           }
         },
         {
-          "name": "Test Coverage",
+          "name": "Reports Dashboard Analytics",
           "request": {
             "method": "GET",
             "url": {
-              "raw": "{{baseUrl}}/analytics/coverage?project_id=1",
+              "raw": "{{baseUrl}}/analytics/dashboard/analytics?project_id=1&time_range=7d",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "analytics",
-                "coverage"
+                "dashboard",
+                "analytics"
+              ],
+              "query": [
+                {
+                  "key": "project_id",
+                  "value": "1"
+                },
+                {
+                  "key": "time_range",
+                  "value": "7d"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Traceability Matrix",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/analytics/traceability-matrix?project_id=1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "analytics",
+                "traceability-matrix"
               ],
               "query": [
                 {
@@ -1430,17 +1457,88 @@
           }
         },
         {
-          "name": "Execution Trends",
+          "name": "Coverage Reports",
           "request": {
             "method": "GET",
             "url": {
-              "raw": "{{baseUrl}}/analytics/trends?project_id=1&days=30",
+              "raw": "{{baseUrl}}/analytics/coverage-reports?project_id=1",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "analytics",
-                "trends"
+                "coverage-reports"
+              ],
+              "query": [
+                {
+                  "key": "project_id",
+                  "value": "1"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Generate Coverage Report",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"project_id\": 1\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/analytics/coverage-reports/generate",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "analytics",
+                "coverage-reports",
+                "generate"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Test Execution Status",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/analytics/test-execution-status?project_id=1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "analytics",
+                "test-execution-status"
+              ],
+              "query": [
+                {
+                  "key": "project_id",
+                  "value": "1"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Test Activity",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/analytics/test-activity?project_id=1&granularity=day",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "analytics",
+                "test-activity"
               ],
               "query": [
                 {
@@ -1448,9 +1546,74 @@
                   "value": "1"
                 },
                 {
-                  "key": "days",
-                  "value": "30"
+                  "key": "granularity",
+                  "value": "day"
                 }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Root Cause Analyses",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/analytics/root-cause-analyses?project_id=1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "analytics",
+                "root-cause-analyses"
+              ],
+              "query": [
+                {
+                  "key": "project_id",
+                  "value": "1"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Create Shareable Report",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"project_id\": 1,\n  \"title\": \"Executive QA Report\",\n  \"report_type\": \"executive\",\n  \"shared_with\": [\n    \"demo@testmona.com\"\n  ],\n  \"access_level\": \"read-only\",\n  \"expires_in_days\": 30\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/analytics/shareable-reports",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "analytics",
+                "shareable-reports"
+              ]
+            }
+          }
+        },
+        {
+          "name": "List Shareable Reports",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/analytics/shareable-reports/1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "analytics",
+                "shareable-reports",
+                "1"
               ]
             }
           }

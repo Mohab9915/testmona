@@ -207,15 +207,22 @@ export function Reports() {
       console.log('✅ Coverage reports loaded:', data);
     } catch (error) {
       console.error('❌ Failed to load coverage reports:', error);
-      // Generate a new coverage report if none exist
-      try {
-        const generatedReport = await analyticsAPI.generateCoverageReport(selectedProject);
-        console.log('✅ Generated new coverage report:', generatedReport);
-        setCoverageReports([generatedReport]);
-      } catch (genError) {
-        console.error('❌ Failed to generate coverage report:', genError);
-        setCoverageReports([]);
-      }
+      setCoverageReports([]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleGenerateCoverageReport = async () => {
+    if (!selectedProject) return;
+    setIsLoading(true);
+    try {
+      const generatedReport = await analyticsAPI.generateCoverageReport(selectedProject);
+      setCoverageReports([generatedReport]);
+      await loadTestExecutionStatus();
+    } catch (error) {
+      console.error('❌ Failed to generate coverage report:', error);
+      setCoverageReports([]);
     } finally {
       setIsLoading(false);
     }
@@ -230,6 +237,7 @@ export function Reports() {
       setTestExecutionStatus(data);
     } catch (error) {
       console.error('❌ Failed to load test execution status:', error);
+      setTestExecutionStatus(null);
     } finally {
       setIsLoading(false);
     }
@@ -269,22 +277,6 @@ export function Reports() {
     }
   };
 
-  // Load data when tab or time range changes
-  useEffect(() => {
-    if (activeTab === 'dashboard') {
-      loadDashboardAnalytics();
-    } else if (activeTab === 'activity') {
-      loadActivityStatistics();
-    } else if (activeTab === 'traceability') {
-      loadTraceabilityData();
-    } else if (activeTab === 'coverage') {
-      loadCoverageReports();
-      loadTestExecutionStatus();
-    } else if (activeTab === 'test-activity') {
-      loadTestActivity();
-    }
-  }, [activeTab, timeRange]);
-
   // Handler functions for buttons
   const handleGenerateAnalytics = async () => {
     setIsLoading(true);
@@ -297,8 +289,7 @@ export function Reports() {
       } else if (activeTab === 'traceability') {
         await loadTraceabilityData();
       } else if (activeTab === 'coverage') {
-        await loadCoverageReports();
-        await loadTestExecutionStatus();
+        await handleGenerateCoverageReport();
       } else if (activeTab === 'test-activity') {
         await loadTestActivity();
       }
@@ -346,7 +337,7 @@ export function Reports() {
     URL.revokeObjectURL(url);
   };
 
-  // Load data when tab or time range changes
+  // Load data when tab, project, or time range changes
   useEffect(() => {
     if (activeTab === 'dashboard') {
       loadDashboardAnalytics();
@@ -356,30 +347,37 @@ export function Reports() {
       loadTraceabilityData();
     } else if (activeTab === 'coverage') {
       loadCoverageReports();
+      loadTestExecutionStatus();
     } else if (activeTab === 'test-activity') {
       loadTestActivity();
-    } else if (activeTab === 'granular') {
-      loadGranularInsights();
-    } else if (activeTab === 'shareable') {
-      loadShareableReports();
-    } else if (activeTab === 'rootcause') {
-      loadRootCauseAnalyses();
     }
   }, [activeTab, selectedProject, timeRange]);
 
+  const normalizeStatus = (status?: string) => {
+    const statusMap: Record<string, string> = {
+      pass: 'passed',
+      fail: 'failed',
+      block: 'blocked',
+      skip: 'skipped',
+    };
+    const normalized = (status || '').toLowerCase();
+    return statusMap[normalized] || normalized || 'not_tested';
+  };
+
   const getStatusIcon = (status: string) => {
-    switch (status) {
+    switch (normalizeStatus(status)) {
       case 'passed': return <CheckCircle className="h-4 w-4 text-green-600" />;
       case 'failed': return <XCircle className="h-4 w-4 text-red-600" />;
       case 'blocked': return <AlertCircle className="h-4 w-4 text-yellow-600" />;
+      case 'skipped': return <Clock className="h-4 w-4 text-blue-600" />;
       default: return <AlertCircle className="h-4 w-4 text-gray-400" />;
     }
   };
 
   const getTrendIcon = (trend: string) => {
-    return trend === 'up' ? 
-      <TrendingUp className="h-4 w-4 text-green-600" /> : 
-      <TrendingDown className="h-4 w-4 text-red-600" />;
+    if (trend === 'up') return <TrendingUp className="h-4 w-4 text-green-600" />;
+    if (trend === 'down') return <TrendingDown className="h-4 w-4 text-red-600" />;
+    return <Activity className="h-4 w-4 text-gray-500" />;
   };
 
   // Sortable Widget Component
@@ -503,7 +501,7 @@ export function Reports() {
 
   const renderDashboard = () => (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-4">
           <Select value={timeRange} onValueChange={setTimeRange}>
             <SelectTrigger className="w-32">
@@ -529,7 +527,7 @@ export function Reports() {
           </Button>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline">
+          <Button variant="outline" onClick={handleExportReport}>
             <Download className="h-4 w-4 mr-2" />
             Export Dashboard
           </Button>
@@ -551,7 +549,7 @@ export function Reports() {
           onDragEnd={handleDragEnd}
         >
           <SortableContext items={dashboardWidgets.map(w => w.id)} strategy={verticalListSortingStrategy}>
-            <div className="grid grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {dashboardWidgets.map((widget) => (
                 <SortableWidget key={widget.id} widget={widget} />
               ))}
@@ -559,7 +557,7 @@ export function Reports() {
           </SortableContext>
         </DndContext>
       ) : (
-        <div className="grid grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {dashboardWidgets.map((widget) => (
             <div
               key={widget.id}
@@ -672,6 +670,16 @@ export function Reports() {
       }
     };
 
+    const activityCounts = activityStats?.activity_counts || [];
+    const entityCounts = activityStats?.entity_counts || [];
+    const totalActivities = Math.max(activityStats?.total_activities || 0, 1);
+    const maxActionCount = Math.max(1, ...activityCounts.map((item: any) => Number(item.count || 0)));
+    const maxEntityCount = Math.max(1, ...entityCounts.map((item: any) => Number(item.count || 0)));
+    const getActionCount = (...actions: string[]) => activityCounts
+      .filter((item: any) => actions.includes(String(item.action || '').toLowerCase()))
+      .reduce((sum: number, item: any) => sum + Number(item.count || 0), 0);
+    const getShare = (count: number) => Math.round((Number(count || 0) / totalActivities) * 100);
+
     return (
       <div className="space-y-6">
         <div className="flex items-center justify-between">
@@ -723,53 +731,46 @@ export function Reports() {
 
               <Card>
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium text-gray-600">Test Cases Added</CardTitle>
+                  <CardTitle className="text-sm font-medium text-gray-600">Created Activities</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="flex items-center gap-2">
                     <Plus className="h-5 w-5 text-green-600" />
                     <div className="text-2xl font-bold">
-                      {activityStats.activity_counts?.find((a: any) => 
-                        a.action.toLowerCase() === 'create' && 
-                        activityStats.entity_counts?.find((e: any) => e.entity_type.toLowerCase() === 'test_case')
-                      )?.count || 0}
+                      {getActionCount('create')}
                     </div>
                   </div>
-                  <p className="text-xs text-gray-500 mt-1">New test cases created</p>
+                  <p className="text-xs text-gray-500 mt-1">New records created</p>
                 </CardContent>
               </Card>
 
               <Card>
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium text-gray-600">Test Cases Edited</CardTitle>
+                  <CardTitle className="text-sm font-medium text-gray-600">Updated Activities</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="flex items-center gap-2">
                     <Edit className="h-5 w-5 text-blue-600" />
                     <div className="text-2xl font-bold">
-                      {activityStats.activity_counts?.find((a: any) => 
-                        a.action.toLowerCase() === 'update' || a.action.toLowerCase() === 'edit'
-                      )?.count || 0}
+                      {getActionCount('update', 'edit')}
                     </div>
                   </div>
-                  <p className="text-xs text-gray-500 mt-1">Test cases modified</p>
+                  <p className="text-xs text-gray-500 mt-1">Records modified</p>
                 </CardContent>
               </Card>
 
               <Card>
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium text-gray-600">Test Cases Deleted</CardTitle>
+                  <CardTitle className="text-sm font-medium text-gray-600">Deleted Activities</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="flex items-center gap-2">
                     <Minus className="h-5 w-5 text-red-600" />
                     <div className="text-2xl font-bold">
-                      {activityStats.activity_counts?.find((a: any) => 
-                        a.action.toLowerCase() === 'delete'
-                      )?.count || 0}
+                      {getActionCount('delete')}
                     </div>
                   </div>
-                  <p className="text-xs text-gray-500 mt-1">Test cases removed</p>
+                  <p className="text-xs text-gray-500 mt-1">Records removed</p>
                 </CardContent>
               </Card>
             </div>
@@ -782,27 +783,35 @@ export function Reports() {
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-3">
-                    {activityStats.activity_counts?.map((activity: any) => (
-                      <div key={activity.action} className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          {getActionIcon(activity.action)}
-                          <span className="text-sm capitalize">{activity.action}</span>
-                        </div>
-                        <div className="flex items-center gap-3">
-                          <div className="w-32 bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+                    {activityCounts.length === 0 && (
+                      <p className="text-sm text-gray-500">No actions recorded in this period.</p>
+                    )}
+                    {activityCounts.map((activity: any) => {
+                      const count = Number(activity.count || 0);
+                      const share = getShare(count);
+                      return (
+                        <div key={activity.action} className="space-y-1.5">
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="flex items-center gap-2 min-w-0">
+                              {getActionIcon(activity.action)}
+                              <span className="text-sm capitalize truncate">{String(activity.action || '').replace('_', ' ')}</span>
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                              <span className="text-xs text-gray-500">{share}%</span>
+                              <Badge variant="secondary" className="min-w-[3rem] justify-center">
+                                {count}
+                              </Badge>
+                            </div>
+                          </div>
+                          <div className="h-2.5 w-full rounded-full bg-gray-200 dark:bg-gray-700" title={`${count} of ${activityStats.total_activities || 0} activities (${share}%)`}>
                             <div
-                              className="bg-blue-600 h-2 rounded-full"
-                              style={{ 
-                                width: `${Math.min(100, (activity.count / activityStats.total_activities) * 100)}%` 
-                              }}
+                              className="h-2.5 rounded-full bg-blue-600"
+                              style={{ width: `${Math.max(4, Math.min(100, (count / maxActionCount) * 100))}%` }}
                             />
                           </div>
-                          <Badge variant="secondary" className="min-w-[3rem] justify-center">
-                            {activity.count}
-                          </Badge>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </CardContent>
               </Card>
@@ -813,27 +822,35 @@ export function Reports() {
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-3">
-                    {activityStats.entity_counts?.map((entity: any) => (
-                      <div key={entity.entity_type} className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          {getEntityIcon(entity.entity_type)}
-                          <span className="text-sm capitalize">{entity.entity_type.replace('_', ' ')}</span>
-                        </div>
-                        <div className="flex items-center gap-3">
-                          <div className="w-32 bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+                    {entityCounts.length === 0 && (
+                      <p className="text-sm text-gray-500">No entities recorded in this period.</p>
+                    )}
+                    {entityCounts.map((entity: any) => {
+                      const count = Number(entity.count || 0);
+                      const share = getShare(count);
+                      return (
+                        <div key={entity.entity_type} className="space-y-1.5">
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="flex items-center gap-2 min-w-0">
+                              {getEntityIcon(entity.entity_type)}
+                              <span className="text-sm capitalize truncate">{String(entity.entity_type || '').replace('_', ' ')}</span>
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                              <span className="text-xs text-gray-500">{share}%</span>
+                              <Badge variant="secondary" className="min-w-[3rem] justify-center">
+                                {count}
+                              </Badge>
+                            </div>
+                          </div>
+                          <div className="h-2.5 w-full rounded-full bg-gray-200 dark:bg-gray-700" title={`${count} of ${activityStats.total_activities || 0} activities (${share}%)`}>
                             <div
-                              className="bg-green-600 h-2 rounded-full"
-                              style={{ 
-                                width: `${Math.min(100, (entity.count / activityStats.total_activities) * 100)}%` 
-                              }}
+                              className="h-2.5 rounded-full bg-green-600"
+                              style={{ width: `${Math.max(4, Math.min(100, (count / maxEntityCount) * 100))}%` }}
                             />
                           </div>
-                          <Badge variant="secondary" className="min-w-[3rem] justify-center">
-                            {entity.count}
-                          </Badge>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </CardContent>
               </Card>
@@ -903,20 +920,53 @@ export function Reports() {
       );
     }
 
-    if (!testActivity || !testActivity.activity) {
-      return (
-        <Card>
-          <CardContent className="p-8 text-center">
-            <p className="text-gray-500">No test activity data available</p>
-          </CardContent>
-        </Card>
-      );
-    }
-
-    const { activity, summary } = testActivity;
+    const activitySource = testActivity?.activity || testActivity?.activity_data || [];
+    const activity = Array.isArray(activitySource) ? activitySource : [];
+    const summary = testActivity?.summary || {
+      total_added: activity.reduce((sum: number, item: any) => sum + Number(item.added || 0), 0),
+      total_modified: activity.reduce((sum: number, item: any) => sum + Number(item.modified || 0), 0),
+      total_executed: activity.reduce((sum: number, item: any) => sum + Number(item.executed || 0), 0),
+      total_deleted: activity.reduce((sum: number, item: any) => sum + Number(item.deleted || 0), 0),
+    };
+    const maxActivityTotal = Math.max(
+      1,
+      ...activity.map((day: any) => Number(day.added || 0) + Number(day.modified || 0) + Number(day.executed || 0))
+    );
 
     return (
       <div className="space-y-6">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="text-xl font-semibold">Test Activity</h2>
+            <p className="text-sm text-gray-600">Daily test case changes and executions for this project</p>
+          </div>
+          <div className="flex gap-2">
+            <Select value={timeRange} onValueChange={setTimeRange}>
+              <SelectTrigger className="w-32">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="24h">Last 24h</SelectItem>
+                <SelectItem value="7d">Last 7 days</SelectItem>
+                <SelectItem value="30d">Last 30 days</SelectItem>
+                <SelectItem value="90d">Last 90 days</SelectItem>
+              </SelectContent>
+            </Select>
+            <Button variant="outline" onClick={loadTestActivity}>
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Refresh
+            </Button>
+          </div>
+        </div>
+
+        {!testActivity && (
+          <Card>
+            <CardContent className="p-8 text-center">
+              <p className="text-gray-500">No test activity data available</p>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Summary Cards */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <Card>
@@ -925,7 +975,7 @@ export function Reports() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-green-600">{summary.total_added}</div>
-              <p className="text-xs text-gray-500">New test cases created</p>
+              <p className="text-xs text-gray-500">New records created</p>
             </CardContent>
           </Card>
 
@@ -955,7 +1005,7 @@ export function Reports() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-red-600">{summary.total_deleted}</div>
-              <p className="text-xs text-gray-500">Test cases removed</p>
+              <p className="text-xs text-gray-500">Records removed</p>
             </CardContent>
           </Card>
         </div>
@@ -968,6 +1018,9 @@ export function Reports() {
           <CardContent>
             <div className="h-80">
               <div className="space-y-2">
+                {activity.length === 0 && (
+                  <div className="flex h-48 items-center justify-center text-sm text-gray-500">No activity in this period</div>
+                )}
                 {activity.slice(-14).map((day: any) => (
                   <div key={day.date} className="flex items-center gap-2">
                     <div className="w-24 text-xs text-gray-600">{new Date(day.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</div>
@@ -975,7 +1028,7 @@ export function Reports() {
                       {day.added > 0 && (
                         <div 
                           className="bg-green-500 h-6 flex items-center justify-center text-xs text-white rounded"
-                          style={{ width: `${(day.added / Math.max(...activity.map((d: any) => d.added + d.modified + d.executed))) * 100}%`, minWidth: '20px' }}
+                          style={{ width: `${(Number(day.added || 0) / maxActivityTotal) * 100}%`, minWidth: '20px' }}
                           title={`${day.added} added`}
                         >
                           {day.added}
@@ -984,7 +1037,7 @@ export function Reports() {
                       {day.modified > 0 && (
                         <div 
                           className="bg-blue-500 h-6 flex items-center justify-center text-xs text-white rounded"
-                          style={{ width: `${(day.modified / Math.max(...activity.map((d: any) => d.added + d.modified + d.executed))) * 100}%`, minWidth: '20px' }}
+                          style={{ width: `${(Number(day.modified || 0) / maxActivityTotal) * 100}%`, minWidth: '20px' }}
                           title={`${day.modified} modified`}
                         >
                           {day.modified}
@@ -993,7 +1046,7 @@ export function Reports() {
                       {day.executed > 0 && (
                         <div 
                           className="bg-purple-500 h-6 flex items-center justify-center text-xs text-white rounded"
-                          style={{ width: `${(day.executed / Math.max(...activity.map((d: any) => d.added + d.modified + d.executed))) * 100}%`, minWidth: '20px' }}
+                          style={{ width: `${(Number(day.executed || 0) / maxActivityTotal) * 100}%`, minWidth: '20px' }}
                           title={`${day.executed} executed`}
                         >
                           {day.executed}
@@ -1140,7 +1193,7 @@ export function Reports() {
 
     const handlePreview = (report: any) => {
       // Open report in new tab or modal
-      window.open(`/reports/shareable/${report.id}`, '_blank');
+      window.open(`/reports/shareable/${report.share_token || report.id}`, '_blank');
     };
 
     const handleDownload = async (report: any) => {
@@ -1248,16 +1301,16 @@ export function Reports() {
                   <div>
                     <CardTitle className="text-base">{report.title}</CardTitle>
                     <p className="text-sm text-gray-600">
-                      Shared by {report.sharedBy} • {report.views || 0} views
+                      Shared by user #{report.created_by || 'N/A'} • {report.view_count || 0} views
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
-                    <Badge variant={report.type === 'executive' ? 'secondary' : 'outline'}>
-                      {report.type}
+                    <Badge variant={report.report_type === 'executive' ? 'secondary' : 'outline'}>
+                      {report.report_type}
                     </Badge>
                     <div className="flex items-center gap-1 text-sm text-gray-600">
                       <Lock className="h-3 w-3" />
-                      {report.accessLevel}
+                      {report.access_level}
                     </div>
                   </div>
                 </div>
@@ -1265,8 +1318,8 @@ export function Reports() {
               <CardContent>
                 <div className="flex items-center justify-between">
                   <div className="text-sm text-gray-600">
-                    <p>Shared with: {Array.isArray(report.sharedWith) ? report.sharedWith.join(', ') : report.sharedWith}</p>
-                    <p>Expires: {report.expiresAt ? new Date(report.expiresAt).toLocaleDateString() : 'Never'}</p>
+                    <p>Shared with: {Array.isArray(report.shared_with) ? report.shared_with.join(', ') : report.shared_with || 'N/A'}</p>
+                    <p>Expires: {report.expires_at ? new Date(report.expires_at).toLocaleDateString() : 'Never'}</p>
                   </div>
                   <div className="flex gap-2">
                     <Button variant="outline" size="sm" onClick={() => handlePreview(report)}>
@@ -1369,7 +1422,7 @@ export function Reports() {
   );
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" dir={isRTL ? 'rtl' : 'ltr'}>
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold">Reports & Analytics</h1>
@@ -1560,8 +1613,8 @@ export function Reports() {
               {(traceabilityData?.requirements || [])
                 .filter((item: any) => 
                   !searchQuery || 
-                  item.requirement_title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                  item.test_cases.some((tc: any) => tc.title.toLowerCase().includes(searchQuery.toLowerCase()))
+                  String(item.requirement_title || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+                  (item.test_cases || []).some((tc: any) => String(tc.title || '').toLowerCase().includes(searchQuery.toLowerCase()))
                 )
                 .map((item: any) => (
                 <Card key={item.requirement_id} className="overflow-hidden">
@@ -1571,7 +1624,7 @@ export function Reports() {
                         <FileCheck className="h-5 w-5 text-blue-600 mt-0.5" />
                         <div className="flex-1">
                           <div className="flex items-center gap-2 mb-1">
-                            <span className="font-mono text-sm font-bold text-blue-600">REQ-{item.requirement_id}</span>
+                            <span className="font-mono text-sm font-bold text-blue-600">{item.requirement_key || `REQ-${item.requirement_id}`}</span>
                             <Badge variant={item.requirement_status === 'approved' ? 'default' : 'outline'} className="capitalize">
                               {item.requirement_status}
                             </Badge>
@@ -1587,7 +1640,7 @@ export function Reports() {
                       <div className="flex items-center gap-4 text-sm">
                         <div className="text-center">
                           <div className="text-xs text-gray-500 dark:text-gray-400">Test Cases</div>
-                          <div className="font-bold">{item.total_test_cases}</div>
+                          <div className="font-bold">{item.total_test_cases || 0}</div>
                         </div>
                         <div className="text-center">
                           <div className="text-xs text-gray-500 dark:text-gray-400">Passed</div>
@@ -1599,17 +1652,17 @@ export function Reports() {
                         </div>
                         <div className="text-center">
                           <div className="text-xs text-gray-500 dark:text-gray-400">Blocked</div>
-                          <div className="font-bold text-yellow-600">{item.test_cases.filter((tc: any) => tc.status === 'blocked' || tc.status === 'block').length}</div>
+                          <div className="font-bold text-yellow-600">{(item.test_cases || []).filter((tc: any) => normalizeStatus(tc.status) === 'blocked').length}</div>
                         </div>
                         <div className="text-center">
                           <div className="text-xs text-gray-500 dark:text-gray-400">Not Tested</div>
-                          <div className="font-bold text-gray-600">{item.test_cases.filter((tc: any) => tc.status === 'not_tested').length}</div>
+                          <div className="font-bold text-gray-600">{(item.test_cases || []).filter((tc: any) => normalizeStatus(tc.status) === 'not_tested').length}</div>
                         </div>
                       </div>
                     </div>
                   </CardHeader>
                   <CardContent className="p-0">
-                    {item.test_cases.length > 0 ? (
+                    {(item.test_cases || []).length > 0 ? (
                       <table className="w-full text-sm">
                         <thead className="bg-gray-50 dark:bg-gray-800 text-gray-600 dark:text-gray-400 text-xs font-medium">
                           <tr>
@@ -1622,7 +1675,7 @@ export function Reports() {
                           </tr>
                         </thead>
                         <tbody className="divide-y dark:divide-gray-700">
-                          {item.test_cases.map((tc: any) => (
+                          {(item.test_cases || []).map((tc: any) => (
                             <tr key={tc.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
                               <td className="px-6 py-4 font-mono text-sm text-gray-600 dark:text-gray-400">TC-{tc.id}</td>
                               <td className="px-6 py-4 font-medium">{tc.title}</td>
@@ -1634,7 +1687,7 @@ export function Reports() {
                               <td className="px-6 py-4">
                                 <div className="flex items-center justify-center gap-2">
                                   {getStatusIcon(tc.status)}
-                                  <span className="capitalize text-sm">{tc.status.replace('_', ' ')}</span>
+                                  <span className="capitalize text-sm">{normalizeStatus(tc.status).replace('_', ' ')}</span>
                                 </div>
                               </td>
                               <td className="px-6 py-4 text-right text-sm text-gray-600 dark:text-gray-400">
@@ -1693,7 +1746,7 @@ export function Reports() {
                 </p>
               )}
             </div>
-            <Button onClick={loadCoverageReports}>
+            <Button onClick={handleGenerateCoverageReport} disabled={isLoading}>
               <RefreshCw className="h-4 w-4 mr-2" />
               Generate Report
             </Button>
@@ -1725,7 +1778,7 @@ export function Reports() {
                         <path
                           className="text-blue-600 stroke-current"
                           strokeWidth="3"
-                          strokeDasharray={`${coverageReports[coverageReports.length - 1]?.coverage_percentage || 0}, 100}`}
+                          strokeDasharray={`${coverageReports[coverageReports.length - 1]?.coverage_percentage || 0}, 100`}
                           strokeLinecap="round"
                           fill="none"
                           d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"

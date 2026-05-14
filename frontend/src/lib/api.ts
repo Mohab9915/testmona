@@ -590,7 +590,7 @@ export const analyticsAPI = {
     return response.data;
   },
   getShareableReports: async (projectId: number) => {
-    const response = await api.get(`/analytics/shareable-reports?project_id=${projectId}`);
+    const response = await api.get(`/analytics/shareable-reports/${projectId}`);
     return response.data;
   },
   createShareableReport: async (report: any) => {
