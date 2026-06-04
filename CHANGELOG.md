@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.4] - 2026-06-04
+
 ### Added
 - **Doc Hub — Change Impact Analysis.** Before publishing a document change, see
   the requirements, test cases, and defects it impacts, derived from converter
@@ -14,10 +16,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   AI risk assessment summarizes the risk and recommends *publish / review / hold*.
   Available from the doc detail header and the editor toolbar (shown only when a
   doc has linked requirements).
+- Requirement linking for documents.
+- Editable components in DefectDetail.
+- DocRequirementLinksSection component for document detail pages.
 
 ### Changed
 - The AI risk assessment is skipped — and no AI request is sent — when the editor
   re-analyzes a draft that has not actually changed.
+- Linked defects in test runs are now clickable, copyable, and status-editable.
+
+### Fixed
+- React 18 StrictMode handling in ReleaseNotes.
 
 ## [0.4.3] - 2026-06-03
 
@@ -137,7 +146,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Initial release of TestMona: projects, requirements, test cases, suites, runs,
   defects, milestones, and reports.
 
-[Unreleased]: https://github.com/pricyproject/testmona/compare/v0.4.3...HEAD
+[Unreleased]: https://github.com/pricyproject/testmona/compare/v0.4.4...HEAD
+[0.4.4]: https://github.com/pricyproject/testmona/compare/v0.4.3...v0.4.4
 [0.4.3]: https://github.com/pricyproject/testmona/compare/v0.4.2...v0.4.3
 [0.4.2]: https://github.com/pricyproject/testmona/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/pricyproject/testmona/compare/v0.4.0...v0.4.1
