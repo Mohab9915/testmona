@@ -1,0 +1,48 @@
+# GitHub Pull Request Labeler Configuration
+# Automatically labels PRs based on changed files
+
+backend:
+  - backend/**/*
+  - alembic/**/*
+
+frontend:
+  - frontend/**/*
+
+documentation:
+  - Docs/**/*
+  - CHANGELOG.md
+  - README.md
+  - AGENTS.md
+  - "**/*.md"
+
+database:
+  - backend/alembic/**/*
+  - backend/seed/**/*
+  - migrate.py
+
+ci-cd:
+  - .github/**/*
+  - docker-compose.yml
+  - Dockerfile
+  - .dockerignore
+  - install.sh
+  - init-db.sh
+  - setup.py
+
+configuration:
+  - .env.example
+  - .env.docker.example
+  - .gitignore
+  - "**/*.ini"
+  - "**/*.json"
+  - "**/*.yml"
+  - "**/*.yaml"
+
+tests:
+  - backend/tests/**/*
+  - frontend/**/*test*.*
+  - frontend/**/*spec*.*
+  - "**/*.test.ts"
+  - "**/*.test.tsx"
+  - "**/*.spec.ts"
+  - "**/*.spec.tsx"
