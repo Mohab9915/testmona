@@ -45,14 +45,14 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Plus, ExternalLink, MoreHorizontal, Trash2, Globe, Shield, Database, Layout as LayoutIcon, Cpu, FileText, Link, Users, Settings as SettingsIcon, Tag, Clock, Target, Zap, Layers, Copy, Edit, TrendingUp, FolderTree, AlertCircle, CheckCircle, XCircle, Loader2, RefreshCw, History, AlertTriangle, Rows3, Maximize2, BrainCircuit, KeyRound, PlayCircle, ChevronDown } from 'lucide-react';
+import { Plus, ExternalLink, MoreHorizontal, Trash2, Globe, Shield, Database, Layout as LayoutIcon, Cpu, FileText, Link, Users, Settings as SettingsIcon, Tag, Clock, Target, Zap, Layers, Copy, Edit, TrendingUp, FolderTree, AlertCircle, CheckCircle, XCircle, Loader2, RefreshCw, History, AlertTriangle, Rows3, Maximize2, BrainCircuit, KeyRound, PlayCircle, ChevronDown, CornerDownRight, BookText } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 const API_BASE_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:8000';
 import { Switch } from '@/components/ui/switch';
-import { api, auditAPI, testCasesAPI, sectionsAPI, importExportAPI, userPreferencesAPI, enumsAPI, testManagementAPI, systemSettingsAPI, aiManagerAPI, AIManagerSettings, AIProviderConfig, AIProviderName, AIUsageLimitEntry, AIUsageSummary, AISourceType, AIRoutingSettings } from '@/lib/api';
+import { api, auditAPI, testCasesAPI, sectionsAPI, importExportAPI, userPreferencesAPI, enumsAPI, testManagementAPI, systemSettingsAPI, aiManagerAPI, AIManagerSettings, AIProviderConfig, AIProviderName, AIUsageLimitEntry, AIUsageSummary, AISourceType, AIRoutingSettings, AIRoutingTarget } from '@/lib/api';
 import { defectManagementAPI, IssueTrackerIntegration } from '@/lib/defectManagementAPI';
 import { useAuthStore } from '@/stores/authStore';
 import { useTranslation } from '@/hooks/useTranslation';
@@ -213,6 +213,10 @@ const defaultRoutingSettings: AIRoutingSettings = {
   qa: { provider: null, model: null },
   generation: { provider: null, model: null },
   assistant: { provider: null, model: null },
+  docs: { provider: null, model: null },
+  doc_impact: { provider: null, model: null },
+  doc_release_notes: { provider: null, model: null },
+  doc_convert: { provider: null, model: null },
 };
 
 const defaultAIManagerSettings: AIManagerSettings = {
@@ -228,7 +232,10 @@ const defaultAIManagerSettings: AIManagerSettings = {
 };
 
 const AI_SOURCE_TYPES: AISourceType[] = ['requirements', 'defects', 'test_plans', 'test_cases', 'docs'];
+// Top-level routing tasks (rendered as flat rows). The Doc Hub group (general
+// `docs` + per-feature overrides) is rendered separately below.
 const AI_ROUTING_TASKS: Array<keyof AIRoutingSettings> = ['qa', 'generation', 'assistant'];
+const AI_DOC_ROUTING_SUBTASKS: Array<keyof AIRoutingSettings> = ['doc_impact', 'doc_release_notes', 'doc_convert'];
 
 const aiProviderLabels: Record<AIProviderName, string> = {
   openai: 'OpenAI',
@@ -238,11 +245,15 @@ const aiProviderLabels: Record<AIProviderName, string> = {
   litellm: 'LiteLLM',
 };
 
-// Friendly label for a usage `operation` string (test_case_assistant_* collapse to one).
+// Friendly label for a usage `operation` string (test_case_assistant_* and the
+// Doc Hub operations each collapse to one bucket).
 const aiOperationLabel = (operation: string, t: (k: string) => string): string => {
   if (operation === 'requirement_project_qa') return t('opRequirementQa');
   if (operation === 'requirement_test_case_generation') return t('opTestCaseGeneration');
-  if (operation.startsWith('test_case_assistant')) return t('opTestCaseAssistant');
+  if (operation.startsWith('test_case_assistant') || operation.startsWith('test_case_draft_assistant')) return t('opTestCaseAssistant');
+  if (operation === 'doc_change_impact') return t('opDocChangeImpact');
+  if (operation === 'doc_release_notes') return t('opDocReleaseNotes');
+  if (operation === 'doc_convert_enhance') return t('opDocConvertEnhance');
   if (operation === 'connection_test') return t('opConnectionTest');
   if (operation === 'completion') return t('opCompletion');
   return operation;
@@ -264,6 +275,51 @@ const aggregateAISpend = (
   }
   return Array.from(map.values()).sort((a, b) => b.total_tokens - a.total_tokens);
 };
+
+// One row in "Model routing by task": a provider picker (with an inherit option)
+// plus an optional model override. ``inheritLabel`` names the fallback — "use
+// active provider" for top-level tasks, "use Doc Hub default" for the doc
+// sub-features that inherit from the general Doc Hub group.
+function AIRoutingRow({
+  label, target, providers, inheritLabel, indented = false, onChange, t,
+}: {
+  label: string;
+  target: AIRoutingTarget;
+  providers: AIProviderConfig[];
+  inheritLabel: string;
+  indented?: boolean;
+  onChange: (next: AIRoutingTarget) => void;
+  t: (k: string) => string;
+}) {
+  return (
+    <div className={`grid gap-2 sm:grid-cols-[160px_minmax(0,1fr)_minmax(0,1fr)] sm:items-center ${indented ? 'sm:ps-5' : ''}`}>
+      <Label className="flex items-center gap-1.5 text-sm">
+        {indented && <CornerDownRight className="h-3.5 w-3.5 shrink-0 text-slate-400" />}
+        {label}
+      </Label>
+      <Select
+        value={target.provider ?? 'inherit'}
+        onValueChange={(value) => onChange(value === 'inherit'
+          ? { provider: null, model: null } // reset model when inheriting
+          : { provider: value as AIProviderName, model: target.model })}
+      >
+        <SelectTrigger><SelectValue /></SelectTrigger>
+        <SelectContent>
+          <SelectItem value="inherit">{inheritLabel}</SelectItem>
+          {providers.map((p) => (
+            <SelectItem key={p.provider} value={p.provider}>{aiProviderLabels[p.provider]}</SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      <Input
+        value={target.model ?? ''}
+        disabled={!target.provider}
+        placeholder={t('aiRoutingModelPlaceholder')}
+        onChange={(event) => onChange({ provider: target.provider, model: event.target.value || null })}
+      />
+    </div>
+  );
+}
 
 export function Settings() {
   const { language, setLanguage, compactMode, setCompactMode } = useAuthStore();
@@ -3793,49 +3849,63 @@ export function Settings() {
                 <div className="rounded-lg border border-slate-200 p-4 dark:border-slate-800">
                   <h4 className="text-sm font-semibold text-slate-900 dark:text-white">{t('aiRoutingTitle')}</h4>
                   <p className="mb-3 text-xs text-slate-400">{t('aiRoutingHint')}</p>
-                  <div className="space-y-3">
-                    {AI_ROUTING_TASKS.map((task) => {
-                      const target = aiManagerSettings.routing?.[task] ?? { provider: null, model: null };
-                      return (
-                        <div key={task} className="grid gap-2 sm:grid-cols-[160px_minmax(0,1fr)_minmax(0,1fr)] sm:items-center">
-                          <Label className="text-sm">{t(`aiRouting_${task}`)}</Label>
-                          <Select
-                            value={target.provider ?? 'active'}
-                            onValueChange={(value) => setAIManagerSettings((current) => ({
-                              ...current,
-                              routing: {
-                                ...(current.routing ?? defaultRoutingSettings),
-                                // Reset model when reverting to the active provider.
-                                [task]: value === 'active'
-                                  ? { provider: null, model: null }
-                                  : { provider: value as AIProviderName, model: target.model },
-                              },
-                            }))}
-                          >
-                            <SelectTrigger><SelectValue /></SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="active">{t('aiRoutingUseActive')}</SelectItem>
-                              {aiManagerSettings.providers.map((p) => (
-                                <SelectItem key={p.provider} value={p.provider}>{aiProviderLabels[p.provider]}</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          <Input
-                            value={target.model ?? ''}
-                            disabled={!target.provider}
-                            placeholder={t('aiRoutingModelPlaceholder')}
-                            onChange={(event) => setAIManagerSettings((current) => ({
-                              ...current,
-                              routing: {
-                                ...(current.routing ?? defaultRoutingSettings),
-                                [task]: { provider: target.provider, model: event.target.value || null },
-                              },
-                            }))}
+                  {(() => {
+                    const routing = aiManagerSettings.routing ?? defaultRoutingSettings;
+                    const setRoute = (task: keyof AIRoutingSettings, next: AIRoutingTarget) =>
+                      setAIManagerSettings((current) => ({
+                        ...current,
+                        routing: { ...(current.routing ?? defaultRoutingSettings), [task]: next },
+                      }));
+                    const docsHasProvider = !!routing.docs?.provider;
+                    return (
+                      <div className="space-y-3">
+                        {AI_ROUTING_TASKS.map((task) => (
+                          <AIRoutingRow
+                            key={task}
+                            label={t(`aiRouting_${task}`)}
+                            target={routing[task] ?? { provider: null, model: null }}
+                            providers={aiManagerSettings.providers}
+                            inheritLabel={t('aiRoutingUseActive')}
+                            onChange={(next) => setRoute(task, next)}
+                            t={t}
                           />
+                        ))}
+
+                        {/* Doc Hub: a general provider, with optional per-feature overrides */}
+                        <div className="rounded-lg border border-slate-200 bg-slate-50/60 p-3 dark:border-slate-800 dark:bg-slate-900/40">
+                          <div className="mb-2 flex items-center gap-2">
+                            <BookText className="h-4 w-4 shrink-0 text-primary" />
+                            <span className="text-sm font-semibold text-slate-900 dark:text-white">{t('aiRoutingDocHubTitle')}</span>
+                          </div>
+                          <p className="mb-3 text-xs text-slate-400">{t('aiRoutingDocHubHint')}</p>
+                          <div className="space-y-3">
+                            <AIRoutingRow
+                              label={t('aiRouting_docs')}
+                              target={routing.docs ?? { provider: null, model: null }}
+                              providers={aiManagerSettings.providers}
+                              inheritLabel={t('aiRoutingUseActive')}
+                              onChange={(next) => setRoute('docs', next)}
+                              t={t}
+                            />
+                            {AI_DOC_ROUTING_SUBTASKS.map((task) => (
+                              <AIRoutingRow
+                                key={task}
+                                label={t(`aiRouting_${task}`)}
+                                target={routing[task] ?? { provider: null, model: null }}
+                                providers={aiManagerSettings.providers}
+                                // Sub-features inherit the general Doc Hub provider when set,
+                                // otherwise the active provider.
+                                inheritLabel={docsHasProvider ? t('aiRoutingUseDocHub') : t('aiRoutingUseActive')}
+                                indented
+                                onChange={(next) => setRoute(task, next)}
+                                t={t}
+                              />
+                            ))}
+                          </div>
                         </div>
-                      );
-                    })}
-                  </div>
+                      </div>
+                    );
+                  })()}
                 </div>
 
                 {/* Fallback provider chain */}

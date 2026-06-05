@@ -990,14 +990,29 @@ export interface DocRequirementLink {
   created_at: string;
 }
 
+export interface DocConvertItemOverride {
+  index: number;
+  title: string;
+  include: boolean;
+  description_html?: string | null;
+  acceptance_html?: string | null;
+}
+
+export interface DocConvertExtraItem {
+  title: string;
+  description_html?: string;
+  acceptance_html?: string | null;
+}
+
 export interface DocConvertRequest {
   mode: 'single' | 'split';
-  heading_level?: number;
+  heading_level?: number; // 0 = auto-detect
   target_project_id?: number | null;
   folder_id?: number | null;
   default_status?: Requirement['status'];
   default_priority?: Requirement['priority'];
-  items?: { index: number; title: string; include: boolean }[];
+  items?: DocConvertItemOverride[];
+  extra_items?: DocConvertExtraItem[];
 }
 
 export interface DocConvertPreviewItem {
@@ -1005,6 +1020,7 @@ export interface DocConvertPreviewItem {
   title: string;
   description_html: string;
   is_acceptance_criteria: boolean;
+  acceptance_html?: string;
 }
 
 export interface DocConvertPreview {
@@ -1015,6 +1031,40 @@ export interface DocConvertPreview {
 export interface DocConvertResult {
   created: Requirement[];
   links: DocRequirementLink[];
+}
+
+// --- AI conversion enhancement ---
+
+export interface DocConvertEnhanceRequest {
+  mode: 'single' | 'split';
+  heading_level?: number;
+}
+
+export interface DocConvertEnhanceItem {
+  index: number;
+  quality_score: number;
+  issues: string[];
+  edge_cases: string[];
+  suggested_title: string;
+  suggested_description_html: string;
+  suggested_acceptance_html: string;
+}
+
+export interface DocConvertSuggestedRequirement {
+  title: string;
+  description_html: string;
+  acceptance_html: string;
+  rationale: string;
+}
+
+export interface DocConvertEnhanceResult {
+  ai_available: boolean;
+  ai_skipped_reason?: string | null;
+  summary?: string | null;
+  items: DocConvertEnhanceItem[];
+  suggested_requirements: DocConvertSuggestedRequirement[];
+  provider?: string | null;
+  model?: string | null;
 }
 
 // --- Change impact analysis ---

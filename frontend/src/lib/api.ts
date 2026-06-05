@@ -1,5 +1,5 @@
 import axios from "axios";
-import { Project, TestSuite, TestCase, TestRun, TestResult, User, TestRunStatistics, CustomFieldDefinition, CustomFieldValue, TestCaseWithCustomFields, JiraIntegration, JiraIssue, Notification, AuditTrail, AuditTrailList, AuditTrailFilters, ActivitySummary, EntityHistory, Requirement, RequirementCreate, RequirementUpdate, RequirementCoverageList, RequirementVersion, RequirementComment, RequirementFolder, Milestone, MilestoneCreate, MilestoneUpdate, MilestoneStats, SharedStep, SharedStepCreate, SharedStepUpdate, DocSpace, DocSpaceCreate, DocFolder, Doc, DocListItem, DocCreate, DocUpdate, DocVersion, DocRequirementLink, DocConvertRequest, DocConvertPreview, DocConvertResult, DocShareInfo, DocPublicView, DocStats, DocStatsOverview, DocRelatedLink, DocSuggestion, DocFacets, DocListPage, DocFeedback, DocFeedbackSummary, DocFeedbackType, DocDuplicateCandidate, DocMergeResult, DocImpactRequest, DocImpactAnalysis, ReleaseNotesGenerateRequest, ReleaseNotesPreview, ReleaseNote, ReleaseNoteListItem, ReleaseNoteCreate, ReleaseNoteUpdate, ReleaseNoteStatus } from "@/types";
+import { Project, TestSuite, TestCase, TestRun, TestResult, User, TestRunStatistics, CustomFieldDefinition, CustomFieldValue, TestCaseWithCustomFields, JiraIntegration, JiraIssue, Notification, AuditTrail, AuditTrailList, AuditTrailFilters, ActivitySummary, EntityHistory, Requirement, RequirementCreate, RequirementUpdate, RequirementCoverageList, RequirementVersion, RequirementComment, RequirementFolder, Milestone, MilestoneCreate, MilestoneUpdate, MilestoneStats, SharedStep, SharedStepCreate, SharedStepUpdate, DocSpace, DocSpaceCreate, DocFolder, Doc, DocListItem, DocCreate, DocUpdate, DocVersion, DocRequirementLink, DocConvertRequest, DocConvertPreview, DocConvertResult, DocConvertEnhanceRequest, DocConvertEnhanceResult, DocShareInfo, DocPublicView, DocStats, DocStatsOverview, DocRelatedLink, DocSuggestion, DocFacets, DocListPage, DocFeedback, DocFeedbackSummary, DocFeedbackType, DocDuplicateCandidate, DocMergeResult, DocImpactRequest, DocImpactAnalysis, ReleaseNotesGenerateRequest, ReleaseNotesPreview, ReleaseNote, ReleaseNoteListItem, ReleaseNoteCreate, ReleaseNoteUpdate, ReleaseNoteStatus } from "@/types";
 import { useAuthStore } from "@/stores/authStore";
 
 // System Settings API
@@ -75,6 +75,11 @@ export interface AIRoutingSettings {
   qa: AIRoutingTarget;
   generation: AIRoutingTarget;
   assistant: AIRoutingTarget;
+  // General Doc Hub group + optional per-feature overrides (fall back to `docs`).
+  docs: AIRoutingTarget;
+  doc_impact: AIRoutingTarget;
+  doc_release_notes: AIRoutingTarget;
+  doc_convert: AIRoutingTarget;
 }
 
 export interface AIFallbackSettings {
@@ -929,6 +934,17 @@ export const docsAPI = {
   },
   convert: async (id: number, payload: DocConvertRequest): Promise<DocConvertResult> => {
     const response = await api.post(`/docs/${id}/convert-to-requirements`, payload);
+    return response.data;
+  },
+  // Optional AI review of the draft requirements (quality, edge cases, refined
+  // wording, suggested extra requirements). Accepts an AbortSignal so the (paid)
+  // call can be cancelled when the user closes the dialog.
+  enhanceConvert: async (
+    id: number,
+    payload: DocConvertEnhanceRequest,
+    signal?: AbortSignal,
+  ): Promise<DocConvertEnhanceResult> => {
+    const response = await api.post(`/docs/${id}/convert-to-requirements/enhance`, payload, { timeout: 130000, signal });
     return response.data;
   },
 
