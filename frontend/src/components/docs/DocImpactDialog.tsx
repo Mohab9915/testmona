@@ -261,7 +261,11 @@ export function DocImpactDialog({ doc, open, onOpenChange, candidateMarkdown }: 
             ) : (
               <div className="flex items-start gap-2 rounded-lg border border-dashed border-slate-300 px-4 py-3 text-xs text-muted-foreground dark:border-slate-700">
                 <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-                <span>{analysis.ai_skipped_reason === 'no_changes' ? t('docImpactNoChanges') : t('docImpactNoAI')}</span>
+                <span>{
+                  analysis.ai_skipped_reason === 'no_changes' ? t('docImpactNoChanges')
+                    : analysis.ai_skipped_reason === 'rate_limited' ? t('docImpactRateLimited')
+                    : t('docImpactNoAI')
+                }</span>
               </div>
             )}
 

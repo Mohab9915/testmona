@@ -17,7 +17,7 @@ import os
 import re
 import uuid
 import zipfile
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 
 import yaml
@@ -67,6 +67,11 @@ _MARKDOWN_EXTENSIONS = (".md", ".markdown")
 
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
+
+
+# Coalesce repeated view events (anonymous public-link views, and grant-based
+# reads by the same user) into at most one audit row per this window.
+_AUDIT_VIEW_WINDOW = timedelta(minutes=30)
 
 
 def _as_aware(value: Optional[datetime]) -> Optional[datetime]:
@@ -344,6 +349,180 @@ def _share_active(doc: models.Doc) -> bool:
     return expires is None or expires > _utcnow()
 
 
+# --------------------------------------------------------------------------- #
+# Granular sharing helpers                                                     #
+# --------------------------------------------------------------------------- #
+
+_ROLE_LABELS = {"viewer": "Viewer", "tester": "Tester", "manager": "Manager", "admin": "Admin"}
+
+
+def _grant_active(grant: models.DocShareGrant) -> bool:
+    expires = _as_aware(grant.expires_at)
+    return expires is None or expires > _utcnow()
+
+
+def _effective_project_role(user: models.User, project_id: int, db: Session) -> Optional[str]:
+    """The user's effective role within a project, used to match ``role`` grants.
+    Superusers and project owners resolve to ``admin``; otherwise the assignment
+    role, falling back to the user's global directory role."""
+    if getattr(user, "is_superuser", False):
+        return "admin"
+    project = db.query(models.Project).filter(models.Project.id == project_id).first()
+    if project is not None and project.owner_id == user.id:
+        return "admin"
+    assignment = (
+        db.query(models.ProjectAssignment)
+        .filter(
+            models.ProjectAssignment.user_id == user.id,
+            models.ProjectAssignment.project_id == project_id,
+        )
+        .first()
+    )
+    role = rbac.normalize_role(assignment.role) if assignment is not None else None
+    if role is None:
+        role = rbac.normalize_role(getattr(user, "role", None))
+    return role.value if role else None
+
+
+def _is_project_member(user: models.User, project_id: int, db: Session) -> bool:
+    """True when the user belongs to a project (for ``project`` group grants).
+    Global admins/managers and superusers effectively belong to every project."""
+    if getattr(user, "is_superuser", False):
+        return True
+    if rbac.normalize_role(getattr(user, "role", None)) in {models.Role.ADMIN, models.Role.MANAGER}:
+        return True
+    project = db.query(models.Project).filter(models.Project.id == project_id).first()
+    if project is None:
+        return False
+    if project.owner_id == user.id:
+        return True
+    return (
+        db.query(models.ProjectAssignment.id)
+        .filter(
+            models.ProjectAssignment.user_id == user.id,
+            models.ProjectAssignment.project_id == project_id,
+        )
+        .first()
+        is not None
+    )
+
+
+def _user_matches_grant(
+    user: models.User, doc: models.Doc, grant: models.DocShareGrant, db: Session
+) -> bool:
+    if not _grant_active(grant):
+        return False
+    if grant.grant_type == "user":
+        return grant.subject_user_id == user.id
+    if grant.grant_type == "role":
+        if doc.project_id is None or not grant.subject_role:
+            return False
+        return _effective_project_role(user, doc.project_id, db) == grant.subject_role.lower()
+    if grant.grant_type == "project":
+        return grant.subject_project_id is not None and _is_project_member(user, grant.subject_project_id, db)
+    return False
+
+
+def _doc_read_via_grant(
+    user: models.User, doc: models.Doc, db: Session
+) -> Optional[models.DocShareGrant]:
+    """Return the first active grant authorizing this user — only while the doc's
+    share_scope is 'restricted'. None when no grant applies."""
+    if (doc.share_scope or "private") != "restricted":
+        return None
+    for grant in (doc.share_grants or []):
+        if _user_matches_grant(user, doc, grant, db):
+            return grant
+    return None
+
+
+def _grant_audit_text(grant: models.DocShareGrant) -> str:
+    if grant.grant_type == "user":
+        user = grant.subject_user
+        who = (user.full_name or user.username) if user else f"user #{grant.subject_user_id}"
+        return f"user {who}"
+    if grant.grant_type == "role":
+        return f"{_ROLE_LABELS.get((grant.subject_role or '').lower(), grant.subject_role)} role"
+    if grant.grant_type == "project":
+        project = grant.subject_project
+        return f"project '{project.name}'" if project else f"project #{grant.subject_project_id}"
+    return grant.grant_type
+
+
+def _grant_view(grant: models.DocShareGrant) -> schemas.DocShareGrantView:
+    label: Optional[str] = None
+    sublabel: Optional[str] = None
+    if grant.grant_type == "user":
+        user = grant.subject_user
+        if user is not None:
+            label = user.full_name or user.username
+            sublabel = user.email or user.username
+    elif grant.grant_type == "role":
+        label = _ROLE_LABELS.get((grant.subject_role or "").lower(), grant.subject_role)
+        sublabel = "Project role"
+    elif grant.grant_type == "project":
+        project = grant.subject_project
+        if project is not None:
+            label = project.name
+            sublabel = "Project team"
+    return schemas.DocShareGrantView(
+        id=grant.id,
+        grant_type=grant.grant_type,
+        subject_user_id=grant.subject_user_id,
+        subject_role=grant.subject_role,
+        subject_project_id=grant.subject_project_id,
+        subject_label=label,
+        subject_sublabel=sublabel,
+        expires_at=grant.expires_at,
+        is_expired=not _grant_active(grant),
+        created_by=grant.created_by,
+        created_at=grant.created_at,
+    )
+
+
+def _share_info(doc: models.Doc, db: Session) -> schemas.DocShareInfo:
+    grants = crud_docs.list_share_grants(db, doc.id)
+    return schemas.DocShareInfo(
+        share_scope=doc.share_scope or "private",
+        public_id=doc.public_id if _share_active(doc) else None,
+        share_expires_at=doc.share_expires_at,
+        share_url=(f"/docs/public/{doc.public_id}" if _share_active(doc) else None),
+        grants=[_grant_view(g) for g in grants],
+    )
+
+
+def _reconcile_grants_after_move(
+    db: Session, doc: models.Doc, previous_project_id: Optional[int], actor: models.User
+) -> None:
+    """When a doc is re-homed to a different project (or to the global scope),
+    prune grants whose meaning was tied to the old project so access can't leak.
+
+    - Role grants are scoped to the *old* project's role-holders → always dropped.
+    - Moving to global makes restricted sharing meaningless (everyone can read a
+      global doc), so all grants are dropped and a restricted scope reverts to
+      private."""
+    if doc.project_id == previous_project_id:
+        return
+    if doc.project_id is None:
+        removed = crud_docs.clear_share_grants(db, doc.id, only_role=False)
+        if (doc.share_scope or "private") == "restricted":
+            doc.share_scope = "private"
+            crud.safe_commit(db)
+            db.refresh(doc)
+        if removed:
+            crud_docs.record_share_audit(
+                db, doc.id, actor.id, "grant_removed",
+                "Cleared share grants — document moved to the global scope",
+            )
+        return
+    removed = crud_docs.clear_share_grants(db, doc.id, only_role=True)
+    if removed:
+        crud_docs.record_share_audit(
+            db, doc.id, actor.id, "grant_removed",
+            "Removed role grants — document moved to a different project",
+        )
+
+
 _HTML_TAG_RE = re.compile(r"<[^>]+>")
 _TABLE_SEP_RE = re.compile(r"^\s*\|?[\s:|-]*-{2,}[\s:|-]*\|?\s*$", re.MULTILINE)
 _MD_STRIP_RE = re.compile(r"[#*_`>~\-\[\]\(\)!]|https?://\S+")
@@ -517,6 +696,13 @@ def _parse_impact_ai(content: str) -> tuple[str, str, List[schemas.DocImpactRisk
             mitigation=clean_ai_text(raw.get("mitigation"), 1000),
         ))
     return summary, recommendation, risks
+
+
+def _ai_skip_reason(exc: HTTPException) -> str:
+    """A user-meaningful skip reason from a failed AI completion. A 429 means a
+    monthly token limit (provider or project) was hit — retrying won't help, so
+    surface it distinctly from a transient ``ai_error``."""
+    return "rate_limited" if getattr(exc, "status_code", None) == 429 else "ai_error"
 
 
 def _clean_str_list(value, max_items: int, max_len: int) -> List[str]:
@@ -820,6 +1006,13 @@ def register_docs_routes(app) -> None:
         doc = db.query(models.Doc).filter(models.Doc.public_id == public_id).first()
         if doc is None or not _share_active(doc):
             raise HTTPException(status_code=404, detail="This shared document is unavailable")
+        # This endpoint is unauthenticated, so coalesce bursts of public views into
+        # at most one audit row per window — preserves the signal without letting a
+        # popular (or hammered) link flood the trail.
+        last = crud_docs.latest_share_audit_at(db, doc.id, "public_accessed")
+        last_aware = _as_aware(last)
+        if last_aware is None or last_aware <= _utcnow() - _AUDIT_VIEW_WINDOW:
+            crud_docs.record_share_audit(db, doc.id, None, "public_accessed", "Viewed via public link")
         return schemas.DocPublicView.model_validate(doc)
 
     # ── Facets (literal path, before /docs/{doc_id}) ────────────────────────
@@ -1060,7 +1253,7 @@ def register_docs_routes(app) -> None:
                     result.ai_skipped_reason = "ai_error"
             except HTTPException as exc:
                 logger.warning("Release notes AI summary failed for project %s: %s", payload.project_id, exc.detail)
-                result.ai_skipped_reason = "ai_error"
+                result.ai_skipped_reason = _ai_skip_reason(exc)
             except Exception as exc:
                 logger.warning("Release notes AI summary errored for project %s: %s", payload.project_id, exc)
                 result.ai_skipped_reason = "ai_error"
@@ -1165,7 +1358,19 @@ def register_docs_routes(app) -> None:
         current_user: schemas.User = Depends(get_current_active_user),
     ):
         doc = _get_doc_or_404(db, doc_id)
-        _require(current_user, doc.project_id, "read", db)
+        if not _can_access(current_user, doc.project_id, "read", db):
+            # No project RBAC read — fall back to a granular share grant.
+            grant = _doc_read_via_grant(current_user, doc, db)
+            if grant is None:
+                raise HTTPException(status_code=403, detail="Insufficient permissions")
+            # Coalesce this user's repeated reads into one audit row per window.
+            last = crud_docs.latest_share_audit_at(db, doc.id, "accessed", actor_id=current_user.id)
+            last_aware = _as_aware(last)
+            if last_aware is None or last_aware <= _utcnow() - _AUDIT_VIEW_WINDOW:
+                crud_docs.record_share_audit(
+                    db, doc.id, current_user.id, "accessed",
+                    f"Viewed via {_grant_audit_text(grant)} grant",
+                )
         _record_visit(db, doc, current_user)
         return _doc_out(doc, current_user, db)
 
@@ -1210,6 +1415,7 @@ def register_docs_routes(app) -> None:
         # Snapshot before the update so mention notifications only fire for users
         # newly added since the last save (the editor autosaves frequently).
         previous_markdown = doc.content_markdown
+        previous_project_id = doc.project_id
         target_space_id = doc.space_id
         if payload.space_id is not None and payload.space_id != doc.space_id:
             new_space = _get_space_or_404(db, payload.space_id)
@@ -1219,6 +1425,7 @@ def register_docs_routes(app) -> None:
         if "folder_id" in payload.model_fields_set:
             _validate_folder_in_space(db, payload.folder_id, target_space_id)
         doc = crud_docs.update_doc(db, doc, payload, actor_id=current_user.id)
+        _reconcile_grants_after_move(db, doc, previous_project_id, current_user)
         _notify_doc_mentions(db, doc, current_user, previous_markdown)
         return _doc_out(doc, current_user, db)
 
@@ -1337,12 +1544,7 @@ def register_docs_routes(app) -> None:
     ):
         doc = _get_doc_or_404(db, doc_id)
         _require(current_user, doc.project_id, "read", db)
-        return schemas.DocShareInfo(
-            share_scope=doc.share_scope or "private",
-            public_id=doc.public_id if _share_active(doc) else None,
-            share_expires_at=doc.share_expires_at,
-            share_url=(f"/docs/public/{doc.public_id}" if _share_active(doc) else None),
-        )
+        return _share_info(doc, db)
 
     @app.put("/docs/{doc_id}/share", response_model=schemas.DocShareInfo, tags=["Docs"])
     def update_doc_share(
@@ -1352,25 +1554,123 @@ def register_docs_routes(app) -> None:
         current_user: schemas.User = Depends(get_current_active_user),
     ):
         doc = _get_doc_or_404(db, doc_id)
-        # Sharing a doc publicly is an edit-level action.
+        # Changing how a doc is shared is an edit-level action.
         _require(current_user, doc.project_id, "write", db)
+        # Restricted sharing is meaningless on a global doc: every authenticated
+        # user already has read access to global docs, so grants can't narrow it.
+        if payload.share_scope == "restricted" and doc.project_id is None:
+            raise HTTPException(
+                status_code=400,
+                detail="Restricted sharing applies to project documents only",
+            )
         if payload.share_expires_at is not None and _as_aware(payload.share_expires_at) <= _utcnow():
             raise HTTPException(status_code=400, detail="Share expiry must be in the future")
+        previous_scope = doc.share_scope or "private"
         doc.share_scope = payload.share_scope
         if payload.share_scope == "public":
             if not doc.public_id:
                 doc.public_id = uuid.uuid4().hex
             doc.share_expires_at = payload.share_expires_at
         else:
+            # Per-grant expiry governs restricted access; the doc-level expiry is
+            # a public-link concept only.
             doc.share_expires_at = None
         crud.safe_commit(db)
         db.refresh(doc)
-        return schemas.DocShareInfo(
-            share_scope=doc.share_scope,
-            public_id=doc.public_id if _share_active(doc) else None,
-            share_expires_at=doc.share_expires_at,
-            share_url=(f"/docs/public/{doc.public_id}" if _share_active(doc) else None),
+        if previous_scope != doc.share_scope:
+            crud_docs.record_share_audit(
+                db, doc.id, current_user.id, "scope_changed",
+                f"Sharing changed from {previous_scope} to {doc.share_scope}",
+            )
+        return _share_info(doc, db)
+
+    # ── Granular share grants (user / role / project group) ─────────────────
+    @app.post("/docs/{doc_id}/share/grants", response_model=schemas.DocShareInfo, tags=["Docs"])
+    def add_doc_share_grant(
+        payload: schemas.DocShareGrantCreate,
+        doc_id: int = Path(..., ge=1),
+        db: Session = Depends(get_db),
+        current_user: schemas.User = Depends(get_current_active_user),
+    ):
+        doc = _get_doc_or_404(db, doc_id)
+        _require(current_user, doc.project_id, "write", db)
+        # Grants only mean something for project docs (global docs are readable by
+        # every authenticated user, so a grant can't restrict or extend access).
+        if doc.project_id is None:
+            raise HTTPException(
+                status_code=400,
+                detail="Granular sharing applies to project documents only",
+            )
+        if payload.expires_at is not None and _as_aware(payload.expires_at) <= _utcnow():
+            raise HTTPException(status_code=400, detail="Grant expiry must be in the future")
+        if payload.grant_type == "user":
+            if db.query(models.User.id).filter(models.User.id == payload.subject_user_id).first() is None:
+                raise HTTPException(status_code=404, detail="User not found")
+        elif payload.grant_type == "project":
+            if db.query(models.Project.id).filter(models.Project.id == payload.subject_project_id).first() is None:
+                raise HTTPException(status_code=404, detail="Project not found")
+        try:
+            grant = crud_docs.add_share_grant(db, doc, payload, current_user.id)
+        except IntegrityError:
+            raise HTTPException(status_code=409, detail="That grant already exists")
+        # Adding a grant to a private doc has no effect until it's restricted, so
+        # auto-promote private → restricted for predictable behaviour.
+        if (doc.share_scope or "private") == "private":
+            doc.share_scope = "restricted"
+            crud.safe_commit(db)
+            db.refresh(doc)
+            crud_docs.record_share_audit(
+                db, doc.id, current_user.id, "scope_changed",
+                "Sharing changed from private to restricted",
+            )
+        crud_docs.record_share_audit(
+            db, doc.id, current_user.id, "grant_added",
+            f"Granted access to {_grant_audit_text(grant)}",
         )
+        return _share_info(doc, db)
+
+    @app.delete("/docs/{doc_id}/share/grants/{grant_id}", response_model=schemas.DocShareInfo, tags=["Docs"])
+    def remove_doc_share_grant(
+        doc_id: int = Path(..., ge=1),
+        grant_id: int = Path(..., ge=1),
+        db: Session = Depends(get_db),
+        current_user: schemas.User = Depends(get_current_active_user),
+    ):
+        doc = _get_doc_or_404(db, doc_id)
+        _require(current_user, doc.project_id, "write", db)
+        grant = crud_docs.get_share_grant(db, doc.id, grant_id)
+        if grant is None:
+            raise HTTPException(status_code=404, detail="Share grant not found")
+        audit_text = _grant_audit_text(grant)
+        crud_docs.delete_share_grant(db, grant)
+        crud_docs.record_share_audit(
+            db, doc.id, current_user.id, "grant_removed",
+            f"Revoked access from {audit_text}",
+        )
+        db.refresh(doc)
+        return _share_info(doc, db)
+
+    @app.get("/docs/{doc_id}/share/audit", response_model=List[schemas.DocShareAuditView], tags=["Docs"])
+    def get_doc_share_audit(
+        doc_id: int = Path(..., ge=1),
+        limit: int = Query(100, ge=1, le=500),
+        db: Session = Depends(get_db),
+        current_user: schemas.User = Depends(get_current_active_user),
+    ):
+        doc = _get_doc_or_404(db, doc_id)
+        _require(current_user, doc.project_id, "write", db)
+        rows = crud_docs.list_share_audit(db, doc.id, limit)
+        return [
+            schemas.DocShareAuditView(
+                id=row.id,
+                action=row.action,
+                detail=row.detail,
+                actor_id=row.actor_id,
+                actor_name=(row.actor.full_name or row.actor.username) if row.actor else None,
+                created_at=row.created_at,
+            )
+            for row in rows
+        ]
 
     @app.get("/docs/{doc_id}/stats", response_model=schemas.DocStats, tags=["Docs"])
     def get_doc_stats(
@@ -2016,7 +2316,7 @@ def register_docs_routes(app) -> None:
         except HTTPException as exc:
             logger.warning("Doc convert AI enhancement failed for doc %s: %s", doc.id, exc.detail)
             result.ai_available = False
-            result.ai_skipped_reason = "ai_error"
+            result.ai_skipped_reason = _ai_skip_reason(exc)
         except Exception as exc:  # parsing or unexpected provider error
             logger.warning("Doc convert AI enhancement errored for doc %s: %s", doc.id, exc)
             result.ai_available = False
@@ -2135,7 +2435,7 @@ def register_docs_routes(app) -> None:
                 except HTTPException as exc:
                     logger.warning("Doc impact AI assessment failed for doc %s: %s", doc.id, exc.detail)
                     result.ai_available = False
-                    result.ai_skipped_reason = "ai_error"
+                    result.ai_skipped_reason = _ai_skip_reason(exc)
                 except Exception as exc:  # parsing or unexpected provider error
                     logger.warning("Doc impact AI assessment errored for doc %s: %s", doc.id, exc)
                     result.ai_available = False

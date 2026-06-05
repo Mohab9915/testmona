@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
   ArrowRightLeft,
@@ -121,7 +121,19 @@ export function ConvertDocDialog({ doc, open, onOpenChange, onConverted }: Props
     }
   }, [open, doc.id, mode, headingLevel, t, toast, resetAi]);
 
-  useEffect(() => { loadPreview(); }, [loadPreview]);
+  // Load the preview when the dialog opens or its parameters change. The ref
+  // keyed on the request params dedupes React 18 StrictMode's double-invoked
+  // mount effect (dev), which would otherwise fire two identical preview calls;
+  // real parameter changes always differ from the previous key, so they still
+  // reload. Reset on close so reopening with the same params re-fetches.
+  const previewKeyRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!open) { previewKeyRef.current = null; return; }
+    const key = `${doc.id}|${mode}|${headingLevel}`;
+    if (previewKeyRef.current === key) return;
+    previewKeyRef.current = key;
+    loadPreview();
+  }, [open, doc.id, mode, headingLevel, loadPreview]);
 
   // Run the (paid) AI review when the user turns it on, and re-run whenever the
   // preview (and thus the draft requirements) changes while it stays on.
@@ -270,7 +282,7 @@ export function ConvertDocDialog({ doc, open, onOpenChange, onConverted }: Props
   // Map only known skip reasons to a message; anything else falls back to the
   // generic notice (avoids surfacing a raw reason code, since `t` echoes
   // unknown keys verbatim).
-  const KNOWN_AI_REASONS = new Set(['ask_ai_disabled', 'ai_unavailable', 'ai_error', 'nothing_to_enhance']);
+  const KNOWN_AI_REASONS = new Set(['ask_ai_disabled', 'ai_unavailable', 'ai_error', 'rate_limited', 'nothing_to_enhance']);
   const aiNoticeText = aiNotice
     ? (KNOWN_AI_REASONS.has(aiNotice) ? t(`docConvertAiReason_${aiNotice}` as any) : t('docConvertAiUnavailable'))
     : null;
