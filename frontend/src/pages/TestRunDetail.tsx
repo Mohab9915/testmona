@@ -1721,10 +1721,11 @@ export function TestRunDetail() {
           title={t('testResultsDistribution')} 
           onChartClick={handleChartClick}
         />
-        <TestRunBarChart 
-          data={sectionData} 
-          title={t('resultsBySection')} 
+        <TestRunBarChart
+          data={sectionData}
+          title={t('resultsBySection')}
           onChartClick={handleChartClick}
+          activeSection={sectionFilter}
         />
         <TestRunTrendChart data={trendData} title={t('passRateTrend')} />
       </div>

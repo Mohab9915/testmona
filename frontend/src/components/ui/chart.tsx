@@ -194,19 +194,51 @@ export function TestRunPieChart({ data, title, onChartClick }: TestRunChartProps
   );
 }
 
-export function TestRunBarChart({ data, title, onChartClick }: { data: SectionData[]; title: string; onChartClick?: (data: any) => void }) {
+export function TestRunBarChart({ data, title, onChartClick, activeSection }: { data: SectionData[]; title: string; onChartClick?: (data: any) => void; activeSection?: string }) {
   const { t } = useTranslation();
   const allSections = [...data].sort((a, b) => b.total - a.total);
   const visibleData = allSections.slice(0, 8);
-  // With many sections, horizontal labels collide — angle them and give the
-  // axis extra vertical room.
-  const manySections = visibleData.length > 4;
+  // Each bar gets only a narrow slice of this 1/3-width card. Centered
+  // horizontal labels overlap as soon as more than a couple of sections share
+  // that width, so angle them from 3 bars up at one fixed angle (the chart never
+  // visually jumps as sections are added, and angled labels keep enough
+  // perpendicular spacing to never collide). Truncate harder the more bars there
+  // are; the full name stays available via the bar tooltip and the list below.
+  const barCount = visibleData.length;
+  const angledLabels = barCount > 2;
+  const labelMax = barCount > 6 ? 6 : barCount > 4 ? 8 : barCount > 2 ? 11 : 14;
 
-  const handleBarClick = (entry: any) => {
-    if (onChartClick && entry?.name) {
-      onChartClick({ type: 'section', value: entry.filterValue ?? entry.name });
+  // The value the results table filters by; falls back to the label when a
+  // dedicated filter value isn't supplied.
+  const sectionKey = (section: SectionData) => section.filterValue ?? section.name;
+  const hasActiveSection = !!activeSection && activeSection !== 'all';
+  const isSectionActive = (section: SectionData) => hasActiveSection && sectionKey(section) === activeSection;
+
+  const emitSection = (value: string) => {
+    if (onChartClick && value) {
+      onChartClick({ type: 'section', value });
     }
   };
+
+  const handleBarClick = (entry: any) => {
+    if (entry?.name) {
+      emitSection(entry.filterValue ?? entry.name);
+    }
+  };
+
+  // Each stacked outcome segment. Top/bottom segments get the rounded corners so
+  // the whole stacked column reads as one rounded bar.
+  const segments: { key: 'pass' | 'fail' | 'block' | 'skip' | 'not_started'; color: string; label: string; radius?: [number, number, number, number] }[] = [
+    { key: 'pass', color: COLORS.pass, label: t('passed'), radius: [0, 0, 8, 8] },
+    { key: 'fail', color: COLORS.fail, label: t('failed') },
+    { key: 'block', color: COLORS.block, label: t('blocked') },
+    { key: 'skip', color: COLORS.skip, label: t('skipped') },
+    { key: 'not_started', color: COLORS.not_started, label: t('notStarted'), radius: [8, 8, 0, 0] },
+  ];
+
+  // With a section selected, fade the bars for every other section so the active
+  // one stands out and the chart mirrors what the table is showing.
+  const cellOpacity = (section: SectionData) => (hasActiveSection && !isSectionActive(section) ? 0.3 : 1);
 
   return (
     <Card className="overflow-hidden border-slate-200/80 bg-white shadow-xs dark:border-slate-800 dark:bg-slate-950">
@@ -230,7 +262,7 @@ export function TestRunBarChart({ data, title, onChartClick }: { data: SectionDa
           <EmptyChart />
         ) : (
           <>
-            <ResponsiveContainer width="100%" height={manySections ? 268 : 220}>
+            <ResponsiveContainer width="100%" height={angledLabels ? 252 : 208}>
               <BarChart data={visibleData} margin={{ top: 12, right: 8, left: -16, bottom: 0 }} barCategoryGap={18}>
                 <CartesianGrid strokeDasharray="4 6" vertical={false} stroke="#e2e8f0" />
                 <XAxis
@@ -241,43 +273,71 @@ export function TestRunBarChart({ data, title, onChartClick }: { data: SectionDa
                   interval={0}
                   tickFormatter={(value) => {
                     const label = String(value);
-                    const max = manySections ? 16 : 10;
-                    return label.length > max ? `${label.slice(0, max)}…` : label;
+                    return label.length > labelMax ? `${label.slice(0, labelMax)}…` : label;
                   }}
-                  {...(manySections
-                    ? { angle: -35, textAnchor: 'end' as const, height: 72, tickMargin: 8 }
+                  {...(angledLabels
+                    ? { angle: -45, textAnchor: 'end' as const, height: 78, tickMargin: 6 }
                     : {})}
                 />
                 <YAxis allowDecimals={false} tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: '#64748b' }} />
-                <Tooltip content={<ChartTooltip />} />
-                <Bar dataKey="pass" stackId="results" fill={COLORS.pass} name={t('passed')} radius={[0, 0, 8, 8]} onClick={handleBarClick} cursor="pointer" />
-                <Bar dataKey="fail" stackId="results" fill={COLORS.fail} name={t('failed')} onClick={handleBarClick} cursor="pointer" />
-                <Bar dataKey="block" stackId="results" fill={COLORS.block} name={t('blocked')} onClick={handleBarClick} cursor="pointer" />
-                <Bar dataKey="skip" stackId="results" fill={COLORS.skip} name={t('skipped')} onClick={handleBarClick} cursor="pointer" />
-                <Bar dataKey="not_started" stackId="results" fill={COLORS.not_started} name={t('notStarted')} radius={[8, 8, 0, 0]} onClick={handleBarClick} cursor="pointer" />
+                <Tooltip content={<ChartTooltip />} cursor={{ fill: 'rgba(100,116,139,0.08)' }} />
+                {segments.map((segment) => (
+                  <Bar
+                    key={segment.key}
+                    dataKey={segment.key}
+                    stackId="results"
+                    fill={segment.color}
+                    name={segment.label}
+                    radius={segment.radius}
+                    onClick={handleBarClick}
+                    cursor="pointer"
+                  >
+                    {visibleData.map((entry) => (
+                      <Cell key={sectionKey(entry)} fill={segment.color} fillOpacity={cellOpacity(entry)} />
+                    ))}
+                  </Bar>
+                ))}
               </BarChart>
             </ResponsiveContainer>
 
-            {/* All sections scrollable list */}
-            <div className="max-h-[180px] overflow-y-auto space-y-1 pr-1">
-              {allSections.map((section) => (
-                <div key={section.name} className="flex items-center gap-3 rounded-lg bg-slate-50 px-3 py-1.5 text-xs dark:bg-slate-900/60">
-                  <span className="min-w-0 flex-1 truncate font-medium text-slate-700 dark:text-slate-200" title={section.name}>
-                    {section.name}
-                  </span>
-                  {/* Mini stacked progress bar */}
-                  <div className="flex h-1.5 w-16 shrink-0 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
-                    {section.pass > 0 && <div style={{ width: `${(section.pass / section.total) * 100}%`, backgroundColor: COLORS.pass }} />}
-                    {section.fail > 0 && <div style={{ width: `${(section.fail / section.total) * 100}%`, backgroundColor: COLORS.fail }} />}
-                    {section.block > 0 && <div style={{ width: `${(section.block / section.total) * 100}%`, backgroundColor: COLORS.block }} />}
-                    {section.skip > 0 && <div style={{ width: `${(section.skip / section.total) * 100}%`, backgroundColor: COLORS.skip }} />}
-                    {section.not_started > 0 && <div style={{ width: `${(section.not_started / section.total) * 100}%`, backgroundColor: COLORS.not_started }} />}
-                  </div>
-                  <span className="shrink-0 text-slate-500 dark:text-slate-400">
-                    {section.passRate}% · {section.total}
-                  </span>
-                </div>
-              ))}
+            {/* All sections scrollable list — each row toggles the table's
+                section filter, so sections beyond the top-8 bars stay filterable. */}
+            <div className="max-h-[180px] space-y-1 overflow-y-auto pr-1">
+              {allSections.map((section) => {
+                const active = isSectionActive(section);
+                return (
+                  <button
+                    key={sectionKey(section)}
+                    type="button"
+                    onClick={() => emitSection(sectionKey(section))}
+                    aria-pressed={active}
+                    title={t('clickToFilterBySection', { section: section.name })}
+                    className={`flex w-full items-center gap-3 rounded-lg px-3 py-1.5 text-left text-xs transition-colors ${
+                      active
+                        ? 'bg-blue-50 ring-1 ring-blue-300 dark:bg-blue-950/40 dark:ring-blue-800'
+                        : 'bg-slate-50 hover:bg-slate-100 dark:bg-slate-900/60 dark:hover:bg-slate-800/70'
+                    }`}
+                  >
+                    <span className={`min-w-0 flex-1 truncate font-medium ${active ? 'text-blue-700 dark:text-blue-300' : 'text-slate-700 dark:text-slate-200'}`}>
+                      {section.name}
+                    </span>
+                    {/* Mini stacked progress bar */}
+                    <div className="flex h-1.5 w-16 shrink-0 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
+                      {section.pass > 0 && <div style={{ width: `${(section.pass / section.total) * 100}%`, backgroundColor: COLORS.pass }} />}
+                      {section.fail > 0 && <div style={{ width: `${(section.fail / section.total) * 100}%`, backgroundColor: COLORS.fail }} />}
+                      {section.block > 0 && <div style={{ width: `${(section.block / section.total) * 100}%`, backgroundColor: COLORS.block }} />}
+                      {section.skip > 0 && <div style={{ width: `${(section.skip / section.total) * 100}%`, backgroundColor: COLORS.skip }} />}
+                      {section.not_started > 0 && <div style={{ width: `${(section.not_started / section.total) * 100}%`, backgroundColor: COLORS.not_started }} />}
+                    </div>
+                    <span
+                      className="shrink-0 tabular-nums text-slate-500 dark:text-slate-400"
+                      title={t('sectionPassRateSummary', { passRate: section.passRate, total: section.total })}
+                    >
+                      {section.passRate}% · {section.total}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
           </>
         )}

@@ -447,6 +447,7 @@ export const ar = {
     leadingResultAtPercent: 'النتيجة الرائدة: {name} بنسبة {percent}%',
     stackedOutcomesBySection: 'نتائج مكدسة حسب القسم، مرتبة حسب الحجم.',
     showingTopOf: 'عرض أعلى {shown} من أصل {total} قسم.',
+    clickToFilterBySection: 'انقر للتصفية حسب {section}',
     sectionsCount: '{count} أقسام',
     sectionPassRateSummary: 'معدل نجاح {passRate}%، {total} اختبارات',
     cumulativePassRateDescription: 'معدل النجاح التراكمي أثناء تنفيذ النتائج.',

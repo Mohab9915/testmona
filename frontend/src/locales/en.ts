@@ -494,6 +494,7 @@ export const en = {
   leadingResultAtPercent: 'Leading result: {name} at {percent}%',
   stackedOutcomesBySection: 'Stacked outcomes by section, sorted by volume.',
   showingTopOf: 'Showing top {shown} of {total} sections.',
+  clickToFilterBySection: 'Click to filter by {section}',
   sectionsCount: '{count} sections',
   sectionPassRateSummary: '{passRate}% pass rate, {total} tests',
   cumulativePassRateDescription: 'Cumulative pass rate as results are executed.',

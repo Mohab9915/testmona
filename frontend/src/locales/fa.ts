@@ -447,6 +447,7 @@ export const fa = {
     leadingResultAtPercent: 'نتیجه پیشرو: {name} با {percent}%',
     stackedOutcomesBySection: 'نتایج انباشته بر اساس بخش، مرتب‌شده بر اساس حجم.',
     showingTopOf: 'نمایش {shown} بخش برتر از {total} بخش.',
+    clickToFilterBySection: 'برای فیلتر بر اساس {section} کلیک کنید',
     sectionsCount: '{count} بخش',
     sectionPassRateSummary: 'نرخ قبولی {passRate}%، {total} تست',
     cumulativePassRateDescription: 'نرخ قبولی تجمعی هنگام اجرای نتایج.',
