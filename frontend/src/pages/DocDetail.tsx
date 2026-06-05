@@ -50,12 +50,13 @@ import { DocRelatedSection } from '@/components/docs/DocRelatedSection';
 import { DocRequirementLinksSection } from '@/components/docs/DocRequirementLinksSection';
 import { ConvertDocDialog } from '@/components/docs/ConvertDocDialog';
 import { DocImpactDialog } from '@/components/docs/DocImpactDialog';
+import { DocShareDialog } from '@/components/docs/DocShareDialog';
 import { useToast } from '@/hooks/use-toast';
 import { useTranslation } from '@/hooks/useTranslation';
 import { docsAPI } from '@/lib/api';
 import { parsePositiveIntegerParam } from '@/utils/validation';
 import { formatServerDateTime } from '@/utils/datetime';
-import type { Doc, DocFeedback, DocFeedbackSummary, DocFeedbackType, DocRequirementLink, DocShareInfo, DocSpace, DocStats } from '@/types';
+import type { Doc, DocFeedback, DocFeedbackSummary, DocFeedbackType, DocRequirementLink, DocSpace, DocStats } from '@/types';
 
 const statusTone: Record<string, string> = {
   draft: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300',
@@ -92,14 +93,11 @@ export function DocDetail({ initialTab = 'document' }: { initialTab?: DocTab }) 
   const [convertOpen, setConvertOpen] = useState(false);
   const [impactOpen, setImpactOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
-  const [shareInfo, setShareInfo] = useState<DocShareInfo | null>(null);
-  const [shareSaving, setShareSaving] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState('');
   const [savingTitle, setSavingTitle] = useState(false);
-  const [copied, setCopied] = useState(false);
   const [feedbackSaving, setFeedbackSaving] = useState(false);
   const [feedbackDialogType, setFeedbackDialogType] = useState<DocFeedbackType | null>(null);
   const [feedbackComment, setFeedbackComment] = useState('');
@@ -159,31 +157,6 @@ export function DocDetail({ initialTab = 'document' }: { initialTab?: DocTab }) 
     }
   };
 
-  const openShare = async () => {
-    if (!doc) return;
-    try {
-      const info = await docsAPI.getShare(doc.id);
-      setShareInfo(info);
-      setShareOpen(true);
-    } catch (e: any) {
-      toast({ title: t('error'), description: e?.response?.data?.detail || t('docShareFailed'), variant: 'destructive' });
-    }
-  };
-
-  const updateShare = async (scope: 'private' | 'public') => {
-    if (!doc) return;
-    try {
-      setShareSaving(true);
-      const info = await docsAPI.updateShare(doc.id, { share_scope: scope });
-      setShareInfo(info);
-      toast({ title: t('success'), description: scope === 'public' ? t('docShareEnabled') : t('docShareDisabled') });
-    } catch (e: any) {
-      toast({ title: t('error'), description: e?.response?.data?.detail || t('docShareFailed'), variant: 'destructive' });
-    } finally {
-      setShareSaving(false);
-    }
-  };
-
   const startTitleEdit = () => {
     if (!doc?.can_edit) return;
     setTitleDraft(doc.title);
@@ -206,16 +179,6 @@ export function DocDetail({ initialTab = 'document' }: { initialTab?: DocTab }) 
     }
   };
 
-  const copyShareLink = async () => {
-    if (!shareInfo?.share_url) return;
-    try {
-      await navigator.clipboard.writeText(`${window.location.origin}${shareInfo.share_url}`);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1800);
-    } catch {
-      toast({ title: t('error'), description: t('docCopyFailed'), variant: 'destructive' });
-    }
-  };
 
   const handleTabChange = (value: string) => {
     const next = value as DocTab;
@@ -358,7 +321,7 @@ export function DocDetail({ initialTab = 'document' }: { initialTab?: DocTab }) 
           {t('export')}
         </Button>
         {doc.can_share && (
-          <Button variant="outline" size="sm" onClick={openShare}>
+          <Button variant="outline" size="sm" onClick={() => setShareOpen(true)}>
             <Share2 className={`h-4 w-4 ${isRTL ? 'ml-2' : 'mr-2'}`} />
             {t('share')}
           </Button>
@@ -661,55 +624,15 @@ export function DocDetail({ initialTab = 'document' }: { initialTab?: DocTab }) 
         </AlertDialogContent>
       </AlertDialog>
 
-      <Dialog open={shareOpen} onOpenChange={setShareOpen}>
-        <DialogContent dir={isRTL ? 'rtl' : 'ltr'}>
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2"><Share2 className="h-5 w-5 text-primary" />{t('share')}</DialogTitle>
-            <DialogDescription>{t('docShareDesc')}</DialogDescription>
-          </DialogHeader>
-
-          {shareInfo?.share_url ? (
-            <div className="space-y-3">
-              <div className="flex items-center gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300">
-                <Globe className="h-4 w-4 shrink-0" /> {t('docSharePublicState')}
-              </div>
-              <div className="flex items-center gap-2">
-                <Input
-                  readOnly
-                  value={`${window.location.origin}${shareInfo.share_url}`}
-                  onFocus={(e) => e.currentTarget.select()}
-                  className="font-mono text-xs"
-                  dir="ltr"
-                />
-                <Button type="button" variant="outline" size="icon" className="shrink-0" onClick={copyShareLink} title={t('copy')}>
-                  {copied ? <Check className="h-4 w-4 text-emerald-600" /> : <Copy className="h-4 w-4" />}
-                </Button>
-              </div>
-              {shareInfo.share_expires_at && (
-                <p className="text-xs text-muted-foreground">{t('docShareExpiresAt', { date: formatServerDateTime(shareInfo.share_expires_at) })}</p>
-              )}
-            </div>
-          ) : (
-            <div className="flex items-center gap-2 rounded-md border border-slate-200 px-3 py-2 text-sm text-muted-foreground dark:border-slate-800">
-              <Lock className="h-4 w-4 shrink-0" /> {t('docSharePrivate')}
-            </div>
-          )}
-
-          <DialogFooter>
-            {shareInfo?.share_url ? (
-              <Button variant="outline" onClick={() => updateShare('private')} disabled={shareSaving}>
-                {shareSaving ? <Loader2 className={`h-4 w-4 animate-spin ${isRTL ? 'ml-2' : 'mr-2'}`} /> : <Lock className={`h-4 w-4 ${isRTL ? 'ml-2' : 'mr-2'}`} />}
-                {t('docShareDisable')}
-              </Button>
-            ) : (
-              <Button onClick={() => updateShare('public')} disabled={shareSaving}>
-                {shareSaving ? <Loader2 className={`h-4 w-4 animate-spin ${isRTL ? 'ml-2' : 'mr-2'}`} /> : <Globe className={`h-4 w-4 ${isRTL ? 'ml-2' : 'mr-2'}`} />}
-                {t('docShareEnable')}
-              </Button>
-            )}
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {doc && (
+        <DocShareDialog
+          docId={doc.id}
+          projectId={doc.project_id}
+          open={shareOpen}
+          onOpenChange={setShareOpen}
+          onScopeChange={(scope) => setDoc((prev) => (prev ? { ...prev, share_scope: scope } : prev))}
+        />
+      )}
 
       <Dialog open={!!feedbackDialogType} onOpenChange={(open) => { if (!open) setFeedbackDialogType(null); }}>
         <DialogContent dir={isRTL ? 'rtl' : 'ltr'}>

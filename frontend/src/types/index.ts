@@ -783,7 +783,7 @@ export interface DocListItem {
   language?: string | null;
   excerpt?: string | null;
   current_version: number;
-  share_scope: 'private' | 'public';
+  share_scope: DocShareScope;
   view_count?: number | null;
   last_viewed_at?: string | null;
   my_last_visited_at?: string | null;
@@ -810,7 +810,7 @@ export interface Doc {
   language?: string | null;
   current_version: number;
   public_id?: string | null;
-  share_scope: 'private' | 'public';
+  share_scope: DocShareScope;
   share_expires_at?: string | null;
   view_count?: number | null;
   last_viewed_at?: string | null;
@@ -826,11 +826,47 @@ export interface Doc {
   can_view_stats: boolean;
 }
 
+export type DocShareScope = 'private' | 'restricted' | 'public';
+export type DocShareGrantType = 'user' | 'role' | 'project';
+export type DocShareRole = 'viewer' | 'tester' | 'manager' | 'admin';
+
+export interface DocShareGrant {
+  id: number;
+  grant_type: DocShareGrantType;
+  subject_user_id?: number | null;
+  subject_role?: DocShareRole | string | null;
+  subject_project_id?: number | null;
+  subject_label?: string | null;
+  subject_sublabel?: string | null;
+  expires_at?: string | null;
+  is_expired: boolean;
+  created_by?: number | null;
+  created_at?: string | null;
+}
+
+export interface DocShareGrantCreate {
+  grant_type: DocShareGrantType;
+  subject_user_id?: number | null;
+  subject_role?: DocShareRole | null;
+  subject_project_id?: number | null;
+  expires_at?: string | null;
+}
+
+export interface DocShareAuditEntry {
+  id: number;
+  action: 'scope_changed' | 'grant_added' | 'grant_removed' | 'accessed' | 'public_accessed' | string;
+  detail?: string | null;
+  actor_id?: number | null;
+  actor_name?: string | null;
+  created_at?: string | null;
+}
+
 export interface DocShareInfo {
-  share_scope: 'private' | 'public';
+  share_scope: DocShareScope;
   public_id?: string | null;
   share_expires_at?: string | null;
   share_url?: string | null;
+  grants: DocShareGrant[];
 }
 
 export interface DocPublicView {

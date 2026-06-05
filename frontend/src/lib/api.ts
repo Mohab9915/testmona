@@ -1,5 +1,5 @@
 import axios from "axios";
-import { Project, TestSuite, TestCase, TestRun, TestResult, User, TestRunStatistics, CustomFieldDefinition, CustomFieldValue, TestCaseWithCustomFields, JiraIntegration, JiraIssue, Notification, AuditTrail, AuditTrailList, AuditTrailFilters, ActivitySummary, EntityHistory, Requirement, RequirementCreate, RequirementUpdate, RequirementCoverageList, RequirementVersion, RequirementComment, RequirementFolder, Milestone, MilestoneCreate, MilestoneUpdate, MilestoneStats, SharedStep, SharedStepCreate, SharedStepUpdate, DocSpace, DocSpaceCreate, DocFolder, Doc, DocListItem, DocCreate, DocUpdate, DocVersion, DocRequirementLink, DocConvertRequest, DocConvertPreview, DocConvertResult, DocConvertEnhanceRequest, DocConvertEnhanceResult, DocShareInfo, DocPublicView, DocStats, DocStatsOverview, DocRelatedLink, DocSuggestion, DocFacets, DocListPage, DocFeedback, DocFeedbackSummary, DocFeedbackType, DocDuplicateCandidate, DocMergeResult, DocImpactRequest, DocImpactAnalysis, ReleaseNotesGenerateRequest, ReleaseNotesPreview, ReleaseNote, ReleaseNoteListItem, ReleaseNoteCreate, ReleaseNoteUpdate, ReleaseNoteStatus } from "@/types";
+import { Project, TestSuite, TestCase, TestRun, TestResult, User, TestRunStatistics, CustomFieldDefinition, CustomFieldValue, TestCaseWithCustomFields, JiraIntegration, JiraIssue, Notification, AuditTrail, AuditTrailList, AuditTrailFilters, ActivitySummary, EntityHistory, Requirement, RequirementCreate, RequirementUpdate, RequirementCoverageList, RequirementVersion, RequirementComment, RequirementFolder, Milestone, MilestoneCreate, MilestoneUpdate, MilestoneStats, SharedStep, SharedStepCreate, SharedStepUpdate, DocSpace, DocSpaceCreate, DocFolder, Doc, DocListItem, DocCreate, DocUpdate, DocVersion, DocRequirementLink, DocConvertRequest, DocConvertPreview, DocConvertResult, DocConvertEnhanceRequest, DocConvertEnhanceResult, DocShareInfo, DocShareScope, DocShareGrantCreate, DocShareAuditEntry, DocPublicView, DocStats, DocStatsOverview, DocRelatedLink, DocSuggestion, DocFacets, DocListPage, DocFeedback, DocFeedbackSummary, DocFeedbackType, DocDuplicateCandidate, DocMergeResult, DocImpactRequest, DocImpactAnalysis, ReleaseNotesGenerateRequest, ReleaseNotesPreview, ReleaseNote, ReleaseNoteListItem, ReleaseNoteCreate, ReleaseNoteUpdate, ReleaseNoteStatus } from "@/types";
 import { useAuthStore } from "@/stores/authStore";
 
 // System Settings API
@@ -858,8 +858,20 @@ export const docsAPI = {
     const response = await api.get(`/docs/${id}/share`);
     return response.data;
   },
-  updateShare: async (id: number, payload: { share_scope: 'private' | 'public'; share_expires_at?: string | null }): Promise<DocShareInfo> => {
+  updateShare: async (id: number, payload: { share_scope: DocShareScope; share_expires_at?: string | null }): Promise<DocShareInfo> => {
     const response = await api.put(`/docs/${id}/share`, payload);
+    return response.data;
+  },
+  addShareGrant: async (id: number, payload: DocShareGrantCreate): Promise<DocShareInfo> => {
+    const response = await api.post(`/docs/${id}/share/grants`, payload);
+    return response.data;
+  },
+  removeShareGrant: async (id: number, grantId: number): Promise<DocShareInfo> => {
+    const response = await api.delete(`/docs/${id}/share/grants/${grantId}`);
+    return response.data;
+  },
+  getShareAudit: async (id: number, limit = 100): Promise<DocShareAuditEntry[]> => {
+    const response = await api.get(`/docs/${id}/share/audit`, { params: { limit } });
     return response.data;
   },
   getStats: async (id: number): Promise<DocStats> => {

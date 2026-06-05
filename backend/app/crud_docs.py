@@ -1045,3 +1045,145 @@ def unpublish_release_note(
 def delete_release_note(db: Session, note: models.DocReleaseNote) -> None:
     db.delete(note)
     safe_commit(db)
+
+
+# --------------------------------------------------------------------------- #
+# Granular sharing: grants + audit trail                                       #
+# --------------------------------------------------------------------------- #
+
+def list_share_grants(db: Session, doc_id: int) -> List[models.DocShareGrant]:
+    """All grants for a doc, newest first, with subjects eager-loaded."""
+    from sqlalchemy.orm import joinedload
+
+    return (
+        db.query(models.DocShareGrant)
+        .options(
+            joinedload(models.DocShareGrant.subject_user),
+            joinedload(models.DocShareGrant.subject_project),
+        )
+        .filter(models.DocShareGrant.doc_id == doc_id)
+        .order_by(desc(models.DocShareGrant.created_at), desc(models.DocShareGrant.id))
+        .all()
+    )
+
+
+def get_share_grant(db: Session, doc_id: int, grant_id: int) -> Optional[models.DocShareGrant]:
+    return (
+        db.query(models.DocShareGrant)
+        .filter(models.DocShareGrant.id == grant_id, models.DocShareGrant.doc_id == doc_id)
+        .first()
+    )
+
+
+def add_share_grant(
+    db: Session,
+    doc: models.Doc,
+    payload: schemas.DocShareGrantCreate,
+    actor_id: int,
+) -> models.DocShareGrant:
+    """Create a grant, or refresh the expiry on an existing identical one
+    (idempotent — adding the same subject twice updates rather than duplicates)."""
+    existing = (
+        db.query(models.DocShareGrant)
+        .filter(
+            models.DocShareGrant.doc_id == doc.id,
+            models.DocShareGrant.grant_type == payload.grant_type,
+            models.DocShareGrant.subject_user_id == payload.subject_user_id,
+            models.DocShareGrant.subject_role == payload.subject_role,
+            models.DocShareGrant.subject_project_id == payload.subject_project_id,
+        )
+        .first()
+    )
+    if existing is not None:
+        existing.expires_at = payload.expires_at
+        safe_commit(db)
+        db.refresh(existing)
+        return existing
+
+    grant = models.DocShareGrant(
+        doc_id=doc.id,
+        grant_type=payload.grant_type,
+        subject_user_id=payload.subject_user_id,
+        subject_role=payload.subject_role,
+        subject_project_id=payload.subject_project_id,
+        expires_at=payload.expires_at,
+        created_by=actor_id,
+    )
+    db.add(grant)
+    try:
+        safe_commit(db)
+    except IntegrityError:
+        db.rollback()
+        raise
+    db.refresh(grant)
+    return grant
+
+
+def delete_share_grant(db: Session, grant: models.DocShareGrant) -> None:
+    db.delete(grant)
+    safe_commit(db)
+
+
+def clear_share_grants(db: Session, doc_id: int, only_role: bool = False) -> int:
+    """Bulk-remove a doc's grants (all, or just ``role`` grants). Used when a
+    doc is re-homed to another project, since role grants are scoped to the old
+    project's role-holders. Returns the number removed."""
+    query = db.query(models.DocShareGrant).filter(models.DocShareGrant.doc_id == doc_id)
+    if only_role:
+        query = query.filter(models.DocShareGrant.grant_type == "role")
+    removed = query.delete(synchronize_session=False)
+    if removed:
+        safe_commit(db)
+    return removed
+
+
+def latest_share_audit_at(db: Session, doc_id: int, action: str, actor_id: Optional[int] = None):
+    """Timestamp of the most recent audit row for a doc + action (optionally
+    scoped to one actor), or None. Used to coalesce bursty access events."""
+    query = db.query(models.DocShareAudit.created_at).filter(
+        models.DocShareAudit.doc_id == doc_id,
+        models.DocShareAudit.action == action,
+    )
+    if actor_id is not None:
+        query = query.filter(models.DocShareAudit.actor_id == actor_id)
+    row = query.order_by(
+        desc(models.DocShareAudit.created_at), desc(models.DocShareAudit.id)
+    ).first()
+    return row[0] if row else None
+
+
+def record_share_audit(
+    db: Session,
+    doc_id: int,
+    actor_id: Optional[int],
+    action: str,
+    detail: Optional[str] = None,
+) -> Optional[models.DocShareAudit]:
+    """Append an audit-trail row. Best-effort: never raises into the request."""
+    try:
+        entry = models.DocShareAudit(
+            doc_id=doc_id,
+            actor_id=actor_id,
+            action=action,
+            detail=(detail or "")[:500] or None,
+        )
+        db.add(entry)
+        safe_commit(db)
+        db.refresh(entry)
+        return entry
+    except Exception:
+        db.rollback()
+        return None
+
+
+def list_share_audit(db: Session, doc_id: int, limit: int = 100) -> List[models.DocShareAudit]:
+    from sqlalchemy.orm import joinedload
+
+    return (
+        db.query(models.DocShareAudit)
+        .options(joinedload(models.DocShareAudit.actor))
+        .filter(models.DocShareAudit.doc_id == doc_id)
+        .order_by(desc(models.DocShareAudit.created_at), desc(models.DocShareAudit.id))
+        .limit(max(1, min(limit, 500)))
+        .all()
+    )

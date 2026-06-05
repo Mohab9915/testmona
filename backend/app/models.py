@@ -2014,6 +2014,11 @@ class Doc(Base):
         back_populates="doc",
         cascade="all, delete-orphan",
     )
+    share_grants = relationship(
+        "DocShareGrant",
+        back_populates="doc",
+        cascade="all, delete-orphan",
+    )
 
 
 class DocVersion(Base):
@@ -2060,6 +2065,55 @@ class DocRequirementLink(Base):
     __table_args__ = (
         UniqueConstraint("doc_id", "requirement_id", name="uq_doc_requirement_link"),
     )
+
+
+class DocShareGrant(Base):
+    """A granular share grant on a doc. Grants read access to a specific
+    ``user``, everyone holding a project ``role``, or every member of a
+    ``project`` ("project group"). Grants are only honored while the doc's
+    ``share_scope`` is ``"restricted"``; each may carry its own expiry."""
+    __tablename__ = "doc_share_grants"
+
+    id = Column(Integer, primary_key=True, index=True)
+    doc_id = Column(Integer, ForeignKey("docs.id", ondelete="CASCADE"), nullable=False, index=True)
+    grant_type = Column(String(20), nullable=False)  # user | role | project
+    # Exactly one subject column is set, depending on grant_type.
+    subject_user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"))
+    subject_role = Column(String(20))  # viewer | tester | manager | admin
+    subject_project_id = Column(Integer, ForeignKey("projects.id", ondelete="CASCADE"))
+    expires_at = Column(DateTime(timezone=True))
+    created_by = Column(Integer, ForeignKey("users.id"))
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    doc = relationship("Doc", back_populates="share_grants")
+    subject_user = relationship("User", foreign_keys=[subject_user_id])
+    subject_project = relationship("Project", foreign_keys=[subject_project_id])
+    creator = relationship("User", foreign_keys=[created_by])
+
+    __table_args__ = (
+        UniqueConstraint(
+            "doc_id", "grant_type", "subject_user_id", "subject_role", "subject_project_id",
+            name="uq_doc_share_grant",
+        ),
+    )
+
+
+class DocShareAudit(Base):
+    """Append-only audit trail for a doc's sharing: scope changes, grant
+    add/remove, and access events (authenticated grant-based reads and
+    anonymous public-link views). ``actor_id`` is NULL for anonymous viewers."""
+    __tablename__ = "doc_share_audits"
+
+    id = Column(Integer, primary_key=True, index=True)
+    doc_id = Column(Integer, ForeignKey("docs.id", ondelete="CASCADE"), nullable=False, index=True)
+    actor_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"))
+    # scope_changed | grant_added | grant_removed | accessed | public_accessed
+    action = Column(String(40), nullable=False)
+    detail = Column(String(500))
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+
+    doc = relationship("Doc")
+    actor = relationship("User")
 
 
 class DocVisit(Base):

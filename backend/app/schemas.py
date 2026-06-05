@@ -4621,17 +4621,96 @@ class DocMergeResult(BaseModel):
     preserved_reference_count: int = 0
 
 
+DOC_SHARE_SCOPES = {"private", "restricted", "public"}
+DOC_SHARE_GRANT_TYPES = {"user", "role", "project"}
+DOC_SHARE_ROLES = {"viewer", "tester", "manager", "admin"}
+
+
 class DocShareUpdate(BaseModel):
-    share_scope: str = "private"  # private | public
+    share_scope: str = "private"  # private | restricted | public
     share_expires_at: Optional[datetime] = None
 
     @field_validator("share_scope", mode="before")
     @classmethod
     def _validate_scope(cls, v: str) -> str:
         normalized = str(v or "").strip().lower()
-        if normalized not in {"private", "public"}:
-            raise ValueError("share_scope must be 'private' or 'public'")
+        if normalized not in DOC_SHARE_SCOPES:
+            raise ValueError("share_scope must be 'private', 'restricted', or 'public'")
         return normalized
+
+
+class DocShareGrantCreate(BaseModel):
+    """Add a granular grant to a doc. Exactly one subject is required,
+    matching ``grant_type``."""
+    grant_type: str  # user | role | project
+    subject_user_id: Optional[int] = None
+    subject_role: Optional[str] = None
+    subject_project_id: Optional[int] = None
+    expires_at: Optional[datetime] = None
+
+    @field_validator("grant_type", mode="before")
+    @classmethod
+    def _validate_type(cls, v: str) -> str:
+        normalized = str(v or "").strip().lower()
+        if normalized not in DOC_SHARE_GRANT_TYPES:
+            raise ValueError("grant_type must be 'user', 'role', or 'project'")
+        return normalized
+
+    @field_validator("subject_role", mode="before")
+    @classmethod
+    def _validate_role(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return None
+        normalized = str(v).strip().lower()
+        if normalized and normalized not in DOC_SHARE_ROLES:
+            raise ValueError("subject_role must be one of: viewer, tester, manager, admin")
+        return normalized or None
+
+    @model_validator(mode="after")
+    def _check_subject(self) -> "DocShareGrantCreate":
+        # Require the subject matching the grant type, and null out the others so
+        # a stray field (e.g. a role sent on a 'user' grant) can't pollute the
+        # stored row, the uniqueness key, or access matching.
+        if self.grant_type == "user":
+            if not self.subject_user_id:
+                raise ValueError("subject_user_id is required for a 'user' grant")
+            self.subject_role = None
+            self.subject_project_id = None
+        elif self.grant_type == "role":
+            if not self.subject_role:
+                raise ValueError("subject_role is required for a 'role' grant")
+            self.subject_user_id = None
+            self.subject_project_id = None
+        elif self.grant_type == "project":
+            if not self.subject_project_id:
+                raise ValueError("subject_project_id is required for a 'project' grant")
+            self.subject_user_id = None
+            self.subject_role = None
+        return self
+
+
+class DocShareGrantView(BaseModel):
+    id: int
+    grant_type: str
+    subject_user_id: Optional[int] = None
+    subject_role: Optional[str] = None
+    subject_project_id: Optional[int] = None
+    # Display labels resolved by the route for the UI.
+    subject_label: Optional[str] = None
+    subject_sublabel: Optional[str] = None
+    expires_at: Optional[datetime] = None
+    is_expired: bool = False
+    created_by: Optional[int] = None
+    created_at: Optional[datetime] = None
+
+
+class DocShareAuditView(BaseModel):
+    id: int
+    action: str
+    detail: Optional[str] = None
+    actor_id: Optional[int] = None
+    actor_name: Optional[str] = None
+    created_at: Optional[datetime] = None
 
 
 class DocPinUpdate(BaseModel):
@@ -4643,6 +4722,7 @@ class DocShareInfo(BaseModel):
     public_id: Optional[str] = None
     share_expires_at: Optional[datetime] = None
     share_url: Optional[str] = None
+    grants: List[DocShareGrantView] = Field(default_factory=list)
 
 
 class DocPublicView(BaseModel):
