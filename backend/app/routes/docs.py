@@ -37,10 +37,12 @@ from ..services import doc_release_notes_service as release_notes
 from .project_ai_chat import _cancel_on_disconnect
 from ..services.ai_manager import AICompletionRequest, generate_ai_completion, get_ai_manager_status
 from ..services.ai_prompt_service import (
+    build_doc_convert_enhance_prompt,
     build_doc_impact_prompt,
     build_release_notes_prompt,
     clean_ai_text,
     extract_json_object,
+    strip_html,
 )
 from ..services.mentions import project_member_users, resolve_mentions
 
@@ -515,6 +517,72 @@ def _parse_impact_ai(content: str) -> tuple[str, str, List[schemas.DocImpactRisk
             mitigation=clean_ai_text(raw.get("mitigation"), 1000),
         ))
     return summary, recommendation, risks
+
+
+def _clean_str_list(value, max_items: int, max_len: int) -> List[str]:
+    """Coerce an AI-returned value into a clean list of short strings."""
+    if not isinstance(value, list):
+        return []
+    out: List[str] = []
+    for raw in value:
+        text = clean_ai_text(raw, max_len)
+        if text:
+            out.append(text)
+        if len(out) >= max_items:
+            break
+    return out
+
+
+def _parse_convert_enhance(
+    content: str,
+) -> tuple[str, List[schemas.DocConvertEnhanceItem], List[schemas.DocConvertSuggestedRequirement]]:
+    """Parse the AI enhancement JSON. AI Markdown suggestions are rendered to HTML
+    here so the client can preview/apply them directly. Raises on unparseable
+    content so the caller records the failure and degrades gracefully."""
+    parsed = extract_json_object(content)
+    summary = clean_ai_text(parsed.get("summary"), 600)
+
+    items: List[schemas.DocConvertEnhanceItem] = []
+    for raw in (parsed.get("items") or [])[:50]:
+        if not isinstance(raw, dict):
+            continue
+        try:
+            index = int(raw.get("index"))
+        except (TypeError, ValueError):
+            continue
+        try:
+            quality_score = max(0, min(100, int(raw.get("quality"))))
+        except (TypeError, ValueError):
+            quality_score = 0
+        desc_md = clean_ai_text(raw.get("suggested_description"), 8000)
+        acc_md = clean_ai_text(raw.get("suggested_acceptance"), 4000)
+        items.append(schemas.DocConvertEnhanceItem(
+            index=index,
+            quality_score=quality_score,
+            issues=_clean_str_list(raw.get("issues"), max_items=8, max_len=240),
+            edge_cases=_clean_str_list(raw.get("edge_cases"), max_items=10, max_len=240),
+            suggested_title=clean_ai_text(raw.get("suggested_title"), 255),
+            suggested_description_html=conv.markdown_to_html(desc_md) if desc_md else "",
+            suggested_acceptance_html=conv.markdown_to_html(acc_md) if acc_md else "",
+        ))
+
+    suggested: List[schemas.DocConvertSuggestedRequirement] = []
+    for raw in (parsed.get("suggested_requirements") or [])[:10]:
+        if not isinstance(raw, dict):
+            continue
+        title = clean_ai_text(raw.get("title"), 255)
+        if not title:
+            continue
+        desc_md = clean_ai_text(raw.get("description"), 8000)
+        acc_md = clean_ai_text(raw.get("acceptance"), 4000)
+        suggested.append(schemas.DocConvertSuggestedRequirement(
+            title=title,
+            description_html=conv.markdown_to_html(desc_md) if desc_md else "",
+            acceptance_html=conv.markdown_to_html(acc_md) if acc_md else "",
+            rationale=clean_ai_text(raw.get("rationale"), 400),
+        ))
+
+    return summary, items, suggested
 
 
 def _audit_doc_impact(db: Session, actor: models.User, doc: models.Doc) -> None:
@@ -1760,6 +1828,7 @@ def register_docs_routes(app) -> None:
                     index=s.index, title=s.title,
                     description_html=s.description_html,
                     is_acceptance_criteria=s.is_acceptance_criteria,
+                    acceptance_html=s.acceptance_html,
                 )
                 for s in plan.sections
             ],
@@ -1806,9 +1875,14 @@ def register_docs_routes(app) -> None:
                 if ov is not None and not ov.include:
                     raise HTTPException(status_code=400, detail="At least one requirement must be selected")
                 title = _conversion_title((ov.title if ov else None) or main.title)
+                description_html = ov.description_html if (ov and ov.description_html is not None) else main.description_html
+                acceptance_html = (
+                    ov.acceptance_html if (ov and ov.acceptance_html is not None)
+                    else (ac_section.description_html if ac_section else None)
+                )
                 req = _create_requirement(
-                    db, doc, target_project_id, title, main.description_html,
-                    acceptance_html=(ac_section.description_html if ac_section else None),
+                    db, doc, target_project_id, title, description_html,
+                    acceptance_html=acceptance_html,
                     payload=payload, actor_id=current_user.id,
                 )
                 created.append(req)
@@ -1819,12 +1893,29 @@ def register_docs_routes(app) -> None:
                     if ov is not None and not ov.include:
                         continue
                     title = _conversion_title((ov.title if ov else None) or s.title)
+                    description_html = ov.description_html if (ov and ov.description_html is not None) else s.description_html
+                    acceptance_html = (
+                        ov.acceptance_html if (ov and ov.acceptance_html is not None)
+                        else (s.acceptance_html or None)
+                    )
                     req = _create_requirement(
-                        db, doc, target_project_id, title, s.description_html,
-                        acceptance_html=None, payload=payload, actor_id=current_user.id,
+                        db, doc, target_project_id, title, description_html,
+                        acceptance_html=acceptance_html, payload=payload, actor_id=current_user.id,
                     )
                     created.append(req)
                     links.append(_link_doc_requirement(db, doc, req, current_user.id))
+
+            # Brand-new requirements accepted from the AI gap analysis, created in
+            # addition to the doc-derived sections and linked back to the doc.
+            for extra in (payload.extra_items or []):
+                title = _conversion_title(extra.title)
+                req = _create_requirement(
+                    db, doc, target_project_id, title, extra.description_html or "",
+                    acceptance_html=extra.acceptance_html, payload=payload, actor_id=current_user.id,
+                )
+                created.append(req)
+                links.append(_link_doc_requirement(db, doc, req, current_user.id))
+
             if not created:
                 raise HTTPException(status_code=400, detail="At least one requirement must be selected")
             crud.safe_commit(db)
@@ -1849,6 +1940,89 @@ def register_docs_routes(app) -> None:
             for i, l in enumerate(links)
         ]
         return schemas.DocConvertResult(created=created, links=link_views)
+
+    @app.post("/docs/{doc_id}/convert-to-requirements/enhance", response_model=schemas.DocConvertEnhanceResult, tags=["Docs"])
+    async def enhance_convert(
+        payload: schemas.DocConvertEnhanceRequest,
+        request: Request,
+        doc_id: int = Path(..., ge=1),
+        db: Session = Depends(get_db),
+        current_user: schemas.User = Depends(get_current_active_user),
+    ):
+        """AI review of the mechanically-extracted draft requirements.
+
+        Scores each draft, names quality issues and missed edge cases, returns
+        refined title/description/acceptance criteria, and proposes additional
+        requirements for capabilities the document overlooks. The deterministic
+        preview is unaffected; this is the optional, best-effort AI layer that
+        degrades gracefully when AI is off/unavailable."""
+        doc = _get_doc_or_404(db, doc_id)
+        _require(current_user, doc.project_id, "read", db)
+
+        plan = conv.build_plan(doc, payload.mode, payload.heading_level)
+        result = schemas.DocConvertEnhanceResult()
+
+        # Draft rows (plain text) the model reviews — one per non-AC section.
+        ac_section = next((x for x in plan.sections if x.is_acceptance_criteria), None)
+        items_payload = []
+        for s in plan.sections:
+            if s.is_acceptance_criteria:
+                continue
+            # Split sections carry their own AC; in single mode it's a sibling.
+            acceptance_html = s.acceptance_html or (ac_section.description_html if ac_section else "")
+            items_payload.append({
+                "index": s.index,
+                "title": s.title,
+                "description": strip_html(s.description_html),
+                "acceptance": strip_html(acceptance_html),
+            })
+
+        # The plan always yields at least one (title-bearing) section, so this only
+        # trips defensively; titles are required, so there is always something to review.
+        if not items_payload:
+            result.ai_skipped_reason = "nothing_to_enhance"
+            return result
+
+        project = crud.get_project(db, doc.project_id) if doc.project_id is not None else None
+        if project is not None and not is_feature_enabled(project, "ask_ai"):
+            result.ai_skipped_reason = "ask_ai_disabled"
+            return result
+        if not get_ai_manager_status(db).get("available"):
+            result.ai_skipped_reason = "ai_unavailable"
+            return result
+
+        result.ai_available = True
+        try:
+            # Cancel the (paid) AI call if the client disconnects (dialog closed).
+            completion = await _cancel_on_disconnect(
+                request,
+                generate_ai_completion(
+                    db,
+                    AICompletionRequest(
+                        prompt=build_doc_convert_enhance_prompt(doc.title, payload.mode, items_payload),
+                        max_tokens=2600, temperature=0.2, timeout_seconds=120,
+                    ),
+                    operation="doc_convert_enhance",
+                    project_id=doc.project_id, user_id=current_user.id,
+                    entity_type="doc", entity_id=doc.id,
+                ),
+            )
+            summary, enhance_items, suggested = _parse_convert_enhance(completion.content)
+            result.summary = summary
+            result.items = enhance_items
+            result.suggested_requirements = suggested
+            result.provider = completion.provider
+            result.model = completion.model
+        except HTTPException as exc:
+            logger.warning("Doc convert AI enhancement failed for doc %s: %s", doc.id, exc.detail)
+            result.ai_available = False
+            result.ai_skipped_reason = "ai_error"
+        except Exception as exc:  # parsing or unexpected provider error
+            logger.warning("Doc convert AI enhancement errored for doc %s: %s", doc.id, exc)
+            result.ai_available = False
+            result.ai_skipped_reason = "ai_error"
+
+        return result
 
     # ── Change impact analysis ──────────────────────────────────────────────
     @app.post("/docs/{doc_id}/impact-analysis", response_model=schemas.DocImpactAnalysis, tags=["Docs"],

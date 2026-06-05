@@ -472,6 +472,78 @@ def build_doc_impact_prompt(
     return prompt
 
 
+_DOC_CONVERT_ENHANCE_INSTRUCTIONS = (
+    "You are a senior requirements engineer reviewing draft requirements that were "
+    "mechanically extracted from a documentation page. Below are the drafts in TOON "
+    "format (the header `items[N]{cols}:` names the columns; each following line is "
+    "one draft: `index` is its stable id, `title` the heading, `description` the body "
+    "text, `acceptance` any acceptance criteria already present).\n"
+    "For EACH draft, judge it as a testable requirement and improve it:\n"
+    "  - quality: integer 0-100 (clarity, atomicity, testability, completeness).\n"
+    "  - issues: short phrases naming concrete defects (ambiguity, missing actor, "
+    "un-testable wording, compound requirement, no measurable criteria).\n"
+    "  - edge_cases: specific scenarios the draft omits (empty/invalid input, "
+    "permissions, concurrency, limits, failure/timeout, localization, accessibility) "
+    "— only ones genuinely relevant to this draft.\n"
+    "  - suggested_title: a crisp, single-capability title (or the original if already good).\n"
+    "  - suggested_description: a rewritten, unambiguous requirement statement in "
+    "Markdown (use 'The system shall…' phrasing where natural). Keep the original "
+    "intent; do not invent features.\n"
+    "  - suggested_acceptance: testable acceptance criteria in Markdown — Gherkin "
+    "(Given/When/Then) or a bullet list, covering the happy path plus the edge cases above.\n"
+    "Then, in `suggested_requirements`, propose NEW requirements for important "
+    "capabilities the document overlooks entirely (e.g. error handling, security, "
+    "auditing, performance) — each with a title, a Markdown description, Markdown "
+    "acceptance criteria, and a one-line rationale. Propose at most 6, only when "
+    "clearly warranted; return an empty list if the drafts are already comprehensive.\n"
+    "Do not invent product features that contradict the source. Be specific and concise.\n"
+    'Return JSON only: {"summary": "string (1-2 sentences on overall quality)", '
+    '"items": [{"index": number, "quality": number, "issues": ["string"], '
+    '"edge_cases": ["string"], "suggested_title": "string", '
+    '"suggested_description": "markdown string", "suggested_acceptance": "markdown string"}], '
+    '"suggested_requirements": [{"title": "string", "description": "markdown string", '
+    '"acceptance": "markdown string", "rationale": "string"}]}'
+)
+
+
+def build_doc_convert_enhance_prompt(
+    doc_title: str,
+    mode: str,
+    items: list[dict[str, Any]],
+) -> str:
+    """Prompt for the AI review of mechanically-extracted draft requirements.
+
+    ``items`` are flat dicts with ``index``/``title``/``description``/``acceptance``
+    (plain text). They are packed into one TOON table within
+    :data:`QA_PROMPT_CHAR_CEILING`; the least-important drafts (callers pass them
+    in document order) are dropped from the end until the prompt fits."""
+    header = (
+        f"Document: {clean_ai_text(doc_title, 200)}\n"
+        f"Extraction mode: {'one requirement per section' if mode == 'split' else 'whole document as one requirement'}"
+    )
+
+    def _row(item: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "index": int(item.get("index") or 0),
+            "title": clean_ai_text(item.get("title"), 200),
+            "description": clean_ai_text(item.get("description"), 1600),
+            "acceptance": clean_ai_text(item.get("acceptance"), 800),
+        }
+
+    def assemble(rows: list[dict[str, Any]]) -> str:
+        table = encode_toon({"items": rows}) if rows else "items[0]:"
+        return f"{_DOC_CONVERT_ENHANCE_INSTRUCTIONS}\n\n{header}\n\n{table}".strip()
+
+    rows = [_row(item) for item in items]
+    prompt = assemble(rows)
+    while len(prompt) > QA_PROMPT_CHAR_CEILING and len(rows) > 1:
+        rows = rows[:-1]
+        prompt = assemble(rows)
+    if len(prompt) > QA_PROMPT_CHAR_CEILING:
+        prompt = prompt[:QA_PROMPT_CHAR_CEILING]
+    return prompt
+
+
 _RELEASE_NOTES_INSTRUCTIONS = (
     "You are a release manager writing the summary blurb for a software release. "
     "Below is the structured data (TOON format) for what changed in this release: "
