@@ -1425,7 +1425,7 @@ export const fa = {
 
     // Dashboard Page
     viewingDataFor: 'مشاهده داده برای: {name}',
-    welcomeToTestManagement: 'به سیستم مدیریت تست خود خوش آمدید (نمای جهانی)',
+    welcomeToTestManagement: 'به سیستم مدیریت تست خود خوش آمدید (نمای عمومی)',
     loadingDashboardStats: 'در حال بارگذاری آمار داشبورد...',
     loadingRecentActivity: 'در حال بارگذاری فعالیت‌های اخیر...',
     failedToLoadDashboardStats: 'بارگذاری آمار داشبورد شکست خورد',
@@ -2128,7 +2128,7 @@ export const fa = {
     planning: 'برنامه‌ریزی',
     management: 'مدیریت',
     configuration: 'پیکربندی',
-    global: 'جهانی',
+    global: 'کلی',
     user: 'کاربر',
 
     // Profile Page

@@ -63,12 +63,12 @@ const BACKEND_STEP_TO_STATUS: Record<string, ExecutionStatus> = {
 const serializeStepMap = (steps: TestStep[], map: Record<number, ExecutionStatus>): string =>
   JSON.stringify(steps.map((s) => map[s.step_number] || 'pending'));
 
-const STATUS_TO_BACKEND: Record<string, string> = { passed: 'pass', failed: 'fail', blocked: 'block', pending: 'skip' };
+const STATUS_TO_BACKEND: Record<string, string> = { passed: 'pass', failed: 'fail', blocked: 'block', skipped: 'skip' };
 const BACKEND_TO_STATUS: Record<string, ExecutionStatus> = {
   passed: 'passed', pass: 'passed',
   failed: 'failed', fail: 'failed',
   blocked: 'blocked', block: 'blocked',
-  skipped: 'pending', skip: 'pending',
+  skipped: 'skipped', skip: 'skipped',
   pending: 'pending',
 };
 
@@ -1091,21 +1091,27 @@ export function useTestCaseExecution() {
   const backToTestRun = () => guardedNavigate(() => navigate(`/projects/${projectId}/test-runs/${testRunId}`));
   const backToTestRuns = () => guardedNavigate(() => navigate(`/projects/${projectId}/test-runs`));
 
+  // Resolve the adjacent case ids once so both the guarded (manual nav) and
+  // unguarded (post-save nav) paths share the same target.
+  const nextCaseId = hasNext && currentIndex >= 0 ? allTestCases[currentIndex + 1]?.id : undefined;
+  const prevCaseId = hasPrevious && currentIndex >= 0 ? allTestCases[currentIndex - 1]?.id : undefined;
+  const navigateToCase = (caseId: number) =>
+    navigate(`/projects/${projectId}/test-runs/${testRunId}/test-cases/${caseId}`);
+
   const handleNextTestCase = () => {
-    if (!hasNext || currentIndex < 0) return;
-    const nextCase = allTestCases[currentIndex + 1];
-    if (nextCase) guardedNavigate(() => navigate(`/projects/${projectId}/test-runs/${testRunId}/test-cases/${nextCase.id}`));
+    if (nextCaseId != null) guardedNavigate(() => navigateToCase(nextCaseId));
   };
   const handlePreviousTestCase = () => {
-    if (!hasPrevious || currentIndex < 0) return;
-    const prevCase = allTestCases[currentIndex - 1];
-    if (prevCase) guardedNavigate(() => navigate(`/projects/${projectId}/test-runs/${testRunId}/test-cases/${prevCase.id}`));
+    if (prevCaseId != null) guardedNavigate(() => navigateToCase(prevCaseId));
   };
+  // Save & Next/Previous already persisted the result, so navigate directly —
+  // routing through the guard would trip the (now stale) dirty check and pop the
+  // discard dialog even though there's nothing left to discard.
   const handleSaveAndNext = async () => {
-    if (await handleSaveExecution() && hasNext) handleNextTestCase();
+    if (await handleSaveExecution() && nextCaseId != null) navigateToCase(nextCaseId);
   };
   const handleSaveAndPrevious = async () => {
-    if (await handleSaveExecution() && hasPrevious) handlePreviousTestCase();
+    if (await handleSaveExecution() && prevCaseId != null) navigateToCase(prevCaseId);
   };
 
   // --- Timer handlers ---
@@ -1229,9 +1235,9 @@ export function useTestCaseExecution() {
 
       if (!hasIterations) {
         const k = e.key.toLowerCase();
-        if (k === 'p' || k === 'f' || k === 'b') {
+        if (k === 'p' || k === 'f' || k === 'b' || k === 's') {
           e.preventDefault();
-          setExecutionStatus(k === 'p' ? 'passed' : k === 'f' ? 'failed' : 'blocked');
+          setExecutionStatus(k === 'p' ? 'passed' : k === 'f' ? 'failed' : k === 'b' ? 'blocked' : 'skipped');
         }
       }
     };

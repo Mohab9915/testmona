@@ -1,6 +1,6 @@
-import { CheckCircle, XCircle, Clock, AlertTriangle, type LucideIcon } from 'lucide-react';
+import { CheckCircle, XCircle, Clock, AlertTriangle, SkipForward, type LucideIcon } from 'lucide-react';
 
-export type ExecutionStatus = 'pending' | 'passed' | 'failed' | 'blocked';
+export type ExecutionStatus = 'pending' | 'passed' | 'failed' | 'blocked' | 'skipped';
 
 export interface StatusOption {
   value: ExecutionStatus;
@@ -16,6 +16,7 @@ export const STATUS_OPTIONS: StatusOption[] = [
   { value: 'passed', labelKey: 'passed', icon: CheckCircle, color: 'text-emerald-600' },
   { value: 'failed', labelKey: 'failed', icon: XCircle, color: 'text-red-600' },
   { value: 'blocked', labelKey: 'blocked', icon: AlertTriangle, color: 'text-amber-600' },
+  { value: 'skipped', labelKey: 'skipped', icon: SkipForward, color: 'text-slate-500' },
 ];
 
 export const getStatusOption = (status: string): StatusOption | undefined =>
@@ -28,6 +29,7 @@ export const getStatusBadgeClass = (status: string): string => {
     passed: 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/50 dark:bg-emerald-950/40 dark:text-emerald-300',
     failed: 'border-red-200 bg-red-50 text-red-700 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-300',
     blocked: 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-300',
+    skipped: 'border-slate-200 bg-slate-100 text-slate-700 dark:border-slate-700 dark:bg-slate-800/70 dark:text-slate-300',
   };
   return map[status] || map.pending;
 };
@@ -39,6 +41,7 @@ export const getStatusAccent = (status: string): string => {
     passed: 'text-emerald-600 dark:text-emerald-400',
     failed: 'text-red-600 dark:text-red-400',
     blocked: 'text-amber-600 dark:text-amber-400',
+    skipped: 'text-slate-500 dark:text-slate-400',
   };
   return map[status] || map.pending;
 };

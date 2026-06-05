@@ -14,10 +14,14 @@ export function ExecutionForm() {
   const {
     t, currentUser, users, canWrite,
     assignee, setAssignee,
-    isFailedOrBlockedStatus,
+    isFailedOrBlockedStatus, executionStatus,
     executionNotes, setExecutionNotes,
     executionLogs, setExecutionLogs,
   } = useExecution();
+
+  // When blocked, the blocker panel owns the description (bound to the same
+  // notes field), so we don't render the generic notes box a second time.
+  const isBlocked = executionStatus === 'blocked';
 
   return (
     <Card className="border-slate-200 dark:border-slate-800">
@@ -80,20 +84,22 @@ export function ExecutionForm() {
         {isFailedOrBlockedStatus && <FailureContextFields />}
 
         <div className="grid gap-4 lg:grid-cols-2">
-          <div className="space-y-1.5">
-            <Label htmlFor="notes" className="text-[11px] font-medium uppercase tracking-wide text-slate-400">
-              {t('executionNotesLabel')}
-            </Label>
-            <Textarea
-              id="notes"
-              value={executionNotes}
-              onChange={(e) => setExecutionNotes(e.target.value)}
-              placeholder={t('executionNotesPlaceholder')}
-              rows={5}
-              readOnly={!canWrite}
-              className="h-32 min-h-32 resize-none text-sm"
-            />
-          </div>
+          {!isBlocked && (
+            <div className="space-y-1.5">
+              <Label htmlFor="notes" className="text-[11px] font-medium uppercase tracking-wide text-slate-400">
+                {t('executionNotesLabel')}
+              </Label>
+              <Textarea
+                id="notes"
+                value={executionNotes}
+                onChange={(e) => setExecutionNotes(e.target.value)}
+                placeholder={t('executionNotesPlaceholder')}
+                rows={5}
+                readOnly={!canWrite}
+                className="h-32 min-h-32 resize-none text-sm"
+              />
+            </div>
+          )}
           <div className="space-y-1.5">
             <Label htmlFor="logs" className="text-[11px] font-medium uppercase tracking-wide text-slate-400">
               {t('executionLogsLabel')}

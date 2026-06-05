@@ -1,4 +1,4 @@
-import { CheckCircle, XCircle, AlertTriangle } from 'lucide-react';
+import { CheckCircle, XCircle, AlertTriangle, SkipForward } from 'lucide-react';
 import { useExecution } from './ExecutionContext';
 import type { ExecutionStatus } from './statusConfig';
 
@@ -16,9 +16,10 @@ const CHOICES: Choice[] = [
   { value: 'passed', labelKey: 'passed', icon: CheckCircle, active: 'border-emerald-500 bg-emerald-500 text-white shadow-sm', idle: 'text-emerald-600' },
   { value: 'failed', labelKey: 'failed', icon: XCircle, active: 'border-red-500 bg-red-500 text-white shadow-sm', idle: 'text-red-600' },
   { value: 'blocked', labelKey: 'blocked', icon: AlertTriangle, active: 'border-amber-500 bg-amber-500 text-white shadow-sm', idle: 'text-amber-600' },
+  { value: 'skipped', labelKey: 'skipped', icon: SkipForward, active: 'border-slate-500 bg-slate-500 text-white shadow-sm', idle: 'text-slate-500' },
 ];
 
-const SHORTCUT: Record<string, string> = { passed: 'P', failed: 'F', blocked: 'B' };
+const SHORTCUT: Record<string, string> = { passed: 'P', failed: 'F', blocked: 'B', skipped: 'S' };
 
 /** Large segmented outcome control — the primary way to record a result. */
 export function StatusSelector({ compact = false }: { compact?: boolean }) {
@@ -33,7 +34,7 @@ export function StatusSelector({ compact = false }: { compact?: boolean }) {
   }
 
   return (
-    <div className={`grid grid-cols-3 gap-2 ${compact ? '' : 'sm:gap-3'}`}>
+    <div className={`grid grid-cols-2 gap-2 sm:grid-cols-4 ${compact ? '' : 'sm:gap-3'}`}>
       {CHOICES.map((choice) => {
         const isActive = executionStatus === choice.value;
         const Icon = choice.icon;

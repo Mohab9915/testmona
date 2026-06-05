@@ -1,9 +1,11 @@
+import { useState } from 'react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
-import { AlertTriangle, ShieldAlert } from 'lucide-react';
+import { AlertTriangle, ShieldAlert, Ban, Link2 } from 'lucide-react';
 import { useExecution } from './ExecutionContext';
 
 const urlInputProps = {
@@ -17,7 +19,139 @@ const urlInputProps = {
   'data-1p-ignore': 'true',
 };
 
-export function FailureContextFields() {
+const BLOCKER_REASONS = [
+  'blockerReasonEnvironment',
+  'blockerReasonTestData',
+  'blockerReasonDependency',
+  'blockerReasonAccess',
+  'blockerReasonAwaitingFix',
+  'blockerReasonOther',
+] as const;
+
+/**
+ * Blocked is an impediment, not a failure: the software didn't misbehave, the
+ * test just couldn't be run to completion. So we give it its own amber surface
+ * and blocker-oriented copy instead of the red failure panel — different mental
+ * model, different follow-up (unblock vs. file a bug).
+ */
+function BlockerContext() {
+  const {
+    t, testSteps,
+    selectedFailureStepNumber, setSelectedFailureStepNumber,
+    defectLink, setDefectLink, customLink, setCustomLink,
+    executionNotes, setExecutionNotes, canWrite,
+  } = useExecution();
+
+  const [reason, setReason] = useState<string | null>(null);
+
+  const fieldClass = 'mt-1 h-9 border-amber-200 bg-white text-sm dark:border-amber-900/60 dark:bg-slate-950/40';
+
+  // Gentle, non-destructive capture: seed the description with the chosen reason
+  // only when it's still empty, so the reason persists with the result (via the
+  // notes field) without ever clobbering what the tester already wrote.
+  const selectReason = (key: string) => {
+    setReason(key);
+    if (!executionNotes.trim()) {
+      setExecutionNotes(t('blockerReasonPrefill', { reason: t(key) }));
+    }
+  };
+
+  return (
+    <div className="rounded-lg border border-amber-200 bg-amber-50/70 p-4 dark:border-amber-900/50 dark:bg-amber-950/20">
+      <div className="mb-1.5 flex items-center gap-2 text-sm font-semibold text-amber-800 dark:text-amber-300">
+        <Ban className="h-4 w-4" />
+        {t('blockerDetails')}
+      </div>
+      <p className="mb-3 text-xs text-amber-700/90 dark:text-amber-200/80">{t('blockerIntro')}</p>
+
+      <div className="mb-3">
+        <Label className="text-xs font-medium text-amber-800 dark:text-amber-300">{t('blockerReason')}</Label>
+        <div className="mt-1.5 flex flex-wrap gap-1.5">
+          {BLOCKER_REASONS.map((key) => {
+            const active = reason === key;
+            return (
+              <button
+                key={key}
+                type="button"
+                disabled={!canWrite}
+                aria-pressed={active}
+                onClick={() => selectReason(key)}
+                className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                  active
+                    ? 'border-amber-500 bg-amber-500 text-white shadow-sm'
+                    : 'border-amber-200 bg-white text-amber-700 hover:bg-amber-100 dark:border-amber-900/60 dark:bg-slate-950/40 dark:text-amber-300 dark:hover:bg-amber-950/40'
+                }`}
+              >
+                {t(key)}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="mb-3">
+        <Label htmlFor="blockerDescription" className="text-xs font-medium text-amber-800 dark:text-amber-300">
+          {t('blockerDescriptionLabel')}
+        </Label>
+        <Textarea
+          id="blockerDescription"
+          value={executionNotes}
+          onChange={(e) => setExecutionNotes(e.target.value)}
+          placeholder={t('blockerDescriptionPlaceholder')}
+          rows={3}
+          readOnly={!canWrite}
+          className="mt-1 resize-none border-amber-200 text-sm dark:border-amber-900/60 dark:bg-slate-950/40"
+        />
+      </div>
+
+      {testSteps.length > 0 && (
+        <div className="mb-3">
+          <Label htmlFor="blockedStep" className="text-xs font-medium text-amber-800 dark:text-amber-300">{t('blockedAtStep')}</Label>
+          <Select value={selectedFailureStepNumber} onValueChange={setSelectedFailureStepNumber}>
+            <SelectTrigger id="blockedStep" className={fieldClass}>
+              <SelectValue placeholder={t('selectBlockedStep')} />
+            </SelectTrigger>
+            <SelectContent>
+              {testSteps.map((step) => (
+                <SelectItem key={step.id || step.step_number} value={String(step.step_number)}>
+                  {t('stepNumberLabel', { number: step.step_number })}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+
+      <div className="grid gap-3 md:grid-cols-2">
+        <div>
+          <Label htmlFor="blockingIssue" className="flex items-center gap-1.5 text-xs font-medium text-amber-800 dark:text-amber-300">
+            <Link2 className="h-3.5 w-3.5" />
+            {t('blockingIssueLabel')}
+          </Label>
+          <Input
+            id="blockingIssue" name="blocking-url" {...urlInputProps}
+            value={defectLink}
+            onChange={(e) => setDefectLink(e.target.value)}
+            placeholder={t('blockingIssuePlaceholder')}
+            className={fieldClass}
+          />
+        </div>
+        <div>
+          <Label htmlFor="blockerReference" className="text-xs font-medium text-amber-800 dark:text-amber-300">{t('blockerReferenceLabel')}</Label>
+          <Input
+            id="blockerReference" name="blocker-reference-url" {...urlInputProps}
+            value={customLink}
+            onChange={(e) => setCustomLink(e.target.value)}
+            placeholder={t('blockerReferencePlaceholder')}
+            className={fieldClass}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function FailureContext() {
   const {
     t, testCase, testSteps, testStepsLoadError, requireDefectOnFailure,
     selectedFailureStepNumber, setSelectedFailureStepNumber,
@@ -103,4 +237,9 @@ export function FailureContextFields() {
       </div>
     </div>
   );
+}
+
+export function FailureContextFields() {
+  const { executionStatus } = useExecution();
+  return executionStatus === 'blocked' ? <BlockerContext /> : <FailureContext />;
 }
