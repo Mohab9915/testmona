@@ -1297,7 +1297,7 @@ export function RequirementDetail() {
                   {t('acceptanceCriteria')}
                 </h2>
                 {hasGherkin ? (
-                  <GherkinViewer value={acceptanceText} emptyLabel={t('noAcceptanceCriteriaProvided')} />
+                  <GherkinViewer value={acceptanceText} emptyLabel={t('noAcceptanceCriteriaProvided')} featureFallback={requirement?.title} />
                 ) : hasAcceptanceCriteria ? (
                   <RichTextContent html={acceptanceHtml} />
                 ) : (

@@ -4,6 +4,8 @@ import { parseGherkin } from '@/components/requirements/gherkin';
 interface GherkinViewerProps {
   value: string;
   emptyLabel: string;
+  /** Shown as the feature name when the Gherkin omits a `Feature:` line. */
+  featureFallback?: string;
 }
 
 const getStepKeywordTone = (keyword: string): string => {
@@ -19,7 +21,7 @@ const getStepKeywordTone = (keyword: string): string => {
   }
 };
 
-export function GherkinViewer({ value, emptyLabel }: GherkinViewerProps) {
+export function GherkinViewer({ value, emptyLabel, featureFallback }: GherkinViewerProps) {
   const parsed = parseGherkin(value);
 
   if (!parsed.feature && parsed.blocks.length === 0) {
@@ -37,7 +39,7 @@ export function GherkinViewer({ value, emptyLabel }: GherkinViewerProps) {
           <Badge className="bg-indigo-600 text-white hover:bg-indigo-600">Feature</Badge>
           {parsed.tags.map((tag) => <Badge key={tag} variant="outline">{tag}</Badge>)}
         </div>
-        <h3 dir="auto" className="mt-3 wrap-break-word text-lg font-semibold text-slate-950 dark:text-white">{parsed.feature || 'Feature'}</h3>
+        <h3 dir="auto" className="mt-3 wrap-break-word text-lg font-semibold text-slate-950 dark:text-white">{parsed.feature || featureFallback?.trim() || 'Feature'}</h3>
         {parsed.description.length > 0 && (
           <p dir="auto" className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-600 dark:text-slate-300">
             {parsed.description.join('\n')}
