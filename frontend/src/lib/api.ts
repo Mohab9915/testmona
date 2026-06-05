@@ -566,6 +566,33 @@ export const requirementsAPI = {
     const response = await api.post('/requirements/import-from-tracker', payload);
     return response.data;
   },
+  // Gherkin .feature export — downloads a .feature file (single match) or a .zip bundle.
+  exportFeatureFiles: async (projectId: number, ids?: number[], folderId?: number): Promise<void> => {
+    const params = new URLSearchParams({ project_id: String(projectId) });
+    if (ids && ids.length) params.append('ids', ids.join(','));
+    if (folderId) params.append('folder_id', String(folderId));
+    const response = await api.get(`/requirements/export-feature-files?${params}`, { responseType: 'blob' });
+    const disposition = String(response.headers['content-disposition'] || '');
+    const match = disposition.match(/filename="?([^"]+)"?/);
+    const contentType = String(response.headers['content-type'] || 'application/octet-stream');
+    const fallback = contentType.includes('zip') ? `requirements-project-${projectId}-features.zip` : 'requirement.feature';
+    triggerBlobDownload(response.data, match?.[1] || fallback, contentType);
+  },
+  // Gherkin .feature import — accepts a single .feature file or a .zip bundle.
+  importFeatureFiles: async (
+    projectId: number,
+    file: File,
+    folderId?: number,
+  ): Promise<{ created: Requirement[]; skipped: string[] }> => {
+    const formData = new FormData();
+    formData.append('project_id', String(projectId));
+    if (folderId) formData.append('folder_id', String(folderId));
+    formData.append('file', file);
+    const response = await api.post('/requirements/import-feature-files', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return response.data;
+  },
   coverage: async (projectId: number): Promise<RequirementCoverageList> => {
     const response = await api.get('/requirements/coverage', { params: { project_id: projectId } });
     return response.data;

@@ -2,10 +2,12 @@
 Requirements, defects, test plans, and milestones routes for test planning and quality management.
 """
 
+import io
 import logging
 import re
+import zipfile
 
-from fastapi import Depends, HTTPException, Path, Query
+from fastapi import Depends, File, Form, HTTPException, Path, Query, Response, UploadFile
 from sqlalchemy import String, cast, func, or_
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy.exc import IntegrityError
@@ -19,6 +21,8 @@ from ..auth import get_current_active_user
 from ..services.milestone_service import enrich_milestone, enrich_milestones, get_project_milestone_stats
 from ..services.atlassian_document_service import fetch_requirement_source
 from ..services.tracker_import_service import fetch_requirement_from_tracker
+from ..services import feature_file_service
+from ..services.doc_conversion_service import markdown_to_html, next_requirement_id
 from ..crud import (
     create_requirement, get_requirements, get_requirement, update_requirement, delete_requirement,
     create_defect, get_defects, get_defect, update_defect, delete_defect,
@@ -665,6 +669,185 @@ def register_requirements_defects_plans_routes(app):
         except Exception:
             logger.exception("Unexpected error importing tracker item for project %s", request.project_id)
             raise HTTPException(status_code=502, detail="Unable to import from the external tracker.")
+
+    # ── Gherkin .feature import / export ─────────────────────────────────────
+    # Literal paths registered before the dynamic ``/requirements/{requirement_id}``
+    # routes so they are never parsed as a requirement id.
+    @app.get(
+        "/requirements/export-feature-files",
+        dependencies=[Depends(require_project_feature("requirements"))],
+    )
+    def export_feature_files(
+        project_id: int = Query(..., ge=1),
+        ids: Optional[str] = Query(None, description="Comma-separated requirement ids; all if omitted"),
+        folder_id: Optional[int] = Query(None, ge=1),
+        db: Session = Depends(get_db),
+        current_user: schemas.User = Depends(get_current_active_user),
+    ):
+        """Export requirements' Gherkin as ``.feature`` files (a zip, or a single
+        file when only one requirement matches)."""
+        if not rbac.has_permission(current_user, "read", project_id, db):
+            raise HTTPException(status_code=403, detail="Insufficient permissions")
+
+        query = db.query(models.Requirement).filter(models.Requirement.project_id == project_id)
+        if folder_id is not None:
+            query = query.filter(models.Requirement.folder_id == folder_id)
+        if ids:
+            try:
+                id_list = [int(x) for x in ids.split(",") if x.strip()]
+            except ValueError:
+                raise HTTPException(status_code=400, detail="ids must be a comma-separated list of integers")
+            if id_list:
+                query = query.filter(models.Requirement.id.in_(id_list))
+
+        requirements = query.order_by(models.Requirement.requirement_id).all()
+        if not requirements:
+            raise HTTPException(status_code=404, detail="No requirements found to export")
+
+        files: list[tuple[str, str]] = []
+        used: set[str] = set()
+        for req in requirements:
+            content = feature_file_service.build_feature_file(
+                title=req.title or "Untitled",
+                description=req.description,
+                acceptance_criteria=req.acceptance_criteria,
+                requirement_key=req.requirement_id,
+                tags=req.tags,
+                status=getattr(req.status, "value", req.status),
+                priority=getattr(req.priority, "value", req.priority),
+            )
+            name = feature_file_service.feature_filename(req.requirement_id, req.title or "")
+            base = name
+            n = 2
+            while name in used:
+                name = f"{base[:-len('.feature')]}-{n}.feature"
+                n += 1
+            used.add(name)
+            files.append((name, content))
+
+        if len(files) == 1:
+            name, content = files[0]
+            return Response(
+                content=content.encode("utf-8"),
+                media_type="text/plain",
+                headers={"Content-Disposition": f'attachment; filename="{name}"'},
+            )
+
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+            for name, content in files:
+                zf.writestr(name, content)
+        archive = f"requirements-project-{project_id}-features.zip"
+        return Response(
+            content=buffer.getvalue(),
+            media_type="application/zip",
+            headers={"Content-Disposition": f'attachment; filename="{archive}"'},
+        )
+
+    @app.post(
+        "/requirements/import-feature-files",
+        response_model=schemas.FeatureFileImportResult,
+        dependencies=[Depends(require_project_feature("requirements"))],
+    )
+    async def import_feature_files(
+        project_id: int = Form(...),
+        folder_id: Optional[int] = Form(None),
+        file: UploadFile = File(...),
+        db: Session = Depends(get_db),
+        current_user: schemas.User = Depends(get_current_active_user),
+    ):
+        """Create requirements from uploaded Gherkin ``.feature`` files (a single
+        file or a ``.zip`` bundle). Each ``Feature:`` becomes one requirement."""
+        max_bytes = 5 * 1024 * 1024
+        if not rbac.has_permission(current_user, "write", project_id, db):
+            raise HTTPException(status_code=403, detail="Insufficient permissions")
+        if folder_id is not None:
+            folder = crud.get_requirement_folder(db, folder_id)
+            if folder is None or folder.project_id != project_id:
+                raise HTTPException(status_code=400, detail="Folder not found in this project")
+
+        raw = await file.read()
+        if len(raw) > max_bytes:
+            raise HTTPException(status_code=413, detail="File is too large (max 5 MB)")
+        filename = file.filename or "import.feature"
+
+        # Collect (source_name, text) documents from a .feature file or zip bundle.
+        documents: list[tuple[str, str]] = []
+        if filename.lower().endswith(".zip"):
+            try:
+                with zipfile.ZipFile(io.BytesIO(raw)) as zf:
+                    for info in zf.infolist():
+                        if info.is_dir() or not info.filename.lower().endswith(".feature"):
+                            continue
+                        documents.append((info.filename, zf.read(info).decode("utf-8", "replace")))
+            except zipfile.BadZipFile:
+                raise HTTPException(status_code=400, detail="The uploaded zip archive is invalid")
+        elif filename.lower().endswith((".feature", ".txt")):
+            documents.append((filename, raw.decode("utf-8", "replace")))
+        else:
+            raise HTTPException(status_code=400, detail="Only .feature files and .zip bundles can be imported")
+
+        if not documents:
+            raise HTTPException(status_code=400, detail="No .feature files found in the upload")
+
+        created: list[models.Requirement] = []
+        skipped: list[str] = []
+        try:
+            for source_name, text in documents:
+                stem = source_name.rsplit("/", 1)[-1].rsplit(".", 1)[0] or "Imported Feature"
+                parsed = feature_file_service.parse_feature_documents(text, fallback_title=stem)
+                if not parsed:
+                    skipped.append(f"{source_name}: no scenarios found")
+                    continue
+                for feat in parsed:
+                    if not feat.scenarios.strip():
+                        skipped.append(f'{source_name}: "{feat.title}" had no scenarios')
+                        continue
+                    description_html = markdown_to_html(feat.description) if feat.description else None
+                    tags = ", ".join(t.lstrip("@") for t in feat.tags) or None
+                    req_create = schemas.RequirementCreate(
+                        title=feat.title or stem,
+                        description=description_html,
+                        acceptance_criteria=feat.scenarios,
+                        requirement_id=next_requirement_id(db, project_id),
+                        folder_id=folder_id,
+                        tags=tags,
+                        project_id=project_id,
+                        created_by=current_user.id,
+                    )
+                    created.append(crud.create_requirement(db=db, requirement=req_create))
+        except HTTPException:
+            db.rollback()
+            raise
+        except Exception as exc:
+            db.rollback()
+            logger.exception("Feature-file import failed for project %s: %s", project_id, exc)
+            raise HTTPException(status_code=500, detail="Could not import the feature files")
+
+        if not created:
+            raise HTTPException(
+                status_code=400,
+                detail="; ".join(skipped) or "No requirements were created from the upload",
+            )
+
+        try:
+            from ..services.audit_service import get_audit_service
+            from ..schemas_audit import AuditTrailCreate
+            from ..models import AuditAction, EntityType
+            audit = get_audit_service(db)
+            for req in created:
+                audit.create_audit_trail(AuditTrailCreate(
+                    user_id=current_user.id,
+                    action=AuditAction.CREATE.value,
+                    entity_type=EntityType.REQUIREMENT.value,
+                    entity_id=req.id,
+                    project_id=project_id,
+                    description=f"Requirement imported from feature file: {req.title or 'Untitled'}",
+                ))
+        except Exception:
+            logger.exception("Failed to audit feature-file import for project %s", project_id)
+
+        return schemas.FeatureFileImportResult(created=created, skipped=skipped)
 
     @app.get("/requirements/{requirement_id}/test-cases", response_model=schemas.RequirementLinkedTestCaseList)
     def search_requirement_test_cases(

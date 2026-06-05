@@ -1986,6 +1986,13 @@ class Requirement(RequirementBase):
         from_attributes = True
 
 
+class FeatureFileImportResult(BaseModel):
+    """Outcome of importing one or more Gherkin ``.feature`` files."""
+    created: List[Requirement] = []
+    # Human-readable notes for files/features that were skipped (empty, unparsable).
+    skipped: List[str] = []
+
+
 # --- Requirement folders / categories --------------------------------------
 
 class RequirementFolderBase(BaseModel):

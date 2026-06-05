@@ -2825,6 +2825,17 @@ export const en = {
   noProjectsMatchFiltersDesc: "Try adjusting your search text or status filter.",
   openProjectAria: "Open project {name}",
   requirementsExported: "Exported {count} requirement(s) to CSV",
+  // Gherkin .feature import / export
+  importExport: "Import / Export",
+  exportCsv: "Export to CSV",
+  exportFeatureFiles: "Export feature files (.feature)",
+  exportFeatureFilesSelected: "Export {count} selected (.feature)",
+  importFeatureFiles: "Import feature files (.feature / .zip)",
+  featureFilesExported: "Exported {count} requirement(s) as feature files",
+  featureFilesExportFailed: "Could not export the feature files",
+  featureFilesImported: "Imported {count} requirement(s) from feature files",
+  featureFilesImportedWithSkips: "Imported {count} requirement(s); {skipped} skipped",
+  featureFilesImportFailed: "Could not import the feature files",
 
   // Reports - Shareable report dialog
   createNewShareableReport: 'Create New Shareable Report',

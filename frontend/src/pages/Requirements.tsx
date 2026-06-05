@@ -34,7 +34,7 @@ import {
 import { Card, CardContent } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Plus, FileText, Search, ChevronLeft, ChevronRight, Edit, Trash2, Download, Eye, Users, Clock, CheckCircle, AlertCircle, XCircle, AlertTriangle, ExternalLink, Wand2, ArrowUpDown, ArrowUp, ArrowDown, Bookmark, BookmarkPlus, Star, X, ListChecks, ShieldCheck, ShieldAlert, ShieldX, Loader2, Tag, Sparkles, Copy, Check, LayoutGrid, Table2, MoreHorizontal, Folder, FolderPlus, FolderOpen, FolderInput, Inbox, Pencil } from 'lucide-react';
+import { Plus, FileText, Search, ChevronLeft, ChevronRight, Edit, Trash2, Download, Upload, FileCode, Eye, Users, Clock, CheckCircle, AlertCircle, XCircle, AlertTriangle, ExternalLink, Wand2, ArrowUpDown, ArrowUp, ArrowDown, Bookmark, BookmarkPlus, Star, X, ListChecks, ShieldCheck, ShieldAlert, ShieldX, Loader2, Tag, Sparkles, Copy, Check, LayoutGrid, Table2, MoreHorizontal, Folder, FolderPlus, FolderOpen, FolderInput, Inbox, Pencil } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
   DropdownMenu,
@@ -113,6 +113,9 @@ export function Requirements() {
   // Sorting
   const [sortBy, setSortBy] = useState<'requirement_id' | 'title' | 'status' | 'priority' | 'created_at' | 'coverage'>('requirement_id');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+  // Gherkin .feature import
+  const featureFileInputRef = useRef<HTMLInputElement>(null);
+  const [isImportingFeatures, setIsImportingFeatures] = useState(false);
   // Bulk selection + actions
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
@@ -1132,6 +1135,54 @@ export function Requirements() {
     });
   };
 
+  // Export Gherkin .feature files — the current selection if any, else every
+  // requirement currently visible (respecting search/status/folder filters).
+  // The download is a single .feature file or a .zip bundle.
+  const handleExportFeatureFiles = async () => {
+    const ids = selectedIds.size > 0
+      ? Array.from(selectedIds)
+      : filteredRequirements.map((req) => req.id);
+    if (ids.length === 0) {
+      toast({ title: t('error'), description: t('noRequirementsFound'), variant: 'destructive' });
+      return;
+    }
+    try {
+      await requirementsAPI.exportFeatureFiles(parseInt(projectId), ids);
+      toast({ title: t('success'), description: t('featureFilesExported', { count: ids.length }) });
+    } catch (error: any) {
+      toast({
+        title: t('error'),
+        description: error?.response?.status === 404 ? t('noRequirementsFound') : t('featureFilesExportFailed'),
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const handleImportFeatureFiles = async (file: File) => {
+    setIsImportingFeatures(true);
+    const folderTarget = typeof selectedFolder === 'number' ? selectedFolder : undefined;
+    try {
+      const result = await requirementsAPI.importFeatureFiles(parseInt(projectId), file, folderTarget);
+      const count = result.created?.length ?? 0;
+      toast({
+        title: t('success'),
+        description: result.skipped?.length
+          ? t('featureFilesImportedWithSkips', { count, skipped: result.skipped.length })
+          : t('featureFilesImported', { count }),
+      });
+      await Promise.all([loadRequirements(), loadFolders()]);
+    } catch (error: any) {
+      toast({
+        title: t('error'),
+        description: error?.response?.data?.detail || t('featureFilesImportFailed'),
+        variant: 'destructive',
+      });
+    } finally {
+      setIsImportingFeatures(false);
+      if (featureFileInputRef.current) featureFileInputRef.current.value = '';
+    }
+  };
+
   const getStatusBadge = (status: string) => {
     const variants: Record<string, string> = {
       draft: 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300',
@@ -2099,10 +2150,42 @@ export function Requirements() {
             </DropdownMenuContent>
           </DropdownMenu>
 
-          <Button variant="outline" className="h-10 gap-1.5" onClick={handleExportRequirements}>
-            <Download className="h-4 w-4" />
-            <span className="hidden sm:inline">{t('export')}</span>
-          </Button>
+          {/* Import / Export (CSV + Gherkin .feature files) */}
+          <input
+            ref={featureFileInputRef}
+            type="file"
+            accept=".feature,.zip,.txt"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) handleImportFeatureFiles(file);
+            }}
+          />
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" className="h-10 gap-1.5" disabled={isImportingFeatures}>
+                {isImportingFeatures ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                <span className="hidden sm:inline">{t('importExport')}</span>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-60">
+              <DropdownMenuLabel>{t('export')}</DropdownMenuLabel>
+              <DropdownMenuItem onClick={handleExportRequirements}>
+                <Download className={`h-3.5 w-3.5 ${isRTL ? 'ml-2' : 'mr-2'}`} />
+                {t('exportCsv')}
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={handleExportFeatureFiles}>
+                <FileCode className={`h-3.5 w-3.5 ${isRTL ? 'ml-2' : 'mr-2'}`} />
+                {selectedIds.size > 0 ? t('exportFeatureFilesSelected', { count: selectedIds.size }) : t('exportFeatureFiles')}
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuLabel>{t('import')}</DropdownMenuLabel>
+              <DropdownMenuItem onClick={() => featureFileInputRef.current?.click()}>
+                <Upload className={`h-3.5 w-3.5 ${isRTL ? 'ml-2' : 'mr-2'}`} />
+                {t('importFeatureFiles')}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
 
           {/* View toggle */}
           <div className="col-span-2 flex items-center gap-1 rounded-lg border border-border bg-muted/50 p-1 sm:col-span-1 sm:ml-auto">
