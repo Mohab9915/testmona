@@ -55,6 +55,17 @@ def _like_pattern(value: str) -> str:
     return f"%{escaped}%"
 
 
+def _negate(column, clause: ColumnElement) -> ColumnElement:
+    """Negate a membership/contains clause while keeping NULL rows.
+
+    SQL three-valued logic makes ``NOT (col LIKE ...)`` evaluate to NULL — and
+    thus exclude the row — whenever ``col`` is NULL. But a row whose field is
+    unset *should* satisfy "does not contain X" / "is not one of X". So an unset
+    column is treated as a match for the negation.
+    """
+    return or_(column.is_(None), not_(clause))
+
+
 def _multivalue_member(column, raw: str) -> ColumnElement:
     """Match ``raw`` as a member of a comma-delimited column (e.g. tags).
 
@@ -108,12 +119,12 @@ def _compile_comparison(node: nodes.Comparison, registry: dict, ctx: EvalContext
     if node.op in ("contains", "ncontains"):
         text = _coerce_text(node.value)
         clause = column.ilike(_like_pattern(text), escape="\\")
-        return not_(clause) if node.op == "ncontains" else clause
+        return _negate(column, clause) if node.op == "ncontains" else clause
 
     # On a comma-delimited field, eq/ne mean "is (not) one of the tags".
     if spec.multivalue and node.op in ("eq", "ne"):
         clause = _multivalue_member(column, _coerce_text(node.value))
-        return not_(clause) if node.op == "ne" else clause
+        return _negate(column, clause) if node.op == "ne" else clause
 
     value = spec.coerce(node.value, ctx)
     if node.op == "eq":
@@ -143,7 +154,7 @@ def _compile_in(node: nodes.InList, registry: dict, ctx: EvalContext) -> ColumnE
         clause = or_(*[_multivalue_member(spec.column, _coerce_text(v)) for v in node.values])
     else:
         clause = spec.column.in_([spec.coerce(v, ctx) for v in node.values])
-    return not_(clause) if node.negate else clause
+    return _negate(spec.column, clause) if node.negate else clause
 
 
 def _compile_empty(node: nodes.EmptyCheck, registry: dict) -> ColumnElement:
@@ -165,5 +176,6 @@ def _coerce_text(value: nodes.Value) -> str:
     if isinstance(value, nodes.BarewordVal):
         return value.value
     if isinstance(value, nodes.NumberVal):
-        return str(int(value.value)) if value.value.is_integer() else str(value.value)
+        # float() guards against a directly-built AST passing an int.
+        return str(int(value.value)) if float(value.value).is_integer() else str(value.value)
     raise TQLError("The ~ operator expects a text value.")

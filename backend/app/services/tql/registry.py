@@ -52,7 +52,9 @@ def _literal_str(value: nodes.Value) -> str:
         return value.value
     if isinstance(value, nodes.NumberVal):
         # Render integers without a trailing ".0" so "id ~ 12" behaves.
-        return str(int(value.value)) if value.value.is_integer() else str(value.value)
+        # float() guards against a directly-built AST passing an int (int has no
+        # .is_integer() before Python 3.12).
+        return str(int(value.value)) if float(value.value).is_integer() else str(value.value)
     raise TQLError("Expected a text value here.")
 
 
@@ -61,7 +63,7 @@ def text_coercer(value: nodes.Value, _ctx: EvalContext) -> str:
 
 
 def int_coercer(value: nodes.Value, _ctx: EvalContext) -> int:
-    if isinstance(value, nodes.NumberVal) and value.value.is_integer():
+    if isinstance(value, nodes.NumberVal) and float(value.value).is_integer():
         return int(value.value)
     if isinstance(value, (nodes.StringVal, nodes.BarewordVal)):
         try:
