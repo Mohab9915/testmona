@@ -211,9 +211,67 @@ def parse(text: str) -> nodes.Query:
         tree = parser.parse(text)
         return transformer.transform(tree)
     except LarkError as exc:
-        raise TQLError(f"Could not parse query: {_friendly(exc)}") from exc
+        raise TQLError(_friendly(exc, text)) from exc
 
 
-def _friendly(exc) -> str:
-    text = str(exc).strip()
-    return text.splitlines()[0] if text else "syntax error"
+# Reserved keywords that must be quoted to be used as a literal value.
+_RESERVED = {"AND", "OR", "NOT", "IN", "IS", "EMPTY", "ORDER", "BY", "ASC", "DESC"}
+
+
+def _friendly(exc, text: str) -> str:
+    """Turn a lark parse error into a concise, actionable message.
+
+    lark's own messages dump grammar internals (terminal names, expected sets)
+    that mean nothing to a user. We translate the common failure shapes —
+    unfinished query, missing operator, missing connector, reserved word used as
+    a value — into plain guidance, and only fall back to lark's text otherwise.
+    """
+    from lark.exceptions import UnexpectedCharacters, UnexpectedEOF, UnexpectedToken
+
+    unfinished = "The query looks unfinished — check for a missing value, an unclosed quote, or a missing ')'."
+
+    if isinstance(exc, UnexpectedEOF):
+        return unfinished
+
+    if isinstance(exc, UnexpectedToken):
+        token = str(exc.token).strip()
+        if not token or getattr(exc.token, "type", "") == "$END":
+            return unfinished
+        col = getattr(exc, "column", None)
+        where = f" at position {col}" if isinstance(col, int) else ""
+        return f"Unexpected '{token}'{where}.{_token_hint(exc, token)}"
+
+    if isinstance(exc, UnexpectedCharacters):
+        # The dynamic lexer reports most structural slips (missing operator or
+        # AND/OR, unquoted value, unclosed quote) here, at the column where it got
+        # stuck. We can't always tell which, so we anchor on the word it choked on
+        # and list the usual causes rather than guess one.
+        col = getattr(exc, "column", None)
+        near = ""
+        if isinstance(col, int) and 0 < col <= len(text):
+            rest = text[col - 1:].strip()
+            word = rest.split()[0] if rest else ""
+            if word:
+                near = f" near '{word}'"
+        where = f" (position {col})" if isinstance(col, int) else ""
+        return (f"Couldn't parse the query{near}{where}. Check for a missing operator "
+                "(=, !=, ~, IN, IS), a missing AND/OR between conditions, an unclosed "
+                "quote, or a value that needs double quotes.")
+
+    first = str(exc).strip().splitlines()[0] if str(exc).strip() else "syntax error"
+    return f"Could not parse query: {first}"
+
+
+def _token_hint(exc, token: str) -> str:
+    """A targeted follow-up hint based on what the parser expected next."""
+    expected = set(getattr(exc, "expected", set()) or set())
+    # Two conditions run together with no connector is the most common slip.
+    if {"AND", "OR"} & expected:
+        return " Did you forget AND or OR between conditions?"
+    # A field with no operator after it.
+    if {"OP", "IN", "IS"} & expected:
+        return " Expected a comparison operator here (=, !=, >, <, ~, IN, IS)."
+    # A reserved keyword sitting in a value position needs quoting.
+    if token.upper() in _RESERVED:
+        return f' To use "{token}" as a value, wrap it in double quotes.'
+    return ""
