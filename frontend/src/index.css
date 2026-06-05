@@ -347,17 +347,6 @@ layer(base);
     flex-direction: row-reverse;
   }
   
-  /* Checkbox positioning in RTL */
-  [dir="rtl"] [data-radix-checkbox-root] {
-    margin-left: 0.5rem;
-    margin-right: 0;
-  }
-  
-  /* ChevronRight rotation in RTL for collapsed sections */
-  [dir="rtl"] .rtl\:rotate-180 {
-    transform: rotate(180deg);
-  }
-  
   /* Dialog RTL fixes */
   [dir="rtl"] .dialog-content {
     text-align: right;

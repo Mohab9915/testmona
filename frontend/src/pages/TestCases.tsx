@@ -4133,7 +4133,6 @@ export function TestCases() {
                                   : false
                             }
                             onCheckedChange={handleSelectAll}
-                            className="rtl:mr-0"
                           />
                         </TableHead>
                         <TableHead>

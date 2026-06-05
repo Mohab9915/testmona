@@ -94,7 +94,6 @@ export function SortableTestCaseRow({
           <Checkbox
             checked={isSelected}
             onCheckedChange={(checked) => handleSelectTestCase(testCase.id, checked as boolean)}
-            className="mr-2 rtl:mr-0 rtl:ml-2"
           />
           <div {...attributes} {...listeners} className="cursor-grab active:cursor-grabbing">
             <GripVertical className="h-4 w-4 text-gray-400 hover:text-gray-600" />
