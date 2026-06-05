@@ -994,6 +994,18 @@ export const ar = {
     readOnly: 'للقراءة فقط',
     sendInvite: 'إرسال الدعوة',
 
+    // Project Settings & feature toggles
+    projectSettings: 'إعدادات المشروع',
+    features: 'الميزات',
+    featuresEnabled: 'الميزات مفعلة',
+    enableAll: 'تفعيل الكل',
+    disableAll: 'تعطيل الكل',
+    projectFeaturesDescription: 'تفعيل أو تعطيل الوحدات لهذا المشروع. الوحدات المعطلة مخفية من الشريط الجانبي ومحظورة من الوصول.',
+    projectFeaturesReadOnly: 'لديك وصول للقراءة فقط. يمكن لمسؤولي المشروع أو المديرين أو المالك فقط تغيير تبديلات الميزات.',
+    projectSettingsSaved: 'تم حفظ إعدادات المشروع.',
+    failedToLoadProjectSettings: 'فشل تحميل إعدادات المشروع.',
+    failedToSaveProjectSettings: 'فشل حفظ إعدادات المشروع.',
+
     // Project Members & RBAC
     projectMembers: 'أعضاء المشروع',
     manageMembers: 'إدارة الأعضاء',

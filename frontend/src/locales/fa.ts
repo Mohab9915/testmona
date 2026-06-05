@@ -1025,6 +1025,18 @@ export const fa = {
     readOnly: 'فقط خواندنی',
     sendInvite: 'ارسال دعوتنامه',
 
+    // Project Settings & feature toggles
+    projectSettings: 'تنظیمات پروژه',
+    features: 'ویژگی‌ها',
+    featuresEnabled: 'ویژگی‌های فعال',
+    enableAll: 'فعال کردن همه',
+    disableAll: 'غیرفعال کردن همه',
+    projectFeaturesDescription: 'فعال یا غیرفعال کردن ماژول‌ها برای این پروژه. ماژول‌های غیرفعال از نوار کناری مخفی و از دسترسی مسدود می‌شوند.',
+    projectFeaturesReadOnly: 'شما دسترسی فقط خواندنی دارید. فقط مدیران پروژه، مدیران یا مالک می‌توانند تغییرات ویژگی‌ها را اعمال کنند.',
+    projectSettingsSaved: 'تنظیمات پروژه ذخیره شد.',
+    failedToLoadProjectSettings: 'بارگذاری تنظیمات پروژه ناموفق بود.',
+    failedToSaveProjectSettings: 'ذخیره تنظیمات پروژه ناموفق بود.',
+
     // Project Members & RBAC
     projectMembers: 'اعضای پروژه',
     manageMembers: 'مدیریت اعضا',
