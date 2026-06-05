@@ -119,7 +119,8 @@ def register_advanced_search_routes(app) -> None:
         entities = [e for e in entity_catalog() if not _entity_disabled(project, e["key"])]
         return {"entities": entities}
 
-    @app.get("/advanced-search/values", tags=["Advanced Search"])
+    @app.get("/advanced-search/values", tags=["Advanced Search"],
+             dependencies=[Depends(require_project_feature("advanced_search"))])
     def get_advanced_search_values(
         project_id: int,
         entity: str = Query(...),
@@ -168,7 +169,8 @@ def register_advanced_search_routes(app) -> None:
         except TQLError as exc:
             raise HTTPException(status_code=400, detail=str(exc))
 
-    @app.get("/advanced-search/export", tags=["Advanced Search"])
+    @app.get("/advanced-search/export", tags=["Advanced Search"],
+             dependencies=[Depends(require_project_feature("advanced_search"))])
     def export_advanced_search(
         project_id: int,
         entity: str = Query(...),
