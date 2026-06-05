@@ -3564,6 +3564,8 @@ export const ar = {
   opCompletion: 'أخرى',
   copyFailed: 'فشل النسخ',
   copyRequirementId: 'نسخ معرّف المتطلب',
+  copyRequirementLink: 'نسخ الرابط',
+  linkCopied: 'تم نسخ الرابط',
   reqChatStarter1: 'لخّص هذا المشروع',
   reqChatStarter2: 'ما المتطلبات التي لا تزال مسودة؟',
   reqChatStarter3: 'ما المتطلبات المتعلقة بالأمان؟',

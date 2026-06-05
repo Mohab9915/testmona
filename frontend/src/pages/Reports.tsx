@@ -9,6 +9,7 @@ import { OverviewSection } from '@/components/reports/OverviewSection';
 import { CoverageRiskSection } from '@/components/reports/CoverageRiskSection';
 import { ActivitySection } from '@/components/reports/ActivitySection';
 import { ShareExportFlow } from '@/components/reports/ShareExportFlow';
+import { isSectionKey } from '@/components/reports/reportsUtils';
 import { milestonesAPI, testPlansAPI } from '@/lib/api';
 
 type ScopedReportEntity = {
@@ -24,7 +25,7 @@ const parsePositiveId = (value: string | null): number | null => {
 };
 
 export function Reports() {
-  const { projectId } = useParams<{ projectId: string }>();
+  const { projectId, section } = useParams<{ projectId: string; section: string }>();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { t, isRTL } = useTranslation();
@@ -32,7 +33,18 @@ export function Reports() {
   const [shareOpen, setShareOpen] = useState(false);
   const [scopedEntity, setScopedEntity] = useState<ScopedReportEntity | null>(null);
 
-  const { activeSection, error, sectionLoading, handleGenerateAnalytics } = ctx;
+  const { activeSection, setActiveSection, error, sectionLoading, handleGenerateAnalytics } = ctx;
+
+  // The URL is the source of truth for the active section. An unknown/missing
+  // slug normalises to the default section so deep-links never render blank.
+  useEffect(() => {
+    if (isSectionKey(section)) {
+      if (section !== activeSection) setActiveSection(section);
+    } else if (section !== undefined) {
+      // Bad slug — rewrite the URL to the canonical default section.
+      navigate(`/projects/${projectId}/reports`, { replace: true });
+    }
+  }, [section, activeSection, setActiveSection, navigate, projectId]);
   const isLoading = sectionLoading(activeSection);
   const numericProjectId = parsePositiveId(projectId || null);
   const testPlanId = parsePositiveId(searchParams.get('test_plan_id'));

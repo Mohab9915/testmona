@@ -6,6 +6,13 @@ import {
 // tab per backing report. Each section pulls together several analytics queries.
 export type SectionKey = 'overview' | 'coverage-risk' | 'activity';
 
+// Each section is reachable at /projects/:projectId/reports/:section. This is the
+// source of truth for which URL slugs are valid section routes.
+export const SECTION_KEYS: SectionKey[] = ['overview', 'coverage-risk', 'activity'];
+
+export const isSectionKey = (value: string | undefined): value is SectionKey =>
+  !!value && (SECTION_KEYS as string[]).includes(value);
+
 // Fine-grained loading keys — one per backing query — so each panel can show its
 // own spinner independently of the others in the same section.
 export type LoadKey =

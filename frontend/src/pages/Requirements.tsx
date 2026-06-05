@@ -34,7 +34,7 @@ import {
 import { Card, CardContent } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Plus, FileText, Search, ChevronLeft, ChevronRight, Edit, Trash2, Download, Upload, FileCode, Eye, Users, Clock, CheckCircle, AlertCircle, XCircle, AlertTriangle, ExternalLink, Wand2, ArrowUpDown, ArrowUp, ArrowDown, Bookmark, BookmarkPlus, Star, X, ListChecks, ShieldCheck, ShieldAlert, ShieldX, Loader2, Tag, Sparkles, Copy, Check, LayoutGrid, Table2, MoreHorizontal, Folder, FolderPlus, FolderOpen, FolderInput, Inbox, Pencil } from 'lucide-react';
+import { Plus, FileText, Search, ChevronLeft, ChevronRight, Edit, Trash2, Download, Upload, FileCode, Eye, Users, Clock, CheckCircle, AlertCircle, XCircle, AlertTriangle, ExternalLink, Wand2, ArrowUpDown, ArrowUp, ArrowDown, Bookmark, BookmarkPlus, Star, X, ListChecks, ShieldCheck, ShieldAlert, ShieldX, Loader2, Tag, Sparkles, Copy, Check, Link2, LayoutGrid, Table2, MoreHorizontal, Folder, FolderPlus, FolderOpen, FolderInput, Inbox, Pencil } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
   DropdownMenu,
@@ -76,6 +76,7 @@ export function Requirements() {
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [copiedKeyId, setCopiedKeyId] = useState<number | null>(null);
+  const [copiedLinkId, setCopiedLinkId] = useState<number | null>(null);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -1078,6 +1079,18 @@ export function Requirements() {
       await navigator.clipboard.writeText(requirement.requirement_id);
       setCopiedKeyId(requirement.id);
       setTimeout(() => setCopiedKeyId((cur) => (cur === requirement.id ? null : cur)), 1500);
+    } catch {
+      toast({ title: t('error'), description: t('copyFailed'), variant: 'destructive' });
+    }
+  };
+
+  const handleCopyRequirementLink = async (requirement: Requirement) => {
+    // Absolute URL so the copied link works when pasted anywhere, not just in-app.
+    const url = `${window.location.origin}/projects/${projectId}/requirements/${requirement.id}`;
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopiedLinkId(requirement.id);
+      setTimeout(() => setCopiedLinkId((cur) => (cur === requirement.id ? null : cur)), 1500);
     } catch {
       toast({ title: t('error'), description: t('copyFailed'), variant: 'destructive' });
     }
@@ -2372,6 +2385,15 @@ export function Requirements() {
                           >
                             {copiedKeyId === requirement.id ? <Check className="h-3 w-3 text-emerald-600" /> : <Copy className="h-3 w-3" />}
                           </button>
+                          <button
+                            type="button"
+                            onClick={() => handleCopyRequirementLink(requirement)}
+                            className="text-muted-foreground/60 opacity-0 transition hover:text-foreground group-hover:opacity-100"
+                            aria-label={t('copyRequirementLink')}
+                            title={copiedLinkId === requirement.id ? t('linkCopied') : t('copyRequirementLink')}
+                          >
+                            {copiedLinkId === requirement.id ? <Check className="h-3 w-3 text-emerald-600" /> : <Link2 className="h-3 w-3" />}
+                          </button>
                         </span>
                       </TableCell>
                       <TableCell className="max-w-[28rem]">
@@ -2461,6 +2483,15 @@ export function Requirements() {
                           title={copiedKeyId === requirement.id ? t('copied') : t('copyRequirementId')}
                         >
                           {copiedKeyId === requirement.id ? <Check className="h-3 w-3 text-emerald-600" /> : <Copy className="h-3 w-3" />}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleCopyRequirementLink(requirement)}
+                          className="text-muted-foreground/60 transition hover:text-foreground"
+                          aria-label={t('copyRequirementLink')}
+                          title={copiedLinkId === requirement.id ? t('linkCopied') : t('copyRequirementLink')}
+                        >
+                          {copiedLinkId === requirement.id ? <Check className="h-3 w-3 text-emerald-600" /> : <Link2 className="h-3 w-3" />}
                         </button>
                       </span>
                     </div>

@@ -1,3 +1,4 @@
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useTranslation } from '@/hooks/useTranslation';
 import { Activity, BarChart3, Loader2, Target } from 'lucide-react';
 import { ReportsData } from '@/hooks/useReportsData';
@@ -5,7 +6,18 @@ import { SectionKey } from '@/components/reports/reportsUtils';
 
 export function SectionNav({ ctx }: { ctx: ReportsData }) {
   const { t } = useTranslation();
-  const { activeSection, setActiveSection, sectionLoading } = ctx;
+  const navigate = useNavigate();
+  const { projectId } = useParams<{ projectId: string }>();
+  const [searchParams] = useSearchParams();
+  const { activeSection, sectionLoading } = ctx;
+
+  // Tabs are real navigations so each section is linkable; the page syncs the
+  // URL slug back into the active section. Existing query params (scope/share)
+  // are preserved across tab switches.
+  const goToSection = (key: SectionKey) => {
+    const query = searchParams.toString();
+    navigate(`/projects/${projectId}/reports/${key}${query ? `?${query}` : ''}`);
+  };
 
   const sections: { key: SectionKey; label: string; desc: string; icon: any }[] = [
     { key: 'overview', label: t('reportsSectionOverview'), desc: t('reportsSectionOverviewDesc'), icon: BarChart3 },
@@ -23,7 +35,7 @@ export function SectionNav({ ctx }: { ctx: ReportsData }) {
           <button
             key={section.key}
             type="button"
-            onClick={() => setActiveSection(section.key)}
+            onClick={() => goToSection(section.key)}
             className={`rounded-lg border p-4 text-start transition-all ${
               active
                 ? 'border-blue-500 bg-blue-50 text-blue-900 shadow-xs dark:border-blue-500 dark:bg-blue-950/30 dark:text-blue-100'

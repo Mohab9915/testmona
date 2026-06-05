@@ -49,6 +49,26 @@ export function useReportsData(projectId: string | undefined) {
   const [selectedProject, setSelectedProject] = useState(parseInt(projectId || '') || 1);
 
   const requestSeq = useRef(0);
+  // Per-tab record of the most recent request's sequence. The loading flag is
+  // per-tab, so it must only be cleared by the latest request for *that* tab — a
+  // global `requestSeq` check would let a newer request for a different tab
+  // strand this tab's spinner forever (e.g. overview superseded by coverage-risk
+  // on initial deep-link navigation).
+  const tabSeq = useRef<Partial<Record<LoadKey, number>>>({});
+
+  // Start a tracked request: bump the global sequence (used to discard stale
+  // data from superseded requests) and mark this as the latest request for `tab`.
+  const beginRequest = (tab: LoadKey): number => {
+    const seq = ++requestSeq.current;
+    tabSeq.current[tab] = seq;
+    setTabLoading(tab, true);
+    return seq;
+  };
+
+  // Clear the tab's loading flag only if no newer request for the same tab started.
+  const endRequest = (tab: LoadKey, seq: number) => {
+    if (tabSeq.current[tab] === seq) setTabLoading(tab, false);
+  };
 
   // Real data states
   const [dashboardAnalytics, setDashboardAnalytics] = useState<any>(null);
@@ -114,8 +134,7 @@ export function useReportsData(projectId: string | undefined) {
 
   const loadDashboardAnalytics = async (): Promise<boolean> => {
     if (!selectedProject) return false;
-    const seq = ++requestSeq.current;
-    setTabLoading('dashboard', true);
+    const seq = beginRequest('dashboard');
     setError(null);
     try {
       const [data, timeSeries] = await Promise.all([
@@ -134,14 +153,13 @@ export function useReportsData(projectId: string | undefined) {
       setError('Failed to load dashboard analytics.');
       return false;
     } finally {
-      if (seq === requestSeq.current) setTabLoading('dashboard', false);
+      endRequest('dashboard', seq);
     }
   };
 
   const loadGranularInsights = async (): Promise<boolean> => {
     if (!selectedProject) return false;
-    const seq = ++requestSeq.current;
-    setTabLoading('granular', true);
+    const seq = beginRequest('granular');
     setError(null);
     try {
       const data = await analyticsAPI.getGranularInsights({
@@ -159,14 +177,13 @@ export function useReportsData(projectId: string | undefined) {
       setError('Failed to load granular insights.');
       return false;
     } finally {
-      if (seq === requestSeq.current) setTabLoading('granular', false);
+      endRequest('granular', seq);
     }
   };
 
   const loadShareableReports = async (): Promise<boolean> => {
     if (!selectedProject) return false;
-    const seq = ++requestSeq.current;
-    setTabLoading('shareable', true);
+    const seq = beginRequest('shareable');
     setError(null);
     try {
       const data = await analyticsAPI.getShareableReports(selectedProject);
@@ -180,14 +197,13 @@ export function useReportsData(projectId: string | undefined) {
       setError('Failed to load shareable reports.');
       return false;
     } finally {
-      if (seq === requestSeq.current) setTabLoading('shareable', false);
+      endRequest('shareable', seq);
     }
   };
 
   const loadRootCauseAnalyses = async (): Promise<boolean> => {
     if (!selectedProject) return false;
-    const seq = ++requestSeq.current;
-    setTabLoading('root-cause', true);
+    const seq = beginRequest('root-cause');
     setError(null);
     try {
       const data = await analyticsAPI.getRootCauseAnalyses(selectedProject);
@@ -201,14 +217,13 @@ export function useReportsData(projectId: string | undefined) {
       setError('Failed to load root cause analyses.');
       return false;
     } finally {
-      if (seq === requestSeq.current) setTabLoading('root-cause', false);
+      endRequest('root-cause', seq);
     }
   };
 
   const loadTraceabilityData = async (): Promise<boolean> => {
     if (!selectedProject) return false;
-    const seq = ++requestSeq.current;
-    setTabLoading('traceability', true);
+    const seq = beginRequest('traceability');
     setError(null);
     try {
       const data = await analyticsAPI.getTraceabilityMatrix(selectedProject, {
@@ -229,15 +244,14 @@ export function useReportsData(projectId: string | undefined) {
       setError('Failed to load traceability data.');
       return false;
     } finally {
-      if (seq === requestSeq.current) setTabLoading('traceability', false);
+      endRequest('traceability', seq);
     }
   };
 
   // Coverage panel needs the coverage report and the execution status together.
   const loadCoverageData = async (generate = false): Promise<boolean> => {
     if (!selectedProject) return false;
-    const seq = ++requestSeq.current;
-    setTabLoading('coverage', true);
+    const seq = beginRequest('coverage');
     setError(null);
     try {
       const [coverage, executionStatus] = await Promise.all([
@@ -258,14 +272,13 @@ export function useReportsData(projectId: string | undefined) {
       setError('Failed to load coverage data.');
       return false;
     } finally {
-      if (seq === requestSeq.current) setTabLoading('coverage', false);
+      endRequest('coverage', seq);
     }
   };
 
   const loadActivityStatistics = async (): Promise<boolean> => {
     if (!selectedProject) return false;
-    const seq = ++requestSeq.current;
-    setTabLoading('activity', true);
+    const seq = beginRequest('activity');
     setError(null);
     try {
       const days = timeRangeToDays(timeRange);
@@ -280,14 +293,13 @@ export function useReportsData(projectId: string | undefined) {
       setError('Failed to load activity statistics.');
       return false;
     } finally {
-      if (seq === requestSeq.current) setTabLoading('activity', false);
+      endRequest('activity', seq);
     }
   };
 
   const loadTestActivity = async (): Promise<boolean> => {
     if (!selectedProject) return false;
-    const seq = ++requestSeq.current;
-    setTabLoading('test-activity', true);
+    const seq = beginRequest('test-activity');
     setError(null);
     try {
       const days = timeRangeToDays(timeRange);
@@ -304,7 +316,7 @@ export function useReportsData(projectId: string | undefined) {
       setError('Failed to load test activity.');
       return false;
     } finally {
-      if (seq === requestSeq.current) setTabLoading('test-activity', false);
+      endRequest('test-activity', seq);
     }
   };
 

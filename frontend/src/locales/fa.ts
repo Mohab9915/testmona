@@ -3533,6 +3533,8 @@ export const fa = {
   opCompletion: 'سایر',
   copyFailed: 'کپی ناموفق بود',
   copyRequirementId: 'کپی شناسه نیازمندی',
+  copyRequirementLink: 'کپی پیوند',
+  linkCopied: 'پیوند کپی شد',
   reqChatStarter1: 'این پروژه را خلاصه کن',
   reqChatStarter2: 'کدام نیازمندی‌ها هنوز پیش‌نویس هستند؟',
   reqChatStarter3: 'نیازمندی‌های مرتبط با امنیت کدام‌اند؟',

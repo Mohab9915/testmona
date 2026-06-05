@@ -338,6 +338,14 @@ function AppWithRouter() {
             </FeatureGuard>
           </ProjectGuard>
         } />
+        {/* Each reports section is its own URL so tabs are linkable/bookmarkable. */}
+        <Route path="/projects/:projectId/reports/:section" element={
+          <ProjectGuard>
+            <FeatureGuard feature="reports">
+              <Reports />
+            </FeatureGuard>
+          </ProjectGuard>
+        } />
         <Route path="/projects/:projectId/milestones" element={
           <ProjectGuard>
             <FeatureGuard feature="milestones">

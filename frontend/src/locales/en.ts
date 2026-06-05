@@ -790,6 +790,8 @@ export const en = {
   copyDefectId: 'Copy defect ID',
   defectStatusUpdated: 'Defect status updated',
   copyRequirementId: 'Copy requirement ID',
+  copyRequirementLink: 'Copy link',
+  linkCopied: 'Link copied',
   email: 'Email',
   password: 'Password',
   tester: 'Tester',

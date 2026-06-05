@@ -34,7 +34,7 @@ export function OverviewSection({ ctx }: { ctx: ReportsData }) {
   const {
     timeRange, setTimeRange, isEditMode, handleToggleEditMode, loadDashboardAnalytics,
     handleExportReport, dashboardAnalytics, analyticsTimeSeries, dashboardWidgets,
-    setDashboardWidgets, setActiveSection, error, selectedProject,
+    setDashboardWidgets, error, selectedProject,
   } = ctx;
   const isLoading = ctx.sectionLoading('overview');
 
@@ -113,7 +113,8 @@ export function OverviewSection({ ctx }: { ctx: ReportsData }) {
     const handleDrill = () => {
       if (!m || isEditMode) return;
       if (m.drill.section) {
-        setActiveSection(m.drill.section);
+        // Navigate so the drilled-into section becomes a real, linkable URL.
+        navigate(`/projects/${selectedProject}/reports/${m.drill.section}`);
       } else if (m.drill.href) {
         navigate(m.drill.href);
       }
