@@ -43,6 +43,7 @@ import {
   Filter,
   Upload,
   FileUp,
+  Server,
 } from 'lucide-react';
 import { SearchableDefectSelect } from '@/components/Defects/SearchableDefectSelect';
 import {
@@ -56,7 +57,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { TestRunPieChart, TestRunBarChart, TestRunTrendChart } from '@/components/ui/chart';
 import { useTranslation } from '@/hooks/useTranslation';
-import { defectsAPI, getApiErrorMessage, sectionsAPI, testCasesAPI, testRunsAPI, testResultsAPI, usersAPI } from '@/lib/api';
+import { defectsAPI, environmentsAPI, getApiErrorMessage, sectionsAPI, testCasesAPI, testRunsAPI, testResultsAPI, usersAPI } from '@/lib/api';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { CustomFieldsPanel } from '@/components/CustomFieldsPanel';
 import { useToast } from '@/hooks/use-toast';
@@ -104,6 +105,8 @@ export function TestRunDetail() {
   const [sections, setSections] = useState<any[]>([]);
   const [isResettingTime, setIsResettingTime] = useState(false);
   const [isAssigningRun, setIsAssigningRun] = useState(false);
+  const [environments, setEnvironments] = useState<any[]>([]);
+  const [isSettingEnvironment, setIsSettingEnvironment] = useState(false);
 
   // Column sorting
   const [sortColumn, setSortColumn] = useState<string | null>(() => searchParams.get('sort') || null);
@@ -547,6 +550,16 @@ export function TestRunDetail() {
     };
 
     loadSections();
+  }, [projectId]);
+
+  // Load the project's execution environments so a run can be pointed at one
+  useEffect(() => {
+    if (!projectId) return;
+    let cancelled = false;
+    environmentsAPI.getAll(parseInt(projectId))
+      .then((data) => { if (!cancelled) setEnvironments(Array.isArray(data) ? data : []); })
+      .catch((err) => { console.error('Failed to load environments:', err); });
+    return () => { cancelled = true; };
   }, [projectId]);
 
   // Load available test cases when dialog opens
@@ -1300,6 +1313,36 @@ export function TestRunDetail() {
     }
   };
 
+  const handleSetEnvironment = async (value: string) => {
+    if (!id) return;
+
+    const nextEnvironmentId = value === 'none' ? null : parseInt(value, 10);
+    const normalizedId = Number.isInteger(nextEnvironmentId) ? nextEnvironmentId : null;
+    const prevEnvironmentId = testRun?.environment_id ?? null;
+    if (normalizedId === prevEnvironmentId) return;
+
+    // Optimistically reflect the choice so the field doesn't flicker back to the
+    // old value while the request is in flight.
+    setTestRun((prev: any) => (prev ? { ...prev, environment_id: normalizedId } : prev));
+
+    try {
+      setIsSettingEnvironment(true);
+      const updatedRun = await testRunsAPI.update(parseInt(id, 10), { environment_id: normalizedId });
+      setTestRun((prev: any) => ({ ...prev, ...updatedRun }));
+    } catch (error) {
+      console.error('Failed to set test run environment:', error);
+      toast({
+        title: t('error'),
+        description: getApiErrorMessage(error, t('failedToSetEnvironment')),
+        variant: 'destructive',
+      });
+      // Revert the optimistic change if the server rejected it.
+      setTestRun((prev: any) => (prev ? { ...prev, environment_id: prevEnvironmentId } : prev));
+    } finally {
+      setIsSettingEnvironment(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="space-y-6">
@@ -1421,6 +1464,36 @@ export function TestRunDetail() {
                       reflow when the spinner toggles during assignment. */}
                   <span className="flex h-3.5 w-3.5 shrink-0 items-center justify-center">
                     {isAssigningRun && <Loader2 className="h-3.5 w-3.5 animate-spin text-cyan-600 dark:text-cyan-200" />}
+                  </span>
+                </div>
+                <div className="inline-flex items-center gap-2 rounded-full bg-white/75 px-3 h-9 shadow-xs ring-1 ring-slate-200/80 backdrop-blur-sm dark:bg-white/10 dark:ring-white/10">
+                  <Server className="h-4 w-4 text-cyan-600 dark:text-cyan-200" />
+                  <span className="shrink-0">{t('environmentLabel')}:</span>
+                  <Select
+                    value={testRun.environment_id ? String(testRun.environment_id) : 'none'}
+                    onValueChange={handleSetEnvironment}
+                    disabled={isSettingEnvironment}
+                  >
+                    <SelectTrigger className="h-7 w-[170px] border-0 bg-transparent px-1 py-0 text-xs font-semibold shadow-none focus:ring-0 sm:text-sm">
+                      <SelectValue placeholder={t('selectTestEnvironment')} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">{t('noEnvironment')}</SelectItem>
+                      {environments.length === 0 ? (
+                        <SelectItem value="__no_envs__" disabled>{t('noEnvironmentsAvailable')}</SelectItem>
+                      ) : (
+                        environments.map((environment) => (
+                          <SelectItem key={environment.id} value={String(environment.id)}>
+                            {environment.name}
+                          </SelectItem>
+                        ))
+                      )}
+                    </SelectContent>
+                  </Select>
+                  {/* Fixed slot keeps the pill width stable so the row doesn't
+                      reflow when the spinner toggles while saving. */}
+                  <span className="flex h-3.5 w-3.5 shrink-0 items-center justify-center">
+                    {isSettingEnvironment && <Loader2 className="h-3.5 w-3.5 animate-spin text-cyan-600 dark:text-cyan-200" />}
                   </span>
                 </div>
               </div>
