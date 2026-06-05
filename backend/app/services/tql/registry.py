@@ -243,15 +243,36 @@ def _build_testplan_registry() -> Dict[str, FieldSpec]:
 def _build_testexecution_registry() -> Dict[str, FieldSpec]:
     # Real executions are recorded as TestResult rows (TestExecution is a legacy
     # table that the execution flow no longer writes to). status is a free-form
-    # String with inconsistent values (pass/passed, block/blocked, ...), so it's
-    # a live-suggested text field rather than a fixed enum. title/summary map to
-    # the executed test case's title (the entity's scope joins TestCase), so the
-    # title shown in results is queryable.
-    from ...models import TestCase, TestResult
+    # String that has held both short and full-word spellings (pass/passed,
+    # skip/skipped). We normalize *both* sides — the stored column via a CASE and
+    # the typed value via canonical_result_status — so `status = "skipped"`
+    # matches a row stored as "skip" (and vice versa). Canonical tokens are also
+    # the offered choices. title/summary map to the executed test case's title
+    # (the entity's scope joins TestCase), so the title shown is queryable.
+    from sqlalchemy import case, func
+    from ...models import ResultStatus, TestCase, TestResult, canonical_result_status
+
+    _s = func.lower(func.trim(TestResult.status))
+    status_normalized = case(
+        (_s == "passed", "pass"),
+        (_s == "failed", "fail"),
+        (_s == "skipped", "skip"),
+        (_s == "blocked", "block"),
+        else_=_s,
+    )
+
+    def result_status_coercer(value: nodes.Value, _ctx: EvalContext) -> str:
+        return canonical_result_status(_literal_str(value))
+
+    # The canonical ResultStatus tokens (pass/fail/skip/block/not_started).
+    status_choices = tuple(m.value for m in ResultStatus)
 
     return {
         "id": int_field(TestResult.id),
-        "status": text_field(TestResult.status, suggest=True),
+        "status": FieldSpec(
+            status_normalized, _TEXT, result_status_coercer, kind="keyword",
+            choices=status_choices, suggest=True,
+        ),
         "executor": user_field(TestResult.executed_by),
         "summary": text_field(TestCase.title),
         "title": text_field(TestCase.title),
