@@ -255,15 +255,15 @@ def value_suggestions(
     needle_lc = needle.lower()
 
     if field.multivalue:
-        # Scan a bounded slice of rows and split each on commas.
+        # Scan a bounded slice of rows and split each on commas. We collect from
+        # the whole slice before sorting/slicing so the result is deterministic
+        # (alphabetical) rather than dependent on which rows were seen first.
         seen: Dict[str, str] = {}
         for (raw,) in base.limit(2000):
             for token in str(raw).split(","):
                 token = token.strip()
                 if token and (not needle_lc or needle_lc in token.lower()):
                     seen.setdefault(token.lower(), token)
-            if len(seen) >= limit:
-                break
         return sorted(seen.values())[:limit]
 
     if needle:
