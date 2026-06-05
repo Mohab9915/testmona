@@ -4827,15 +4827,24 @@ class DocStatsOverview(BaseModel):
 
 # --- Doc -> Requirement converter ------------------------------------------
 
+# A requirement's rich-text body can be sizeable; cap overrides defensively.
+_CONVERT_HTML_MAX = 60_000
+
+
 class DocConvertRequest(BaseModel):
     mode: str = "single"  # single | split
-    heading_level: int = Field(default=2, ge=1, le=3)  # used by split mode
+    # 0 = auto-detect the split level from the document structure.
+    heading_level: int = Field(default=2, ge=0, le=3)  # used by split mode
     target_project_id: Optional[int] = None  # required when the doc is global
     folder_id: Optional[int] = None  # requirement folder
     default_status: RequirementStatus = RequirementStatus.DRAFT
     default_priority: Priority = Priority.MEDIUM
-    # Optional per-item title overrides keyed by section index (from preview).
+    # Optional per-item overrides keyed by section index (from the preview /
+    # AI enhancement). When omitted, the server-built plan is used as-is.
     items: Optional[List["DocConvertItem"]] = None
+    # Brand-new requirements the user accepted from the AI gap analysis — created
+    # in addition to the doc-derived sections.
+    extra_items: Optional[List["DocConvertExtraItem"]] = Field(default=None, max_length=50)
 
     @field_validator("mode")
     @classmethod
@@ -4849,6 +4858,26 @@ class DocConvertItem(BaseModel):
     index: int
     title: str = Field(min_length=1, max_length=255)
     include: bool = True
+    # Optional HTML overrides applied when the user accepts an AI suggestion for
+    # this section. ``None`` keeps the server-rendered plan content.
+    description_html: Optional[str] = Field(default=None, max_length=_CONVERT_HTML_MAX)
+    acceptance_html: Optional[str] = Field(default=None, max_length=_CONVERT_HTML_MAX)
+
+    @field_validator("title")
+    @classmethod
+    def _validate_title(cls, v: str) -> str:
+        cleaned = (v or "").strip()
+        if not cleaned:
+            raise ValueError("Requirement title cannot be empty")
+        return cleaned
+
+
+class DocConvertExtraItem(BaseModel):
+    """A new requirement (not derived from a doc section) accepted from the AI
+    gap analysis."""
+    title: str = Field(min_length=1, max_length=255)
+    description_html: str = Field(default="", max_length=_CONVERT_HTML_MAX)
+    acceptance_html: Optional[str] = Field(default=None, max_length=_CONVERT_HTML_MAX)
 
     @field_validator("title")
     @classmethod
@@ -4864,6 +4893,8 @@ class DocConvertPreviewItem(BaseModel):
     title: str
     description_html: str
     is_acceptance_criteria: bool = False
+    # Split-mode sections may carry their own extracted acceptance criteria.
+    acceptance_html: str = ""
 
 
 class DocConvertPreview(BaseModel):
@@ -4874,6 +4905,49 @@ class DocConvertPreview(BaseModel):
 class DocConvertResult(BaseModel):
     created: List["Requirement"]
     links: List[DocRequirementLinkView]
+
+
+# --- AI conversion enhancement ----------------------------------------------
+
+class DocConvertEnhanceRequest(BaseModel):
+    mode: str = "single"
+    heading_level: int = Field(default=2, ge=0, le=3)
+
+    @field_validator("mode")
+    @classmethod
+    def _validate_mode(cls, v: str) -> str:
+        if v not in {"single", "split"}:
+            raise ValueError("mode must be 'single' or 'split'")
+        return v
+
+
+class DocConvertEnhanceItem(BaseModel):
+    index: int
+    # 0–100 quality score the model assigned to the draft requirement.
+    quality_score: int = 0
+    issues: List[str] = Field(default_factory=list)
+    edge_cases: List[str] = Field(default_factory=list)
+    suggested_title: str = ""
+    # Pre-rendered HTML so the client can preview/apply the suggestion directly.
+    suggested_description_html: str = ""
+    suggested_acceptance_html: str = ""
+
+
+class DocConvertSuggestedRequirement(BaseModel):
+    title: str
+    description_html: str = ""
+    acceptance_html: str = ""
+    rationale: str = ""
+
+
+class DocConvertEnhanceResult(BaseModel):
+    ai_available: bool = False
+    ai_skipped_reason: Optional[str] = None
+    summary: Optional[str] = None
+    items: List[DocConvertEnhanceItem] = Field(default_factory=list)
+    suggested_requirements: List[DocConvertSuggestedRequirement] = Field(default_factory=list)
+    provider: Optional[str] = None
+    model: Optional[str] = None
 
 
 DocConvertRequest.model_rebuild()

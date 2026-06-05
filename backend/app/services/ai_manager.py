@@ -62,7 +62,17 @@ class AIProviderConfigPayload(BaseModel):
 
 
 SOURCE_TYPES = ("requirements", "defects", "test_plans", "test_cases", "docs")
-ROUTING_TASKS = ("qa", "generation", "assistant")
+# Routing task groups. "docs" is the general Doc Hub group; the three doc_*
+# groups are per-feature overrides that fall back to "docs" when unset.
+ROUTING_TASKS = ("qa", "generation", "assistant", "docs", "doc_impact", "doc_release_notes", "doc_convert")
+
+# Doc Hub operation → its specific (per-feature) routing task. Each resolves to
+# its own task first, then the general "docs" group, then the active provider.
+DOC_OPERATION_TASKS = {
+    "doc_change_impact": "doc_impact",
+    "doc_release_notes": "doc_release_notes",
+    "doc_convert_enhance": "doc_convert",
+}
 
 
 class RequirementChatSettingsPayload(BaseModel):
@@ -107,6 +117,12 @@ class RoutingSettingsPayload(BaseModel):
     qa: RoutingTargetPayload = Field(default_factory=RoutingTargetPayload)
     generation: RoutingTargetPayload = Field(default_factory=RoutingTargetPayload)
     assistant: RoutingTargetPayload = Field(default_factory=RoutingTargetPayload)
+    # General Doc Hub group (default for every Doc Hub AI feature)...
+    docs: RoutingTargetPayload = Field(default_factory=RoutingTargetPayload)
+    # ...with optional per-feature overrides that fall back to ``docs`` when unset.
+    doc_impact: RoutingTargetPayload = Field(default_factory=RoutingTargetPayload)
+    doc_release_notes: RoutingTargetPayload = Field(default_factory=RoutingTargetPayload)
+    doc_convert: RoutingTargetPayload = Field(default_factory=RoutingTargetPayload)
 
 
 class FallbackSettingsPayload(BaseModel):
@@ -798,14 +814,39 @@ def _usage_from_openai_payload(data: Dict[str, Any]) -> tuple[int, int]:
 
 
 def _operation_task(operation: str) -> Optional[str]:
-    """Map an operation string to a routing task group."""
+    """The most specific routing task group for an operation (or None)."""
     if operation == "requirement_project_qa":
         return "qa"
     if operation == "requirement_test_case_generation":
         return "generation"
-    if operation.startswith("test_case_assistant"):
+    if operation.startswith("test_case_assistant") or operation.startswith("test_case_draft_assistant"):
         return "assistant"
+    if operation in DOC_OPERATION_TASKS:
+        return DOC_OPERATION_TASKS[operation]
+    if operation.startswith("doc_"):
+        return "docs"
     return None
+
+
+def _operation_task_chain(operation: str) -> List[str]:
+    """Ordered routing groups to try for an operation, most specific first. A Doc
+    Hub feature tries its own group, then falls back to the general ``docs`` group
+    (and finally, in the caller, the active provider)."""
+    task = _operation_task(operation)
+    if task is None:
+        return []
+    if task in DOC_OPERATION_TASKS.values():
+        return [task, "docs"]
+    return [task]
+
+
+def _resolve_route(routing: Dict[str, Any], operation: str) -> Dict[str, Any]:
+    """First task in the operation's chain that pins a provider; ``{}`` if none."""
+    for task in _operation_task_chain(operation):
+        target = routing.get(task) or {}
+        if target.get("provider"):
+            return target
+    return {}
 
 
 async def generate_ai_completion(
@@ -820,8 +861,9 @@ async def generate_ai_completion(
     config = _load_ai_config(db)
     system_prompt = str(config.get("system_prompt") or "").strip()
 
-    # Task-group routing: an operation can pin a provider/model override.
-    route = _normalize_routing(config.get("routing")).get(_operation_task(operation)) or {}
+    # Task-group routing: an operation can pin a provider/model override. Doc Hub
+    # features resolve their per-feature group first, then the general "docs" group.
+    route = _resolve_route(_normalize_routing(config.get("routing")), operation)
     routed_provider = route.get("provider")
     routed_model = route.get("model")
     chosen_provider = request.provider or routed_provider or config["active_provider"]
