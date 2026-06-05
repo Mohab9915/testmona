@@ -72,6 +72,7 @@ def _validate_test_run_scope(
     project_id: int,
     test_plan_id: Optional[int],
     milestone_id: Optional[int],
+    environment_id: Optional[int] = None,
 ) -> None:
     """Ensure optional test-run links belong to the same project."""
     linked_plan = None
@@ -81,6 +82,15 @@ def _validate_test_run_scope(
             raise HTTPException(status_code=404, detail="Test plan not found")
         if linked_plan.project_id != project_id:
             raise HTTPException(status_code=400, detail="Test plan does not belong to this project")
+
+    if environment_id is not None:
+        environment = db.query(models.ExecutionEnvironment).filter(
+            models.ExecutionEnvironment.id == environment_id
+        ).first()
+        if environment is None:
+            raise HTTPException(status_code=404, detail="Environment not found")
+        if environment.project_id != project_id:
+            raise HTTPException(status_code=400, detail="Environment does not belong to this project")
 
     if milestone_id is not None:
         milestone = db.query(models.Milestone).filter(models.Milestone.id == milestone_id).first()
@@ -1253,6 +1263,7 @@ def register_test_management_routes(app):
             project_id=test_run.project_id,
             test_plan_id=test_run.test_plan_id,
             milestone_id=test_run.milestone_id,
+            environment_id=test_run.environment_id,
         )
         assignee = _validate_test_run_assignee(db, test_run.assigned_to, test_run.project_id)
         db_test_run = crud.create_test_run(db=db, test_run=test_run)
@@ -1357,6 +1368,7 @@ def register_test_management_routes(app):
             project_id=db_test_run.project_id,
             test_plan_id=changed_fields.get("test_plan_id", db_test_run.test_plan_id),
             milestone_id=changed_fields.get("milestone_id", db_test_run.milestone_id),
+            environment_id=changed_fields.get("environment_id", db_test_run.environment_id),
         )
         if "assigned_to" in changed_fields:
             assignee = _validate_test_run_assignee(db, changed_fields.get("assigned_to"), db_test_run.project_id)
