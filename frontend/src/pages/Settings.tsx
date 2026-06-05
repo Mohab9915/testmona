@@ -735,6 +735,9 @@ export function Settings() {
   // Per-provider expand override; when unset a provider follows its enabled state
   // (active = expanded, inactive = collapsed).
   const [expandedProviders, setExpandedProviders] = useState<Record<string, boolean>>({});
+  // "Model routing by task" and its nested Doc Hub group are collapsed by default.
+  const [routingExpanded, setRoutingExpanded] = useState(false);
+  const [docRoutingExpanded, setDocRoutingExpanded] = useState(false);
   const [aiUsage, setAIUsage] = useState<AIUsageSummary | null>(null);
   const [loadingAIManager, setLoadingAIManager] = useState(false);
   const [savingAIManager, setSavingAIManager] = useState(false);
@@ -3845,11 +3848,21 @@ export function Settings() {
                   </div>
                 </div>
 
-                {/* Per-task model routing */}
+                {/* Per-task model routing (collapsed by default) */}
                 <div className="rounded-lg border border-slate-200 p-4 dark:border-slate-800">
-                  <h4 className="text-sm font-semibold text-slate-900 dark:text-white">{t('aiRoutingTitle')}</h4>
-                  <p className="mb-3 text-xs text-slate-400">{t('aiRoutingHint')}</p>
-                  {(() => {
+                  <button
+                    type="button"
+                    onClick={() => setRoutingExpanded((v) => !v)}
+                    aria-expanded={routingExpanded}
+                    className="flex w-full items-center justify-between gap-3 text-start"
+                  >
+                    <div>
+                      <h4 className="text-sm font-semibold text-slate-900 dark:text-white">{t('aiRoutingTitle')}</h4>
+                      <p className="text-xs text-slate-400">{t('aiRoutingHint')}</p>
+                    </div>
+                    <ChevronDown className={`h-4 w-4 shrink-0 text-slate-400 transition-transform ${routingExpanded ? '' : '-rotate-90'}`} />
+                  </button>
+                  {routingExpanded && (() => {
                     const routing = aiManagerSettings.routing ?? defaultRoutingSettings;
                     const setRoute = (task: keyof AIRoutingSettings, next: AIRoutingTarget) =>
                       setAIManagerSettings((current) => ({
@@ -3857,8 +3870,11 @@ export function Settings() {
                         routing: { ...(current.routing ?? defaultRoutingSettings), [task]: next },
                       }));
                     const docsHasProvider = !!routing.docs?.provider;
+                    // How many Doc Hub features have an explicit provider (shown on the collapsed header).
+                    const docOverrides = (['docs', ...AI_DOC_ROUTING_SUBTASKS] as Array<keyof AIRoutingSettings>)
+                      .filter((task) => routing[task]?.provider).length;
                     return (
-                      <div className="space-y-3">
+                      <div className="mt-3 space-y-3">
                         {AI_ROUTING_TASKS.map((task) => (
                           <AIRoutingRow
                             key={task}
@@ -3871,37 +3887,52 @@ export function Settings() {
                           />
                         ))}
 
-                        {/* Doc Hub: a general provider, with optional per-feature overrides */}
+                        {/* Doc Hub: general provider + optional per-feature overrides (collapsed by default) */}
                         <div className="rounded-lg border border-slate-200 bg-slate-50/60 p-3 dark:border-slate-800 dark:bg-slate-900/40">
-                          <div className="mb-2 flex items-center gap-2">
-                            <BookText className="h-4 w-4 shrink-0 text-primary" />
-                            <span className="text-sm font-semibold text-slate-900 dark:text-white">{t('aiRoutingDocHubTitle')}</span>
-                          </div>
-                          <p className="mb-3 text-xs text-slate-400">{t('aiRoutingDocHubHint')}</p>
-                          <div className="space-y-3">
-                            <AIRoutingRow
-                              label={t('aiRouting_docs')}
-                              target={routing.docs ?? { provider: null, model: null }}
-                              providers={aiManagerSettings.providers}
-                              inheritLabel={t('aiRoutingUseActive')}
-                              onChange={(next) => setRoute('docs', next)}
-                              t={t}
-                            />
-                            {AI_DOC_ROUTING_SUBTASKS.map((task) => (
-                              <AIRoutingRow
-                                key={task}
-                                label={t(`aiRouting_${task}`)}
-                                target={routing[task] ?? { provider: null, model: null }}
-                                providers={aiManagerSettings.providers}
-                                // Sub-features inherit the general Doc Hub provider when set,
-                                // otherwise the active provider.
-                                inheritLabel={docsHasProvider ? t('aiRoutingUseDocHub') : t('aiRoutingUseActive')}
-                                indented
-                                onChange={(next) => setRoute(task, next)}
-                                t={t}
-                              />
-                            ))}
-                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setDocRoutingExpanded((v) => !v)}
+                            aria-expanded={docRoutingExpanded}
+                            className="flex w-full items-center justify-between gap-3 text-start"
+                          >
+                            <div className="flex items-center gap-2">
+                              <BookText className="h-4 w-4 shrink-0 text-primary" />
+                              <span className="text-sm font-semibold text-slate-900 dark:text-white">{t('aiRoutingDocHubTitle')}</span>
+                              {docOverrides > 0 && (
+                                <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">{docOverrides}</span>
+                              )}
+                            </div>
+                            <ChevronDown className={`h-4 w-4 shrink-0 text-slate-400 transition-transform ${docRoutingExpanded ? '' : '-rotate-90'}`} />
+                          </button>
+                          {docRoutingExpanded && (
+                            <div className="mt-3">
+                              <p className="mb-3 text-xs text-slate-400">{t('aiRoutingDocHubHint')}</p>
+                              <div className="space-y-3">
+                                <AIRoutingRow
+                                  label={t('aiRouting_docs')}
+                                  target={routing.docs ?? { provider: null, model: null }}
+                                  providers={aiManagerSettings.providers}
+                                  inheritLabel={t('aiRoutingUseActive')}
+                                  onChange={(next) => setRoute('docs', next)}
+                                  t={t}
+                                />
+                                {AI_DOC_ROUTING_SUBTASKS.map((task) => (
+                                  <AIRoutingRow
+                                    key={task}
+                                    label={t(`aiRouting_${task}`)}
+                                    target={routing[task] ?? { provider: null, model: null }}
+                                    providers={aiManagerSettings.providers}
+                                    // Sub-features inherit the general Doc Hub provider when set,
+                                    // otherwise the active provider.
+                                    inheritLabel={docsHasProvider ? t('aiRoutingUseDocHub') : t('aiRoutingUseActive')}
+                                    indented
+                                    onChange={(next) => setRoute(task, next)}
+                                    t={t}
+                                  />
+                                ))}
+                              </div>
+                            </div>
+                          )}
                         </div>
                       </div>
                     );
