@@ -1170,6 +1170,12 @@ html[data-ui-density="compact"] {
   caret-color: #2563eb;
 }
 
+/* In fullscreen the editor wrapper flexes to fill the viewport; let the editable
+   surface fill it too, so clicking anywhere in the empty body focuses the doc. */
+[data-content-editor][data-fullscreen] .ProseMirror {
+  min-height: 100%;
+}
+
 [data-content-editor] .ProseMirror :first-child {
   margin-top: 0;
 }

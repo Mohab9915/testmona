@@ -466,7 +466,13 @@ export function ContentEditor({
       if (event.key === 'Escape') setIsFullscreen(false);
     };
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    // Stop the page behind the overlay from scrolling while editing fullscreen.
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      document.body.style.overflow = previousOverflow;
+    };
   }, [isFullscreen]);
 
   const insertImageFile = async (file: File) => {
@@ -584,8 +590,12 @@ export function ContentEditor({
   const Divider = () => <div className="mx-1 h-5 w-px bg-slate-200 dark:bg-slate-700" />;
 
   const shellClass = cn(
-    'rounded-xl border border-slate-200 bg-white shadow-xs transition-all dark:border-slate-800 dark:bg-slate-950',
+    'border border-slate-200 bg-white shadow-xs transition-all dark:border-slate-800 dark:bg-slate-950',
     'focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-100 dark:focus-within:ring-blue-900/30',
+    // Fullscreen turns the shell into a real viewport-covering overlay (above the
+    // navbar at z-40 and the sidebar at z-50) laid out as a column so the body
+    // can flex to fill the screen; otherwise it's a normal rounded card.
+    isFullscreen ? 'fixed inset-0 z-[60] flex flex-col rounded-none border-0' : 'rounded-xl',
     className
   );
 
@@ -596,6 +606,7 @@ export function ContentEditor({
       data-content-editor
       data-rich-text-editor
       data-markdown-editor
+      data-fullscreen={isFullscreen ? '' : undefined}
     >
       {/* Top bar */}
       <div
@@ -826,8 +837,8 @@ export function ContentEditor({
 
       {/* Body */}
       <div
-        className="relative overflow-auto"
-        style={{ minHeight: isFullscreen ? '70vh' : minHeight }}
+        className={cn('relative overflow-auto', isFullscreen && 'min-h-0 flex-1')}
+        style={{ minHeight: isFullscreen ? undefined : minHeight }}
       >
         {viewMode === 'write' && (
           <>
@@ -881,7 +892,7 @@ export function ContentEditor({
                 />
               )}
             </BubbleMenu>
-            <EditorContent editor={editor} />
+            <EditorContent editor={editor} className={cn(isFullscreen && 'h-full')} />
           </>
         )}
 
@@ -892,14 +903,17 @@ export function ContentEditor({
             placeholder={placeholder}
             disabled={disabled}
             dir={resolvedDir}
-            className="resize-none rounded-none border-0 bg-transparent px-4 py-3 font-mono text-sm leading-6 focus-visible:ring-0"
-            style={{ minHeight: isFullscreen ? '70vh' : minHeight || '180px' }}
+            className={cn(
+              'resize-none rounded-none border-0 bg-transparent px-4 py-3 font-mono text-sm leading-6 focus-visible:ring-0',
+              isFullscreen && 'h-full'
+            )}
+            style={{ minHeight: isFullscreen ? '100%' : minHeight || '180px' }}
           />
         )}
 
         {viewMode === 'preview' && (
           <div
-            className="rich-text-preview max-w-none px-4 py-3"
+            className={cn('rich-text-preview max-w-none px-4 py-3', isFullscreen && 'min-h-full')}
             dir={resolvedDir}
             dangerouslySetInnerHTML={{
               __html: sanitizeHtml(
