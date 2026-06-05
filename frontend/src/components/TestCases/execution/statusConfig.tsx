@@ -12,7 +12,7 @@ export interface StatusOption {
 }
 
 export const STATUS_OPTIONS: StatusOption[] = [
-  { value: 'pending', labelKey: 'pending', icon: Clock, color: 'text-slate-500' },
+  { value: 'pending', labelKey: 'notStarted', icon: Clock, color: 'text-slate-500' },
   { value: 'passed', labelKey: 'passed', icon: CheckCircle, color: 'text-emerald-600' },
   { value: 'failed', labelKey: 'failed', icon: XCircle, color: 'text-red-600' },
   { value: 'blocked', labelKey: 'blocked', icon: AlertTriangle, color: 'text-amber-600' },
@@ -61,7 +61,7 @@ export const getPriorityBadgeClass = (priority?: string): string =>
 export const formatStatusLabel = (status: string): string => {
   const normalized = String(status || '').toLowerCase();
   const labels: Record<string, string> = {
-    not_tested: 'Not Tested',
+    not_started: 'Not Started',
     pass: 'Pass',
     passed: 'Passed',
     fail: 'Fail',
@@ -70,7 +70,7 @@ export const formatStatusLabel = (status: string): string => {
     blocked: 'Blocked',
     skip: 'Skip',
     skipped: 'Skipped',
-    pending: 'Pending',
+    pending: 'Not Started',
     in_progress: 'In Progress',
     running: 'Running',
     completed: 'Completed',

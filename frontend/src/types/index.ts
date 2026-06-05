@@ -147,7 +147,7 @@ export interface TestRun {
   priority?: 'low' | 'medium' | 'high' | 'critical';
   total_tests?: number;
   executed_tests?: number;
-  not_tested_tests?: number;
+  not_started_tests?: number;
   passed_tests?: number;
   failed_tests?: number;
   blocked_tests?: number;
@@ -183,7 +183,7 @@ export interface TestResult {
     };
     priority?: string;
   };
-  status: 'pass' | 'fail' | 'skip' | 'block' | 'not_tested';
+  status: 'pass' | 'fail' | 'skip' | 'block' | 'not_started';
   actual_result?: string;
   comments?: string;
   execution_time?: number;
@@ -667,7 +667,7 @@ export interface Milestone {
   failed_count: number;
   blocked_count: number;
   skipped_count: number;
-  not_tested_count: number;
+  not_started_count: number;
   execution_progress: number;
   pass_rate: number;
   open_defect_count: number;

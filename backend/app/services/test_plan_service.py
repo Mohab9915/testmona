@@ -16,7 +16,7 @@ from .milestone_service import (
     BLOCKED_RESULT_STATUSES,
     EXECUTED_RESULT_STATUSES,
     FAIL_RESULT_STATUSES,
-    NOT_TESTED_RESULT_STATUSES,
+    NOT_STARTED_RESULT_STATUSES,
     PASS_RESULT_STATUSES,
     SKIPPED_RESULT_STATUSES,
     _normalize_status,
@@ -32,7 +32,7 @@ _EMPTY_ROLLUP = {
     "failed_count": 0,
     "blocked_count": 0,
     "skipped_count": 0,
-    "not_tested_count": 0,
+    "not_started_count": 0,
     "executed_count": 0,
     "execution_progress": 0,
     "pass_rate": 0,
@@ -98,8 +98,8 @@ def compute_plan_executions(db: Session, plan_ids: Iterable[int]) -> Dict[int, d
             bucket["blocked_count"] += 1
         elif status in SKIPPED_RESULT_STATUSES:
             bucket["skipped_count"] += 1
-        elif status in NOT_TESTED_RESULT_STATUSES:
-            bucket["not_tested_count"] += 1
+        elif status in NOT_STARTED_RESULT_STATUSES:
+            bucket["not_started_count"] += 1
         if status in EXECUTED_RESULT_STATUSES:
             bucket["executed_count"] += 1
 

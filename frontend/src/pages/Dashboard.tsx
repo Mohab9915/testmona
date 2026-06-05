@@ -31,7 +31,7 @@ interface DashboardStatistics {
   totalProjects: number;
   passRate: number;
   totalExecuted?: number;
-  totalNotTested?: number;
+  totalNotStarted?: number;
 }
 
 const StatCard = ({ title, value, icon: Icon, color, trend, onClick }: StatCardProps) => {
@@ -84,9 +84,11 @@ const ACTIVITY_LABEL_KEYS: Partial<Record<AuditAction, string>> = {
 };
 
 const STATUS_LABEL_KEYS: Record<string, string> = {
-  not_tested: 'statusNotTested',
+  not_started: 'statusNotStarted',
   in_progress: 'statusInProgress',
-  pending: 'statusPending',
+  // A test-result "pending" is the same "not executed yet" outcome as
+  // not_started (now unified); show the same "Not Started" label.
+  pending: 'statusNotStarted',
   pass: 'statusPassed',
   passed: 'statusPassed',
   fail: 'statusFailed',
@@ -320,7 +322,7 @@ export function Dashboard() {
       totalTestPlans: 0,
       totalProjects: 0,
       totalExecuted: 0,
-      totalNotTested: 0,
+      totalNotStarted: 0,
       recentActivity: recentActivities
     };
     }
@@ -341,7 +343,7 @@ export function Dashboard() {
       totalTestPlans: dashboardStats.totalTestPlans || 0,
       totalProjects: dashboardStats.totalProjects || 0,
       totalExecuted: dashboardStats.totalExecuted || 0,
-      totalNotTested: dashboardStats.totalNotTested || 0,
+      totalNotStarted: dashboardStats.totalNotStarted || 0,
       recentActivity: recentActivities
     };
   }, [dashboardStats, recentActivities]);

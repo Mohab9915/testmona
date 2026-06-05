@@ -2286,7 +2286,7 @@ def register_requirements_defects_plans_routes(app):
                         "failed_count",
                         "blocked_count",
                         "skipped_count",
-                        "not_tested_count",
+                        "not_started_count",
                         "executed_count",
                     )
                 },
@@ -2347,7 +2347,7 @@ def register_requirements_defects_plans_routes(app):
                     "failed_count",
                     "blocked_count",
                     "skipped_count",
-                    "not_tested_count",
+                    "not_started_count",
                     "executed_count",
                 )
             },
@@ -2665,7 +2665,7 @@ def register_requirements_defects_plans_routes(app):
                 getattr(current_health, "critical_defect_count", 0) > 0
                 or getattr(current_health, "failed_count", 0) > 0
                 or getattr(current_health, "blocked_count", 0) > 0
-                or getattr(current_health, "not_tested_count", 0) > 0
+                or getattr(current_health, "not_started_count", 0) > 0
             ):
                 raise HTTPException(
                     status_code=409,

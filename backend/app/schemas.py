@@ -389,7 +389,7 @@ class TestRun(TestRunBase):
     estimated_duration: Optional[int] = None
     total_tests: int = 0
     executed_tests: int = 0
-    not_tested_tests: int = 0
+    not_started_tests: int = 0
     passed_tests: int = 0
     failed_tests: int = 0
     blocked_tests: int = 0
@@ -3238,7 +3238,7 @@ class Milestone(MilestoneBase):
     failed_count: int = 0
     blocked_count: int = 0
     skipped_count: int = 0
-    not_tested_count: int = 0
+    not_started_count: int = 0
     execution_progress: int = 0
     pass_rate: int = 0
     open_defect_count: int = 0

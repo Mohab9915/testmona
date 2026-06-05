@@ -32,7 +32,7 @@ PASS_RESULT_STATUSES = {"pass", "passed"}
 FAIL_RESULT_STATUSES = {"fail", "failed"}
 BLOCKED_RESULT_STATUSES = {"block", "blocked"}
 SKIPPED_RESULT_STATUSES = {"skip", "skipped"}
-NOT_TESTED_RESULT_STATUSES = {"not_tested", "pending", "todo"}
+NOT_STARTED_RESULT_STATUSES = {"not_started"}
 
 
 def _percentage(part: int, total: int) -> int:
@@ -119,7 +119,7 @@ def enrich_milestone(db: Session, milestone: Milestone) -> Milestone:
     failed_results = len([result for result in results if _normalize_status(result.status) in FAIL_RESULT_STATUSES])
     blocked_results = len([result for result in results if _normalize_status(result.status) in BLOCKED_RESULT_STATUSES])
     skipped_results = len([result for result in results if _normalize_status(result.status) in SKIPPED_RESULT_STATUSES])
-    not_tested_results = len([result for result in results if _normalize_status(result.status) in NOT_TESTED_RESULT_STATUSES])
+    not_started_results = len([result for result in results if _normalize_status(result.status) in NOT_STARTED_RESULT_STATUSES])
     executed_results = len([result for result in results if _normalize_status(result.status) in EXECUTED_RESULT_STATUSES])
 
     test_case_count = 0
@@ -174,7 +174,7 @@ def enrich_milestone(db: Session, milestone: Milestone) -> Milestone:
     milestone.failed_count = failed_results
     milestone.blocked_count = blocked_results
     milestone.skipped_count = skipped_results
-    milestone.not_tested_count = not_tested_results
+    milestone.not_started_count = not_started_results
     milestone.execution_progress = execution_progress
     milestone.pass_rate = pass_rate
     milestone.open_defect_count = open_defects

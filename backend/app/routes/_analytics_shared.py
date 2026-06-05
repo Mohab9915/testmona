@@ -24,7 +24,7 @@ def normalize_result_status(status: str) -> str:
         "blocked": "blocked",
         "skip": "skipped",
         "skipped": "skipped",
-        "not_tested": "not_tested",
+        "not_started": "not_started",
     }
     return status_map.get((status or "").lower(), (status or "").lower())
 
@@ -106,7 +106,7 @@ def build_coverage_report(db: Session, project_id: int, generated: bool = False)
     failed_test_cases = normalized_statuses.count("failed")
     blocked_test_cases = normalized_statuses.count("blocked")
     skipped_test_cases = normalized_statuses.count("skipped")
-    not_tested_cases = max(total_test_cases - executed_test_cases, 0)
+    not_started_cases = max(total_test_cases - executed_test_cases, 0)
 
     # Triage breakdown for blocked tests: why couldn't they run? Tests saved
     # before this field existed (or without a reason) fall into "unspecified".
@@ -174,7 +174,7 @@ def build_coverage_report(db: Session, project_id: int, generated: bool = False)
                 "failed": round((failed_test_cases / executed_test_cases * 100) if executed_test_cases else 0, 2),
                 "blocked": round((blocked_test_cases / executed_test_cases * 100) if executed_test_cases else 0, 2),
                 "skipped": round((skipped_test_cases / executed_test_cases * 100) if executed_test_cases else 0, 2),
-                "not_tested": round((not_tested_cases / total_test_cases * 100) if total_test_cases else 0, 2),
+                "not_started": round((not_started_cases / total_test_cases * 100) if total_test_cases else 0, 2),
             },
             "blocked_count": blocked_test_cases,
             "blocker_reasons": blocker_reason_counts,

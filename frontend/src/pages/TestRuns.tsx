@@ -437,7 +437,7 @@ export function TestRuns() {
         testResultsAPI.create({
           test_run_id: newTestRun.id,
           test_case_id: testCaseId,
-          status: 'not_tested',
+          status: 'not_started',
           actual_result: undefined,
           comments: undefined,
           execution_time: undefined,

@@ -14,7 +14,7 @@ from .. import crud, schemas, auth, rbac, models
 from ..feature_guard import require_project_feature
 from ..database import get_db
 from ..auth import get_current_active_user, get_current_user
-from ..models import TestCase, TestResult, TestRun, User, TestCaseRevision, ResultStatus
+from ..models import TestCase, TestResult, TestRun, User, TestCaseRevision, ResultStatus, canonical_result_status
 
 logger = logging.getLogger(__name__)
 
@@ -175,7 +175,7 @@ def _attach_test_run_progress(db: Session, test_runs: List[TestRun]) -> List[Tes
         run_id: {
             "total_tests": 0,
             "executed_tests": 0,
-            "not_tested_tests": 0,
+            "not_started_tests": 0,
             "passed_tests": 0,
             "failed_tests": 0,
             "blocked_tests": 0,
@@ -189,8 +189,7 @@ def _attach_test_run_progress(db: Session, test_runs: List[TestRun]) -> List[Tes
         "fail": "failed_tests",
         "block": "blocked_tests",
         "skip": "skipped_tests",
-        "not_tested": "not_tested_tests",
-        "pending": "not_tested_tests",
+        "not_started": "not_started_tests",
     }
 
     for run_id, status, count in rows:
@@ -2430,6 +2429,11 @@ def register_test_management_routes(app):
         if not rbac.has_permission(current_user, "write", test_run.project_id, db):
             raise HTTPException(status_code=403, detail="Not authorized to create test result in this project")
 
+        # Canonicalize the status so storage never holds two spellings of the same
+        # outcome (skip/skipped, pass/passed, ...).
+        if test_result.status is not None:
+            test_result.status = canonical_result_status(test_result.status)
+
         if _is_completed_result_status(test_result.status) and not test_result.executed_by:
             test_result.executed_by = current_user.id
 
@@ -2497,6 +2501,11 @@ def register_test_management_routes(app):
             if not rbac.has_permission(current_user, "write", test_run.project_id, db):
                 raise HTTPException(status_code=403, detail="Not authorized to update this test result")
 
+        # Canonicalize the status so storage never holds two spellings of the same
+        # outcome (skip/skipped, pass/passed, ...).
+        if test_result.status is not None:
+            test_result.status = canonical_result_status(test_result.status)
+
         if (
             test_result.status is not None
             and _is_completed_result_status(test_result.status)
@@ -2504,7 +2513,7 @@ def register_test_management_routes(app):
             and not db_test_result.executed_by
         ):
             test_result.executed_by = current_user.id
-        
+
         # Perform the update
         db_test_result = crud.update_test_result(db, test_result_id=test_result_id, test_result=test_result)
         return crud.get_test_result(db, test_result_id=db_test_result.id)

@@ -99,7 +99,7 @@ export const normalizeStatus = (status?: string) => {
     skip: 'skipped',
   };
   const normalized = (status || '').toLowerCase();
-  return statusMap[normalized] || normalized || 'not_tested';
+  return statusMap[normalized] || normalized || 'not_started';
 };
 
 export const getStatusIcon = (status: string) => {

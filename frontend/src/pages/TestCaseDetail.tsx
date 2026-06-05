@@ -1258,7 +1258,7 @@ function getStatusBadgeClass(status: string) {
     block: 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300',
     blocked: 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300',
     pending: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300',
-    not_tested: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300',
+    not_started: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300',
   };
   return variants[status] || variants.pending;
 }

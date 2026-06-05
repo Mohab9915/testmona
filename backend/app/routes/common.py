@@ -112,7 +112,7 @@ def register_common_routes(app):
             {"value": "fail", "label": "Fail"},
             {"value": "blocked", "label": "Blocked"},
             {"value": "skip", "label": "Skip"},
-            {"value": "not_tested", "label": "Not Tested"}
+            {"value": "not_started", "label": "Not Started"}
         ]
 
     @app.get("/enums/defect-severity")

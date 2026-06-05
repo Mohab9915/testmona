@@ -21,7 +21,7 @@ const COLORS = {
   fail: '#ef4444',
   block: '#f59e0b',
   skip: '#64748b',
-  not_tested: '#94a3b8',
+  not_started: '#94a3b8',
   trend: '#2563eb',
 };
 
@@ -47,7 +47,7 @@ interface SectionData {
   fail: number;
   block: number;
   skip: number;
-  not_tested: number;
+  not_started: number;
   total: number;
   passRate: number;
 }
@@ -254,7 +254,7 @@ export function TestRunBarChart({ data, title, onChartClick }: { data: SectionDa
                 <Bar dataKey="fail" stackId="results" fill={COLORS.fail} name={t('failed')} onClick={handleBarClick} cursor="pointer" />
                 <Bar dataKey="block" stackId="results" fill={COLORS.block} name={t('blocked')} onClick={handleBarClick} cursor="pointer" />
                 <Bar dataKey="skip" stackId="results" fill={COLORS.skip} name={t('skipped')} onClick={handleBarClick} cursor="pointer" />
-                <Bar dataKey="not_tested" stackId="results" fill={COLORS.not_tested} name={t('notTested')} radius={[8, 8, 0, 0]} onClick={handleBarClick} cursor="pointer" />
+                <Bar dataKey="not_started" stackId="results" fill={COLORS.not_started} name={t('notStarted')} radius={[8, 8, 0, 0]} onClick={handleBarClick} cursor="pointer" />
               </BarChart>
             </ResponsiveContainer>
 
@@ -271,7 +271,7 @@ export function TestRunBarChart({ data, title, onChartClick }: { data: SectionDa
                     {section.fail > 0 && <div style={{ width: `${(section.fail / section.total) * 100}%`, backgroundColor: COLORS.fail }} />}
                     {section.block > 0 && <div style={{ width: `${(section.block / section.total) * 100}%`, backgroundColor: COLORS.block }} />}
                     {section.skip > 0 && <div style={{ width: `${(section.skip / section.total) * 100}%`, backgroundColor: COLORS.skip }} />}
-                    {section.not_tested > 0 && <div style={{ width: `${(section.not_tested / section.total) * 100}%`, backgroundColor: COLORS.not_tested }} />}
+                    {section.not_started > 0 && <div style={{ width: `${(section.not_started / section.total) * 100}%`, backgroundColor: COLORS.not_started }} />}
                   </div>
                   <span className="shrink-0 text-slate-500 dark:text-slate-400">
                     {section.passRate}% · {section.total}

@@ -172,7 +172,7 @@ export function TestRunDetail() {
 
     const normalizeResultStatus = (status: string) => {
       const normalizedStatus = status.toLowerCase();
-      const statusMap: Record<string, 'pass' | 'fail' | 'block' | 'skip' | 'not_tested'> = {
+      const statusMap: Record<string, 'pass' | 'fail' | 'block' | 'skip' | 'not_started'> = {
         pass: 'pass',
         passed: 'pass',
         fail: 'fail',
@@ -181,11 +181,11 @@ export function TestRunDetail() {
         blocked: 'block',
         skip: 'skip',
         skipped: 'skip',
-        not_tested: 'not_tested',
-        pending: 'not_tested',
+        not_started: 'not_started',
+        pending: 'not_started',
       };
 
-      return statusMap[normalizedStatus] || 'not_tested';
+      return statusMap[normalizedStatus] || 'not_started';
     };
 
     // Calculate status counts - normalize status values
@@ -201,7 +201,7 @@ export function TestRunDetail() {
       { key: 'fail', name: t('failed'), value: statusCounts.fail || 0, color: '#ef4444' },
       { key: 'block', name: t('blocked'), value: statusCounts.block || 0, color: '#f59e0b' },
       { key: 'skip', name: t('skipped'), value: statusCounts.skip || 0, color: '#64748b' },
-      { key: 'not_tested', name: t('notTested'), value: statusCounts.not_tested || 0, color: '#94a3b8' },
+      { key: 'not_started', name: t('notStarted'), value: statusCounts.not_started || 0, color: '#94a3b8' },
     ].filter(item => item.value > 0);
 
     // Bar chart data by section. Group on the same identity the results table
@@ -223,7 +223,7 @@ export function TestRunDetail() {
           fail: 0,
           block: 0,
           skip: 0,
-          not_tested: 0,
+          not_started: 0,
           total: 0,
         };
         sectionMap.set(filterValue, entry);
@@ -236,7 +236,7 @@ export function TestRunDetail() {
     // Pass rate per section, expressed over executed results only (pending tests
     // aren't failures, so they must not drag the rate toward 0).
     sectionData.forEach(section => {
-      const executed = section.total - section.not_tested;
+      const executed = section.total - section.not_started;
       section.passRate = executed > 0 ? Math.round((section.pass / executed) * 100) : 0;
     });
 
@@ -361,7 +361,7 @@ export function TestRunDetail() {
 
   const isResultComplete = (status?: string | null) => {
     const normalizedStatus = normalizeRunStatus(status);
-    return Boolean(normalizedStatus) && normalizedStatus !== 'not_tested' && normalizedStatus !== 'pending';
+    return Boolean(normalizedStatus) && normalizedStatus !== 'not_started' && normalizedStatus !== 'pending';
   };
 
   const getResultExecutorName = (result: any) => {
@@ -593,7 +593,7 @@ export function TestRunDetail() {
       case 'skipped':
         return <Clock className="h-4 w-4 text-gray-600" />;
       case 'pending':
-      case 'not_tested':
+      case 'not_started':
         return <Clock className="h-4 w-4 text-gray-400" />;
       default:
         return <Clock className="h-4 w-4 text-gray-600" />;
@@ -616,7 +616,7 @@ export function TestRunDetail() {
       skip: 'border border-slate-200 bg-slate-100 text-slate-800 dark:border-slate-700 dark:bg-slate-800/70 dark:text-slate-300',
       skipped: 'border border-slate-200 bg-slate-100 text-slate-800 dark:border-slate-700 dark:bg-slate-800/70 dark:text-slate-300',
       pending: 'border border-slate-200 bg-slate-100 text-slate-600 dark:border-slate-700 dark:bg-slate-800/70 dark:text-slate-400',
-      not_tested: 'border border-slate-200 bg-slate-100 text-slate-600 dark:border-slate-700 dark:bg-slate-800/70 dark:text-slate-400',
+      not_started: 'border border-slate-200 bg-slate-100 text-slate-600 dark:border-slate-700 dark:bg-slate-800/70 dark:text-slate-400',
     };
     return variants[normalizedStatus] || 'border border-slate-200 bg-slate-100 text-slate-800 dark:border-slate-700 dark:bg-slate-800/70 dark:text-slate-300';
   };
@@ -624,7 +624,7 @@ export function TestRunDetail() {
   const formatStatusLabel = (status: string) => {
     const normalizedStatus = status.toLowerCase();
     const labels: Record<string, string> = {
-      not_tested: 'Not Tested',
+      not_started: 'Not Started',
       pass: 'Pass',
       passed: 'Passed',
       fail: 'Fail',
@@ -693,7 +693,7 @@ export function TestRunDetail() {
   }, [testResults]);
 
   const filteredResults = testResults.filter(result => {
-    const resultStatus = normalizeRunStatus(result.status) || 'not_tested';
+    const resultStatus = normalizeRunStatus(result.status) || 'not_started';
     if (filter !== 'all' && resultStatus !== normalizeRunStatus(filter)) return false;
 
     // Faceted filters
@@ -764,7 +764,7 @@ export function TestRunDetail() {
   const pagedResults = sortedFilteredResults.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
 
   const statusCounts = testResults.reduce((acc: any, result) => {
-    const normalizedStatus = normalizeRunStatus(result.status) || 'not_tested';
+    const normalizedStatus = normalizeRunStatus(result.status) || 'not_started';
     acc[normalizedStatus] = (acc[normalizedStatus] || 0) + 1;
     return acc;
   }, {});
@@ -774,7 +774,7 @@ export function TestRunDetail() {
   const failedTests = (statusCounts.fail || 0) + (statusCounts.failed || 0);
   const blockedTests = (statusCounts.block || 0) + (statusCounts.blocked || 0);
   const skippedTests = (statusCounts.skip || 0) + (statusCounts.skipped || 0);
-  const notTestedTests = (statusCounts.not_tested || 0) + (statusCounts.pending || 0);
+  const notStartedTests = (statusCounts.not_started || 0) + (statusCounts.pending || 0);
   const unlinkedFailureCount = testResults.filter(isUnlinkedFailure).length;
   const retestCount = testResults.filter((r) => r.retest_needed).length;
   const flakyCount = testResults.filter((r) => getFlakiness(r)?.flaky).length;
@@ -806,7 +806,7 @@ export function TestRunDetail() {
         testResultsAPI.create({
           test_run_id: parseInt(id!),
           test_case_id: testCaseId,
-          status: 'not_tested',
+          status: 'not_started',
           actual_result: undefined,
           comments: undefined,
           execution_time: undefined,
@@ -874,7 +874,7 @@ export function TestRunDetail() {
         'failed': 'fail',
         'blocked': 'block',
         'skipped': 'skip',
-        'not tested': 'not_tested',
+        'not tested': 'not_started',
       };
       
       const normalizedStatus = filterData.value.toLowerCase();
@@ -1119,8 +1119,8 @@ export function TestRunDetail() {
         blocked: t('blocked'),
         skip: t('skipped'),
         skipped: t('skipped'),
-        not_tested: t('notTested'),
-        pending: t('notTested'),
+        not_started: t('notStarted'),
+        pending: t('notStarted'),
       };
       return labels[key] || status || '';
     };
@@ -1572,7 +1572,7 @@ export function TestRunDetail() {
               </div>
               <div className="flex items-center gap-1">
                 <div className="w-2 h-2 bg-gray-400 rounded-full"></div>
-                <span>{notTestedTests} not tested</span>
+                <span>{notStartedTests} not tested</span>
               </div>
             </div>
           </CardContent>
@@ -1674,18 +1674,18 @@ export function TestRunDetail() {
               </div>
               {/* Dynamic, actionable summary — each segment is a one-click filter */}
               <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
-                {notTestedTests === 0 && unlinkedFailureCount === 0 && retestCount === 0 ? (
+                {notStartedTests === 0 && unlinkedFailureCount === 0 && retestCount === 0 ? (
                   <span className="text-slate-500 dark:text-slate-400">{t('testResultsTableDescription')}</span>
                 ) : (
                   <>
                     <span className="text-slate-500 dark:text-slate-400">{t('needsAttention')}:</span>
-                    {notTestedTests > 0 && (
+                    {notStartedTests > 0 && (
                       <button
                         type="button"
                         onClick={() => setAttentionFilter(attentionFilter === 'untested' ? 'all' : 'untested')}
                         className={`rounded-full px-2 py-0.5 text-xs font-medium transition-colors ${attentionFilter === 'untested' ? 'bg-slate-700 text-white dark:bg-slate-200 dark:text-slate-900' : 'bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300'}`}
                       >
-                        {t('summaryUntested', { count: notTestedTests })}
+                        {t('summaryUntested', { count: notStartedTests })}
                       </button>
                     )}
                     {unlinkedFailureCount > 0 && (
@@ -1732,10 +1732,10 @@ export function TestRunDetail() {
                     <SelectItem value="fail">{t('failedCount', { count: failedTests })}</SelectItem>
                     <SelectItem value="block">{t('blockedCount', { count: blockedTests })}</SelectItem>
                     <SelectItem value="skip">{t('skippedCount', { count: skippedTests })}</SelectItem>
-                    <SelectItem value="not_tested">{t('notTestedCount', { count: notTestedTests })}</SelectItem>
+                    <SelectItem value="not_started">{t('notStartedCount', { count: notStartedTests })}</SelectItem>
                   </SelectContent>
                 </Select>
-                {notTestedTests > 0 && (
+                {notStartedTests > 0 && (
                   <Button variant="outline" size="sm" className="shrink-0 gap-1.5 px-3" onClick={runNextUntested}>
                     <PlayCircle className="h-4 w-4 text-emerald-600" />
                     <span className="hidden sm:inline">{t('runNextUntested')}</span>
@@ -1840,7 +1840,7 @@ export function TestRunDetail() {
                 <DropdownMenuContent>
                   {([
                     ['pass', t('passed')], ['fail', t('failed')], ['block', t('blocked')],
-                    ['skip', t('skipped')], ['not_tested', t('notTested')],
+                    ['skip', t('skipped')], ['not_started', t('notStarted')],
                   ] as [string, string][]).map(([val, label]) => (
                     <DropdownMenuItem key={val} onClick={() => bulkUpdateStatus(val)}>{label}</DropdownMenuItem>
                   ))}
@@ -2039,7 +2039,7 @@ export function TestRunDetail() {
                                 <SelectItem value="fail">{t('failed')}</SelectItem>
                                 <SelectItem value="block">{t('blocked')}</SelectItem>
                                 <SelectItem value="skip">{t('skipped')}</SelectItem>
-                                <SelectItem value="not_tested">{t('notTested')}</SelectItem>
+                                <SelectItem value="not_started">{t('notStarted')}</SelectItem>
                               </SelectContent>
                             </Select>
                           ) : (
@@ -2064,7 +2064,7 @@ export function TestRunDetail() {
                                 <DropdownMenuLabel>{t('setStatus')}</DropdownMenuLabel>
                                 {([
                                   ['pass', t('passed')], ['fail', t('failed')], ['block', t('blocked')],
-                                  ['skip', t('skipped')], ['not_tested', t('notTested')],
+                                  ['skip', t('skipped')], ['not_started', t('notStarted')],
                                 ] as [string, string][]).map(([val, label]) => (
                                   <DropdownMenuItem key={val} onClick={() => quickUpdateStatus(result, val)}>
                                     {getStatusIcon(val)}

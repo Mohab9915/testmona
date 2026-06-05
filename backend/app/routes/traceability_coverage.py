@@ -105,7 +105,7 @@ def register_traceability_coverage_routes(app):
                 latest_result = db.query(TestResult).filter(
                     TestResult.test_case_id == test_case.id
                 ).order_by(TestResult.executed_at.desc()).first()
-                status = normalize_result_status(latest_result.status) if latest_result else "not_tested"
+                status = normalize_result_status(latest_result.status) if latest_result else "not_started"
                 tc_open_defects = open_defects_by_tc.get(test_case.id, [])
                 test_cases.append({
                     "id": test_case.id,
@@ -140,7 +140,7 @@ def register_traceability_coverage_routes(app):
                 "failed_count": len([test_case for test_case in test_cases if test_case["status"] == "failed"]),
                 "blocked_count": len([test_case for test_case in test_cases if test_case["status"] == "blocked"]),
                 "skipped_count": len([test_case for test_case in test_cases if test_case["status"] == "skipped"]),
-                "not_tested_count": len([test_case for test_case in test_cases if test_case["status"] == "not_tested"]),
+                "not_started_count": len([test_case for test_case in test_cases if test_case["status"] == "not_started"]),
                 "open_defects_count": requirement_open_defects,
                 "test_cases": test_cases,
             })

@@ -780,14 +780,14 @@ def register_analytics_dashboard_routes(app):
             latest_result = db.query(TestResult).filter(
                 TestResult.test_case_id == test_case.id
             ).order_by(TestResult.executed_at.desc()).first()
-            latest_statuses.append(normalize_result_status(latest_result.status) if latest_result else "not_tested")
+            latest_statuses.append(normalize_result_status(latest_result.status) if latest_result else "not_started")
 
         total_tests = len(test_cases)
         passed = latest_statuses.count("passed")
         failed = latest_statuses.count("failed")
         blocked = latest_statuses.count("blocked")
         skipped = latest_statuses.count("skipped")
-        not_tested = latest_statuses.count("not_tested")
+        not_started = latest_statuses.count("not_started")
         executed = passed + failed + blocked + skipped
 
         return {
@@ -795,7 +795,7 @@ def register_analytics_dashboard_routes(app):
             "summary": {
                 "total_test_cases": total_tests,
                 "executed_test_cases": executed,
-                "not_tested_test_cases": not_tested,
+                "not_started_test_cases": not_started,
                 "passed_test_cases": passed,
                 "failed_test_cases": failed,
                 "blocked_test_cases": blocked,
@@ -808,7 +808,7 @@ def register_analytics_dashboard_routes(app):
                 "failed": failed,
                 "blocked": blocked,
                 "skipped": skipped,
-                "not_tested": not_tested,
+                "not_started": not_started,
             },
             "execution_rate": round((executed / total_tests) * 100, 1) if total_tests else 0,
             "success_rate": round((passed / executed) * 100, 1) if executed else 0,
@@ -823,7 +823,7 @@ def register_analytics_dashboard_routes(app):
                 "failed": round((failed / total_tests) * 100, 1) if total_tests else 0,
                 "blocked": round((blocked / total_tests) * 100, 1) if total_tests else 0,
                 "skipped": round((skipped / total_tests) * 100, 1) if total_tests else 0,
-                "not_tested": round((not_tested / total_tests) * 100, 1) if total_tests else 0,
+                "not_started": round((not_started / total_tests) * 100, 1) if total_tests else 0,
             },
             "last_execution": datetime.now().isoformat(),
         }
@@ -923,7 +923,7 @@ def register_analytics_dashboard_routes(app):
             total_failed = 0
             total_blocked = 0
             total_skipped = 0
-            total_not_tested = 0
+            total_not_started = 0
             
             for project in projects:
                 # Count test cases
@@ -989,12 +989,12 @@ def register_analytics_dashboard_routes(app):
                             total_blocked += 1
                         elif normalized_status in {"skip", "skipped"}:
                             total_skipped += 1
-                        elif normalized_status == "not_tested":
-                            total_not_tested += 1
+                        elif normalized_status == "not_started":
+                            total_not_started += 1
                         else:
-                            total_not_tested += 1
+                            total_not_started += 1
                     else:
-                        total_not_tested += 1
+                        total_not_started += 1
             
             # Calculate pass rate
             total_executed = total_passed + total_failed + total_blocked + total_skipped
@@ -1014,11 +1014,11 @@ def register_analytics_dashboard_routes(app):
                     { "status": "failed", "count": total_failed },
                     { "status": "blocked", "count": total_blocked },
                     { "status": "skipped", "count": total_skipped },
-                    { "status": "not_tested", "count": total_not_tested }
+                    { "status": "not_started", "count": total_not_started }
                 ],
                 "passRate": pass_rate,
                 "totalExecuted": total_executed,
-                "totalNotTested": total_not_tested
+                "totalNotStarted": total_not_started
             }
         except HTTPException:
             raise

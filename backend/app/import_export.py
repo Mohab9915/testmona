@@ -3024,7 +3024,7 @@ async def _perform_import(
                                             test_result=schemas.TestResultCreate(
                                                 test_case_id=test_case_id,
                                                 test_run_id=new_run.id,
-                                                status=result_data.get('status', 'pending'),
+                                                status=result_data.get('status', 'not_started'),
                                                 actual_result=result_data.get('actual_result'),
                                                 comments=result_data.get('comments'),
                                                 execution_time=result_data.get('execution_time', 0),

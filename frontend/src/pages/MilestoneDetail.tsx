@@ -65,7 +65,7 @@ type RunRow = {
   failed_tests?: number;
   blocked_tests?: number;
   skipped_tests?: number;
-  not_tested_tests?: number;
+  not_started_tests?: number;
   progress_percent?: number;
   created_at?: string;
   completed_at?: string | null;
@@ -288,7 +288,7 @@ export function MilestoneDetail() {
       failed: number;
       blocked: number;
       skipped: number;
-      notTested: number;
+      notStarted: number;
     }>();
     for (const run of runs) {
       const key: number | 'unassigned' = run.test_plan_id ?? 'unassigned';
@@ -305,7 +305,7 @@ export function MilestoneDetail() {
         failed: 0,
         blocked: 0,
         skipped: 0,
-        notTested: 0,
+        notStarted: 0,
       };
       entry.runCount += 1;
       entry.totalTests += run.total_tests || 0;
@@ -314,7 +314,7 @@ export function MilestoneDetail() {
       entry.failed += run.failed_tests || 0;
       entry.blocked += run.blocked_tests || 0;
       entry.skipped += run.skipped_tests || 0;
-      entry.notTested += run.not_tested_tests || 0;
+      entry.notStarted += run.not_started_tests || 0;
       accum.set(key, entry);
     }
 
@@ -332,7 +332,7 @@ export function MilestoneDetail() {
           failed: 0,
           blocked: 0,
           skipped: 0,
-          notTested: 0,
+          notStarted: 0,
         });
       }
     }
@@ -449,7 +449,7 @@ export function MilestoneDetail() {
             <ResultPill icon={XCircle} label={t('failed')} value={milestone.failed_count} tone="red" />
             <ResultPill icon={Ban} label={t('blocked')} value={milestone.blocked_count} tone="amber" />
             <ResultPill icon={CircleDashed} label={t('skipped')} value={milestone.skipped_count} tone="slate" />
-            <ResultPill icon={Activity} label={t('notTested')} value={milestone.not_tested_count} tone="slate" />
+            <ResultPill icon={Activity} label={t('notStarted')} value={milestone.not_started_count} tone="slate" />
           </div>
 
           <div className="flex flex-wrap items-center gap-2 border-t pt-4">

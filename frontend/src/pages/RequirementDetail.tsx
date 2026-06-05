@@ -76,7 +76,7 @@ const getPriorityBadge = (priority: string) => {
   return variants[priority] || variants.medium;
 };
 
-// Turns raw enum values like "not_tested" into readable text ("not tested").
+// Turns raw enum values like "not_started" into readable text ("not tested").
 const humanizeStatus = (value?: string | null): string =>
   (value || '').replace(/[_-]+/g, ' ').trim();
 

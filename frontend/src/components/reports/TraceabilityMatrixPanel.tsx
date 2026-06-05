@@ -197,7 +197,7 @@ export function TraceabilityMatrixPanel({ ctx }: { ctx: ReportsData }) {
                 <SelectItem value="failed">{t('reports_statusFailed')}</SelectItem>
                 <SelectItem value="blocked">{t('reports_statusBlocked')}</SelectItem>
                 <SelectItem value="skipped">{t('reports_statusSkipped')}</SelectItem>
-                <SelectItem value="not_tested">{t('reports_statusNotTested')}</SelectItem>
+                <SelectItem value="not_started">{t('reports_statusNotStarted')}</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -289,8 +289,8 @@ export function TraceabilityMatrixPanel({ ctx }: { ctx: ReportsData }) {
                       <div className="font-bold text-yellow-600">{(item.test_cases || []).filter((tc: any) => normalizeStatus(tc.status) === 'blocked').length}</div>
                     </div>
                     <div className="text-center">
-                      <div className="text-xs text-gray-500 dark:text-gray-400">{t('reports_reqStatNotTested')}</div>
-                      <div className="font-bold text-gray-600">{(item.test_cases || []).filter((tc: any) => normalizeStatus(tc.status) === 'not_tested').length}</div>
+                      <div className="text-xs text-gray-500 dark:text-gray-400">{t('reports_reqStatNotStarted')}</div>
+                      <div className="font-bold text-gray-600">{(item.test_cases || []).filter((tc: any) => normalizeStatus(tc.status) === 'not_started').length}</div>
                     </div>
                   </div>
                 </div>

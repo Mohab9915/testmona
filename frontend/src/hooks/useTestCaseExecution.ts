@@ -70,7 +70,9 @@ const BACKEND_TO_STATUS: Record<string, ExecutionStatus> = {
   failed: 'failed', fail: 'failed',
   blocked: 'blocked', block: 'blocked',
   skipped: 'skipped', skip: 'skipped',
-  pending: 'pending',
+  // "not executed yet" — stored canonically as not_started, shown as the
+  // unselected "Not Started" state in the execution UI.
+  pending: 'pending', not_started: 'pending',
 };
 
 /**

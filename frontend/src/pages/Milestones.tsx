@@ -837,8 +837,8 @@ function MilestoneRow(props: CardProps) {
 }
 
 function ResultBar({ milestone }: { milestone: Milestone }) {
-  const { passed_count: passed, failed_count: failed, blocked_count: blocked, not_tested_count: notTested } = milestone;
-  const total = passed + failed + blocked + notTested;
+  const { passed_count: passed, failed_count: failed, blocked_count: blocked, not_started_count: notStarted } = milestone;
+  const total = passed + failed + blocked + notStarted;
   if (total === 0) {
     return <div className="h-2 w-full rounded-full bg-muted" />;
   }
@@ -849,7 +849,7 @@ function ResultBar({ milestone }: { milestone: Milestone }) {
       {seg(passed, 'bg-emerald-500', 'p')}
       {seg(failed, 'bg-red-500', 'f')}
       {seg(blocked, 'bg-amber-500', 'b')}
-      {seg(notTested, 'bg-slate-300 dark:bg-slate-600', 'n')}
+      {seg(notStarted, 'bg-slate-300 dark:bg-slate-600', 'n')}
     </div>
   );
 }
@@ -859,7 +859,7 @@ function ResultLegend({ milestone, t }: { milestone: Milestone; t: TFn }) {
     { color: 'bg-emerald-500', label: t('passed'), value: milestone.passed_count },
     { color: 'bg-red-500', label: t('failed'), value: milestone.failed_count },
     { color: 'bg-amber-500', label: t('blocked'), value: milestone.blocked_count },
-    { color: 'bg-slate-300 dark:bg-slate-600', label: t('notTested'), value: milestone.not_tested_count },
+    { color: 'bg-slate-300 dark:bg-slate-600', label: t('notStarted'), value: milestone.not_started_count },
   ];
   return (
     <div className="flex flex-wrap gap-x-3 gap-y-1">
@@ -1053,7 +1053,7 @@ function MilestoneFormDialog({
   const blockerLabel: Record<string, string> = {
     failed: t('failed'),
     blocked: t('blocked'),
-    notTested: t('notTested'),
+    notStarted: t('notStarted'),
     critical: t('critical'),
   };
 
@@ -1329,7 +1329,7 @@ function completionBlockers(milestone: Milestone) {
   return [
     { key: 'failed', value: milestone.failed_count },
     { key: 'blocked', value: milestone.blocked_count },
-    { key: 'notTested', value: milestone.not_tested_count },
+    { key: 'notStarted', value: milestone.not_started_count },
     { key: 'critical', value: milestone.critical_defect_count },
   ] as const;
 }

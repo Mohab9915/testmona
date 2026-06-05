@@ -19,7 +19,7 @@ type ReportCustomFieldValue = {
   value: string;
 };
 
-type NormalizedResultStatus = 'pass' | 'fail' | 'block' | 'skip' | 'not_tested';
+type NormalizedResultStatus = 'pass' | 'fail' | 'block' | 'skip' | 'not_started';
 
 const normalizeResultStatus = (status?: string): NormalizedResultStatus => {
   const normalizedStatus = (status || '').toLowerCase().replace(/[\s-]+/g, '_');
@@ -32,11 +32,11 @@ const normalizeResultStatus = (status?: string): NormalizedResultStatus => {
     blocked: 'block',
     skip: 'skip',
     skipped: 'skip',
-    pending: 'not_tested',
-    not_tested: 'not_tested',
+    pending: 'not_started',
+    not_started: 'not_started',
   };
 
-  return statusMap[normalizedStatus] || 'not_tested';
+  return statusMap[normalizedStatus] || 'not_started';
 };
 
 export function TestRunReport() {
@@ -132,7 +132,7 @@ export function TestRunReport() {
       fail: 'failed',
       block: 'blocked',
       skip: 'skipped',
-      not_tested: 'notTested',
+      not_started: 'notStarted',
     };
 
     return t(statusKeyMap[normalizeResultStatus(status)]);
@@ -166,14 +166,14 @@ export function TestRunReport() {
     const status = normalizeResultStatus(result.status);
     acc[status] = (acc[status] || 0) + 1;
     return acc;
-  }, { pass: 0, fail: 0, block: 0, skip: 0, not_tested: 0 });
+  }, { pass: 0, fail: 0, block: 0, skip: 0, not_started: 0 });
 
   const totalTests = testResults.length;
   const passedTests = statusCounts.pass;
   const failedTests = statusCounts.fail;
   const blockedTests = statusCounts.block;
   const skippedTests = statusCounts.skip;
-  const notTestedTests = statusCounts.not_tested;
+  const notStartedTests = statusCounts.not_started;
   const passRate = totalTests > 0 ? Math.round((passedTests / totalTests) * 100) : 0;
 
   // Triage breakdown for blocked tests: why couldn't they run?
@@ -195,10 +195,10 @@ export function TestRunReport() {
   ).sort((a, b) => b[1] - a[1]);
 
   // Only count results that were actually executed when computing
-  // total/average execution time, so a stale execution_time on a not_tested
+  // total/average execution time, so a stale execution_time on a not_started
   // row doesn't inflate the numerator while the denominator excludes it.
   const executedResults = testResults.filter(
-    (result) => result.execution_time != null && normalizeResultStatus(result.status) !== 'not_tested',
+    (result) => result.execution_time != null && normalizeResultStatus(result.status) !== 'not_started',
   );
   const totalExecutionSeconds = executedResults.reduce(
     (total, result) => total + (Number(result.execution_time) || 0),
@@ -236,7 +236,7 @@ export function TestRunReport() {
         failedTests,
         blockedTests,
         skippedTests,
-        notTestedTests,
+        notStartedTests,
         passRate,
         totalExecutionTimeSeconds: totalExecutionSeconds,
         averageExecutionTimeSeconds: averageExecutionSeconds,
@@ -496,16 +496,16 @@ export function TestRunReport() {
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Clock className="h-4 w-4 text-gray-400 print:hidden" />
-                <span className="text-sm">{t('notTested')}</span>
+                <span className="text-sm">{t('notStarted')}</span>
               </div>
               <div className="flex items-center gap-3">
                 <div className="w-48 bg-gray-200 rounded-full h-2">
                   <div 
                     className="bg-gray-400 h-2 rounded-full" 
-                    style={{ width: `${totalTests > 0 ? (notTestedTests / totalTests) * 100 : 0}%` }}
+                    style={{ width: `${totalTests > 0 ? (notStartedTests / totalTests) * 100 : 0}%` }}
                   />
                 </div>
-                <span className="text-sm font-medium w-12 text-right">{notTestedTests}</span>
+                <span className="text-sm font-medium w-12 text-right">{notStartedTests}</span>
               </div>
             </div>
           </div>

@@ -1,5 +1,5 @@
 from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, Enum, Boolean, Float, JSON, Table, UniqueConstraint
-from sqlalchemy.orm import relationship, backref
+from sqlalchemy.orm import relationship, backref, validates
 from sqlalchemy.sql import func
 from typing import Optional
 from .database import Base
@@ -41,7 +41,39 @@ class ResultStatus(enum.Enum):
     FAIL = "fail"
     SKIP = "skip"
     BLOCK = "block"
-    NOT_TESTED = "not_tested"
+    NOT_STARTED = "not_started"
+
+
+# Test-result status has accumulated several spellings over time: the enum's
+# short tokens (pass/fail/skip/block), the execution UI's full words
+# (passed/failed/blocked/skipped), and the "not executed yet" state. This maps
+# every spelling to one canonical token so storage, search, and analytics never
+# treat the same outcome as two different things. The canonical "not executed
+# yet" token is not_started (shown as "Not Started"); the legacy not_tested and
+# pending spellings are accepted as input aliases but never stored.
+_RESULT_STATUS_SYNONYMS = {
+    "pass": "pass", "passed": "pass",
+    "fail": "fail", "failed": "fail",
+    "skip": "skip", "skipped": "skip",
+    "block": "block", "blocked": "block",
+    "not_started": "not_started", "notstarted": "not_started", "not started": "not_started",
+    # Legacy input aliases for the not-started state (old data, shared links,
+    # external writers). Normalized to not_started; never stored as-is.
+    "not_tested": "not_started", "nottested": "not_started", "untested": "not_started",
+    "pending": "not_started",
+}
+
+
+def canonical_result_status(value) -> str:
+    """Normalize any test-result status spelling to its canonical token.
+
+    Accepts a ``ResultStatus`` member, its value, or a free string. Unknown
+    values pass through lowercased/trimmed (the column is free-form, so we never
+    drop a value we don't recognize — we just stop it from being a duplicate of a
+    value we do)."""
+    token = getattr(value, "value", value)
+    token = str(token or "").strip().lower()
+    return _RESULT_STATUS_SYNONYMS.get(token, token)
 
 
 class Role(enum.Enum):
@@ -800,6 +832,13 @@ class TestResult(Base):
     # "actual_result": str?, "comments": str?}]. The row-level `status` field
     # remains the derived overall outcome.
     iteration_results = Column(JSON, nullable=True)
+
+    @validates("status")
+    def _normalize_status(self, _key, value):
+        """Canonicalize on write so every code path (routes, bulk seeding, CI
+        ingestion, imports) stores one token per outcome — never pending vs
+        not_started for the same "not started" state."""
+        return canonical_result_status(value) if value is not None else value
 
     # Relationships
     test_case = relationship("TestCase", back_populates="test_results")

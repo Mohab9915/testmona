@@ -114,8 +114,8 @@ export function CoverageRiskSection({ ctx }: { ctx: ReportsData }) {
                         <p className="text-xs text-gray-600">{t('reports_executedTests')}</p>
                       </div>
                       <div className="text-center p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
-                        <p className="text-2xl font-bold text-gray-600">{testExecutionStatus.summary.not_tested_test_cases}</p>
-                        <p className="text-xs text-gray-600">{t('reports_notTestedLabel')}</p>
+                        <p className="text-2xl font-bold text-gray-600">{testExecutionStatus.summary.not_started_test_cases}</p>
+                        <p className="text-xs text-gray-600">{t('reports_notStartedLabel')}</p>
                       </div>
                     </div>
 

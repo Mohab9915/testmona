@@ -542,7 +542,7 @@ def create_test_suite_run(db: Session, test_suite: TestSuite, test_cases: List[T
         TestResult(
             test_run_id=db_test_run.id,
             test_case_id=test_case.id,
-            status="not_tested",
+            status="not_started",
         )
         for test_case in test_cases
     ]
@@ -2646,7 +2646,7 @@ def _normalized_result_status(status: str) -> str:
         "blocked": "blocked",
         "skip": "skipped",
         "skipped": "skipped",
-        "not_tested": "not_tested",
+        "not_started": "not_started",
     }
     return status_map.get((status or "").lower(), (status or "").lower())
 
