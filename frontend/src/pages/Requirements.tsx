@@ -2060,9 +2060,9 @@ export function Requirements() {
             </button>
           )}
         </div>
-        <div className="grid min-w-0 grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
+        <div className="flex w-full min-w-0 flex-wrap items-center gap-2 lg:w-auto">
           <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="h-10 sm:w-36"><SelectValue placeholder={t('status')} /></SelectTrigger>
+            <SelectTrigger className="h-10 w-[calc(50%-0.25rem)] shrink-0 sm:w-36"><SelectValue placeholder={t('status')} /></SelectTrigger>
             <SelectContent>
               {statusFilterOptions.map((s) => (
                 <SelectItem key={s} value={s}>{s === 'all' ? t('allStatus') : t(s as any)}</SelectItem>
@@ -2070,7 +2070,7 @@ export function Requirements() {
             </SelectContent>
           </Select>
           <Select value={priorityFilter} onValueChange={setPriorityFilter}>
-            <SelectTrigger className="h-10 sm:w-36"><SelectValue placeholder={t('priority')} /></SelectTrigger>
+            <SelectTrigger className="h-10 w-[calc(50%-0.25rem)] shrink-0 sm:w-36"><SelectValue placeholder={t('priority')} /></SelectTrigger>
             <SelectContent>
               {priorityFilterOptions.map((p) => (
                 <SelectItem key={p} value={p}>{p === 'all' ? t('allPriority') : t(p as any)}</SelectItem>
@@ -2081,7 +2081,7 @@ export function Requirements() {
           {/* Sort */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline" className="h-10 gap-1.5">
+              <Button variant="outline" className="h-10 shrink-0 gap-1.5">
                 <ArrowUpDown className="h-4 w-4" />
                 <span className="hidden sm:inline">{sortOptions.find((o) => o.value === sortBy)?.label}</span>
                 {sortDir === 'asc' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />}
@@ -2106,7 +2106,7 @@ export function Requirements() {
           {/* Saved views */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant={activeViewId ? 'default' : 'outline'} className="h-10 gap-1.5">
+              <Button variant={activeViewId ? 'default' : 'outline'} className="h-10 shrink-0 gap-1.5">
                 <Bookmark className="h-4 w-4" />
                 <span className="hidden max-w-[120px] truncate sm:inline">{activeViewName || t('views')}</span>
               </Button>
@@ -2163,7 +2163,7 @@ export function Requirements() {
           />
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline" className="h-10 gap-1.5" disabled={isImportingFeatures}>
+              <Button variant="outline" className="h-10 shrink-0 gap-1.5" disabled={isImportingFeatures}>
                 {isImportingFeatures ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
                 <span className="hidden sm:inline">{t('importExport')}</span>
               </Button>
@@ -2188,7 +2188,7 @@ export function Requirements() {
           </DropdownMenu>
 
           {/* View toggle */}
-          <div className="col-span-2 flex items-center gap-1 rounded-lg border border-border bg-muted/50 p-1 sm:col-span-1 sm:ml-auto">
+          <div className="ml-auto flex h-10 shrink-0 items-center gap-1 rounded-lg border border-border bg-muted/50 p-1">
             <ViewToggleButton active={viewMode === 'table'} onClick={() => changeViewMode('table')} icon={Table2} label={t('tableView')} />
             <ViewToggleButton active={viewMode === 'grid'} onClick={() => changeViewMode('grid')} icon={LayoutGrid} label={t('gridView')} />
           </div>
@@ -2823,12 +2823,11 @@ function ViewToggleButton({ active, onClick, icon: Icon, label }: {
       onClick={onClick}
       aria-pressed={active}
       title={label}
-      className={`flex h-8 items-center gap-1.5 rounded-md px-2.5 text-sm font-medium transition ${
+      className={`flex h-8 items-center justify-center rounded-md px-2.5 text-sm font-medium transition ${
         active ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
       }`}
     >
       <Icon className="h-4 w-4" />
-      <span className="hidden sm:inline">{label}</span>
     </button>
   );
 }
