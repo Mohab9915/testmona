@@ -4,8 +4,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { 
-  ArrowLeft, Download, CheckCircle, XCircle, AlertTriangle, 
-  Clock, FileText
+  ArrowLeft, Download, CheckCircle, XCircle, AlertTriangle,
+  Clock, FileText, Ban
 } from 'lucide-react';
 import { customFieldsAPI, projectsAPI, testRunsAPI, testResultsAPI, usersAPI } from '@/lib/api';
 import { useTranslation } from '@/hooks/useTranslation';
@@ -175,6 +175,24 @@ export function TestRunReport() {
   const skippedTests = statusCounts.skip;
   const notTestedTests = statusCounts.not_tested;
   const passRate = totalTests > 0 ? Math.round((passedTests / totalTests) * 100) : 0;
+
+  // Triage breakdown for blocked tests: why couldn't they run?
+  const blockerReasonLabelKey: Record<string, string> = {
+    environment: 'blockerReasonEnvironment',
+    test_data: 'blockerReasonTestData',
+    dependency: 'blockerReasonDependency',
+    access: 'blockerReasonAccess',
+    awaiting_fix: 'blockerReasonAwaitingFix',
+    other: 'blockerReasonOther',
+  };
+  const blockerReasonEntries = Object.entries(
+    testResults.reduce<Record<string, number>>((acc, result) => {
+      if (normalizeResultStatus(result.status) !== 'block') return acc;
+      const reason = result.blocker_reason || 'unspecified';
+      acc[reason] = (acc[reason] || 0) + 1;
+      return acc;
+    }, {}),
+  ).sort((a, b) => b[1] - a[1]);
 
   // Only count results that were actually executed when computing
   // total/average execution time, so a stale execution_time on a not_tested
@@ -493,6 +511,34 @@ export function TestRunReport() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Blocker reasons — only meaningful when something was blocked */}
+      {blockedTests > 0 && (
+        <Card className="print:rounded-none print:border-0 print:shadow-none">
+          <CardHeader className="print:p-0 print:pb-2">
+            <CardTitle className="text-base">{t('blockerReasonsTitle')}</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3 print:p-0">
+            {blockerReasonEntries.map(([reason, count]) => (
+              <div key={reason} className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Ban className="h-4 w-4 text-amber-600 print:hidden" />
+                  <span className="text-sm">{t(blockerReasonLabelKey[reason] || 'blockerReasonUnspecified')}</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="w-48 bg-gray-200 rounded-full h-2">
+                    <div
+                      className="bg-amber-500 h-2 rounded-full"
+                      style={{ width: `${blockedTests > 0 ? (count / blockedTests) * 100 : 0}%` }}
+                    />
+                  </div>
+                  <span className="text-sm font-medium w-12 text-right">{count}</span>
+                </div>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Test Results Table */}
       <Card className="print:rounded-none print:border-0 print:shadow-none">

@@ -429,6 +429,10 @@ class TestResultBase(BaseModel):
     # Failure context for failed/blocked executions
     defect_link: Optional[str] = Field(None, max_length=500, description="URL to a defect in an external tracker")
     custom_link: Optional[str] = Field(None, max_length=500, description="Free-form reference URL")
+    blocker_reason: Optional[str] = Field(
+        None, max_length=50,
+        description="Why a blocked execution couldn't be completed (environment, test_data, dependency, access, awaiting_fix, other)",
+    )
     retest_needed: Optional[bool] = Field(None, description="Set when a linked defect is resolved or reopened")
     iteration_results: Optional[List[Dict[str, Any]]] = Field(
         None, description="Per-iteration outcomes for data-driven cases: [{row_index, values, status, ...}]"
@@ -455,6 +459,10 @@ class TestResultUpdate(BaseModel):
     # Failure context for failed/blocked executions
     defect_link: Optional[str] = Field(None, max_length=500, description="URL to a defect in an external tracker")
     custom_link: Optional[str] = Field(None, max_length=500, description="Free-form reference URL")
+    blocker_reason: Optional[str] = Field(
+        None, max_length=50,
+        description="Why a blocked execution couldn't be completed (environment, test_data, dependency, access, awaiting_fix, other)",
+    )
     retest_needed: Optional[bool] = Field(None, description="Set when a linked defect is resolved or reopened")
     iteration_results: Optional[List[Dict[str, Any]]] = Field(
         None, description="Per-iteration outcomes for data-driven cases: [{row_index, values, status, ...}]"

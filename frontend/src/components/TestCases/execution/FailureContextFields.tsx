@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -19,14 +18,17 @@ const urlInputProps = {
   'data-1p-ignore': 'true',
 };
 
-const BLOCKER_REASONS = [
-  'blockerReasonEnvironment',
-  'blockerReasonTestData',
-  'blockerReasonDependency',
-  'blockerReasonAccess',
-  'blockerReasonAwaitingFix',
-  'blockerReasonOther',
-] as const;
+// Stable machine values persisted on the result (test_results.blocker_reason),
+// paired with their display label key. Keep the values in sync with the backend
+// analytics buckets in _analytics_shared.py.
+const BLOCKER_REASONS: { value: string; labelKey: string }[] = [
+  { value: 'environment', labelKey: 'blockerReasonEnvironment' },
+  { value: 'test_data', labelKey: 'blockerReasonTestData' },
+  { value: 'dependency', labelKey: 'blockerReasonDependency' },
+  { value: 'access', labelKey: 'blockerReasonAccess' },
+  { value: 'awaiting_fix', labelKey: 'blockerReasonAwaitingFix' },
+  { value: 'other', labelKey: 'blockerReasonOther' },
+];
 
 /**
  * Blocked is an impediment, not a failure: the software didn't misbehave, the
@@ -39,22 +41,11 @@ function BlockerContext() {
     t, testSteps,
     selectedFailureStepNumber, setSelectedFailureStepNumber,
     defectLink, setDefectLink, customLink, setCustomLink,
-    executionNotes, setExecutionNotes, canWrite,
+    executionNotes, setExecutionNotes,
+    blockerReason, setBlockerReason, canWrite,
   } = useExecution();
 
-  const [reason, setReason] = useState<string | null>(null);
-
   const fieldClass = 'mt-1 h-9 border-amber-200 bg-white text-sm dark:border-amber-900/60 dark:bg-slate-950/40';
-
-  // Gentle, non-destructive capture: seed the description with the chosen reason
-  // only when it's still empty, so the reason persists with the result (via the
-  // notes field) without ever clobbering what the tester already wrote.
-  const selectReason = (key: string) => {
-    setReason(key);
-    if (!executionNotes.trim()) {
-      setExecutionNotes(t('blockerReasonPrefill', { reason: t(key) }));
-    }
-  };
 
   return (
     <div className="rounded-lg border border-amber-200 bg-amber-50/70 p-4 dark:border-amber-900/50 dark:bg-amber-950/20">
@@ -67,22 +58,22 @@ function BlockerContext() {
       <div className="mb-3">
         <Label className="text-xs font-medium text-amber-800 dark:text-amber-300">{t('blockerReason')}</Label>
         <div className="mt-1.5 flex flex-wrap gap-1.5">
-          {BLOCKER_REASONS.map((key) => {
-            const active = reason === key;
+          {BLOCKER_REASONS.map(({ value, labelKey }) => {
+            const active = blockerReason === value;
             return (
               <button
-                key={key}
+                key={value}
                 type="button"
                 disabled={!canWrite}
                 aria-pressed={active}
-                onClick={() => selectReason(key)}
+                onClick={() => setBlockerReason(active ? '' : value)}
                 className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
                   active
                     ? 'border-amber-500 bg-amber-500 text-white shadow-sm'
                     : 'border-amber-200 bg-white text-amber-700 hover:bg-amber-100 dark:border-amber-900/60 dark:bg-slate-950/40 dark:text-amber-300 dark:hover:bg-amber-950/40'
                 }`}
               >
-                {t(key)}
+                {t(labelKey)}
               </button>
             );
           })}

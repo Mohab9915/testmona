@@ -108,6 +108,15 @@ def build_coverage_report(db: Session, project_id: int, generated: bool = False)
     skipped_test_cases = normalized_statuses.count("skipped")
     not_tested_cases = max(total_test_cases - executed_test_cases, 0)
 
+    # Triage breakdown for blocked tests: why couldn't they run? Tests saved
+    # before this field existed (or without a reason) fall into "unspecified".
+    blocker_reason_counts: dict[str, int] = {}
+    for result in latest_by_test_case.values():
+        if normalize_result_status(result.status) != "blocked":
+            continue
+        reason = (getattr(result, "blocker_reason", None) or "unspecified").strip().lower() or "unspecified"
+        blocker_reason_counts[reason] = blocker_reason_counts.get(reason, 0) + 1
+
     requirements = db.query(Requirement).filter(Requirement.project_id == project_id).all()
     total_requirements = len(requirements)
     requirement_ids = [requirement.id for requirement in requirements]
@@ -167,5 +176,7 @@ def build_coverage_report(db: Session, project_id: int, generated: bool = False)
                 "skipped": round((skipped_test_cases / executed_test_cases * 100) if executed_test_cases else 0, 2),
                 "not_tested": round((not_tested_cases / total_test_cases * 100) if total_test_cases else 0, 2),
             },
+            "blocked_count": blocked_test_cases,
+            "blocker_reasons": blocker_reason_counts,
         },
     }

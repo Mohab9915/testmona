@@ -791,6 +791,9 @@ class TestResult(Base):
     defect_link = Column(String(500))  # URL to a defect in an external tracker
     custom_link = Column(String(500))  # Free-form reference URL (logs, build, etc.)
     retest_needed = Column(Boolean, default=False)  # Set when a linked defect is resolved/reopened
+    # Why a blocked execution couldn't be completed (environment, test_data,
+    # dependency, access, awaiting_fix, other). Null for non-blocked results.
+    blocker_reason = Column(String(50))
 
     # Per-iteration outcomes for data-driven cases. Null for non-parameterized
     # cases. Shape: [{"row_index": int, "values": {...}, "status": str,

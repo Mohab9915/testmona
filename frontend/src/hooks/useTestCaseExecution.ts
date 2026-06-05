@@ -47,6 +47,7 @@ interface FormSnapshot {
   logs: string;
   defectLink: string;
   customLink: string;
+  blockerReason: string;
   assignee: string;
 }
 // Serialized fingerprint of the editable result fields, used to detect unsaved
@@ -90,6 +91,8 @@ export function useTestCaseExecution() {
   const [assignee, setAssignee] = useState('');
   const [defectLink, setDefectLink] = useState('');
   const [customLink, setCustomLink] = useState('');
+  // Structured triage reason for blocked executions (environment, test_data, …).
+  const [blockerReason, setBlockerReason] = useState('');
   const [selectedFailureStepNumber, setSelectedFailureStepNumber] = useState('');
   const [failureStepActual, setFailureStepActual] = useState('');
   const [testResultId, setTestResultId] = useState<number | null>(null);
@@ -402,6 +405,7 @@ export function useTestCaseExecution() {
           setTestResultId(result.id ?? null);
           setDefectLink(result.defect_link || '');
           setCustomLink(result.custom_link || '');
+          setBlockerReason(result.blocker_reason || '');
           setRetestNeeded(Boolean(result.retest_needed));
           const loadedAssignee = result.executed_by?.toString()
             || testRun?.assigned_to?.toString()
@@ -414,6 +418,7 @@ export function useTestCaseExecution() {
             logs: result.logs || '',
             defectLink: result.defect_link || '',
             customLink: result.custom_link || '',
+            blockerReason: result.blocker_reason || '',
             assignee: loadedAssignee,
           });
           restoreTimingFromResult(result);
@@ -438,10 +443,11 @@ export function useTestCaseExecution() {
           setExecutionLogs('');
           setDefectLink('');
           setCustomLink('');
+          setBlockerReason('');
           const defaultAssignee = testRun?.assigned_to?.toString() || currentUser?.id?.toString() || '';
           setAssignee(defaultAssignee);
           savedSnapshotRef.current = snapshotOf({
-            status: 'pending', notes: '', logs: '', defectLink: '', customLink: '', assignee: defaultAssignee,
+            status: 'pending', notes: '', logs: '', defectLink: '', customLink: '', blockerReason: '', assignee: defaultAssignee,
           });
           setExecutionState('idle');
           setIsPaused(false);
@@ -640,7 +646,7 @@ export function useTestCaseExecution() {
   const formDirty = savedSnapshotRef.current !== null
     && snapshotOf({
       status: executionStatus, notes: executionNotes, logs: executionLogs,
-      defectLink, customLink, assignee,
+      defectLink, customLink, blockerReason, assignee,
     }) !== savedSnapshotRef.current;
   const stepsDirty = testSteps.length > 0
     && savedStepSnapshotRef.current !== null
@@ -797,6 +803,7 @@ export function useTestCaseExecution() {
       logs: executionLogs,
       defect_link: isFailedOrBlocked ? defectLink.trim() : '',
       custom_link: isFailedOrBlocked ? customLink.trim() : '',
+      blocker_reason: executionStatus === 'blocked' ? (blockerReason || null) : null,
     };
 
     // Guard against double-submit (rapid clicks / Ctrl+S spam) creating
@@ -840,7 +847,7 @@ export function useTestCaseExecution() {
       setPausedAt(null);
       savedSnapshotRef.current = snapshotOf({
         status: executionStatus, notes: executionNotes, logs: executionLogs,
-        defectLink, customLink, assignee,
+        defectLink, customLink, blockerReason, assignee,
       });
       await refreshHistory();
 
@@ -859,7 +866,7 @@ export function useTestCaseExecution() {
       setIsSaving(false);
     }
   }, [
-    testRunId, testCaseId, executionStatus, defectLink, customLink, requireDefectOnFailure,
+    testRunId, testCaseId, executionStatus, defectLink, customLink, blockerReason, requireDefectOnFailure,
     resultDefectLinks.length, computeElapsed, manualTimeAdjustment, totalPausedTime,
     hasIterations, dataset, iterationStatuses, testSteps, stepStatuses,
     executionNotes, assignee, executionLogs, t, toast, loadResultDefectLinks, refreshHistory,
@@ -1255,6 +1262,7 @@ export function useTestCaseExecution() {
     assignee, setAssignee,
     defectLink, setDefectLink,
     customLink, setCustomLink,
+    blockerReason, setBlockerReason,
     selectedFailureStepNumber, setSelectedFailureStepNumber,
     failureStepActual, setFailureStepActual,
     requireDefectOnFailure, retestNeeded,
