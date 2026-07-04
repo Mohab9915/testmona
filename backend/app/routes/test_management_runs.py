@@ -445,7 +445,6 @@ def register_run_routes(app):
             # Reset test run timing fields
             db_test_run.started_at = None
             db_test_run.completed_at = None
-            db.commit()
             
             # Reset all test result timing fields for this test run
             test_results = db.query(models.TestResult).filter(
