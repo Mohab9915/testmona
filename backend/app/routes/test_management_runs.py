@@ -237,7 +237,9 @@ def register_run_routes(app):
                         crud.create_test_run_environment(db=db, test_run_environment=test_run_env_data)
                 db.commit()
             except Exception as e:
+                db.rollback()
                 logger.error(f"Failed to update test run environment snapshot: {e}")
+                raise
 
         # One batch for the save: a user who is both the new assignee and the
         # milestone owner of a just-completed run gets a single row (the
@@ -484,7 +486,7 @@ def register_run_routes(app):
                 "test_run_id": test_run_id,
                 "test_results_reset": len(test_results)
             }
-            
         except Exception as e:
             db.rollback()
+            logger.error(f"Failed to reset test run timing: {e}")
             raise HTTPException(status_code=500, detail=f"Failed to reset test run time: {str(e)}")

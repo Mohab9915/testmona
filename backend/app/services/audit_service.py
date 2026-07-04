@@ -148,9 +148,14 @@ class AuditService:
         audit_payload["ip_address"] = audit_payload.get("ip_address") or current_client_ip()
         audit_payload["user_agent"] = audit_payload.get("user_agent") or current_user_agent()
         audit_trail = AuditTrail(**audit_payload)
-        self.db.add(audit_trail)
-        self.db.commit()
-        self.db.refresh(audit_trail)
+        try:
+            self.db.add(audit_trail)
+            self.db.commit()
+            self.db.refresh(audit_trail)
+        except Exception as e:
+            self.db.rollback()
+            logger.error(f"Failed to create audit trail: {e}")
+            raise
         return audit_trail
 
     def get_audit_trail_by_id(self, audit_id: int) -> Optional[AuditTrail]:
@@ -397,11 +402,16 @@ class AuditService:
         if not audit_trail:
             return None
         
-        for field, value in update_data.model_dump(exclude_unset=True).items():
-            setattr(audit_trail, field, value)
-        
-        self.db.commit()
-        self.db.refresh(audit_trail)
+        try:
+            for field, value in update_data.model_dump(exclude_unset=True).items():
+                setattr(audit_trail, field, value)
+            
+            self.db.commit()
+            self.db.refresh(audit_trail)
+        except Exception as e:
+            self.db.rollback()
+            logger.error(f"Failed to update audit trail {audit_id}: {e}")
+            raise
         return audit_trail
 
     def delete_audit_trail(self, audit_id: int) -> bool:
@@ -410,8 +420,13 @@ class AuditService:
         if not audit_trail:
             return False
 
-        self.db.delete(audit_trail)
-        self.db.commit()
+        try:
+            self.db.delete(audit_trail)
+            self.db.commit()
+        except Exception as e:
+            self.db.rollback()
+            logger.error(f"Failed to delete audit trail {audit_id}: {e}")
+            raise
         return True
 
     def count_project_audit_trails(self, project_id: int) -> int:
@@ -431,10 +446,15 @@ class AuditService:
 
     def delete_project_audit_trails(self, project_id: int) -> int:
         """Delete all audit trail records for a project. Returns count deleted."""
-        deleted = self.db.query(AuditTrail).filter(
-            AuditTrail.project_id == project_id
-        ).delete(synchronize_session=False)
-        self.db.commit()
+        try:
+            deleted = self.db.query(AuditTrail).filter(
+                AuditTrail.project_id == project_id
+            ).delete(synchronize_session=False)
+            self.db.commit()
+        except Exception as e:
+            self.db.rollback()
+            logger.error(f"Failed to delete audit trails for project {project_id}: {e}")
+            raise
         return deleted
 
     def log_action(

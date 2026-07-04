@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta, UTC
 from typing import Optional
 import hashlib
+import logging
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from fastapi import Depends, HTTPException, Request, status
@@ -11,6 +12,8 @@ from .database import get_db
 from .models import User, Role, RefreshToken
 from .schemas import TokenData
 from .config import settings
+
+logger = logging.getLogger(__name__)
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token", auto_error=False)
@@ -111,8 +114,13 @@ def create_refresh_token(data: dict, expires_delta: Optional[timedelta] = None, 
             expires_at=expire,
             device_info=device_info
         )
-        db.add(db_refresh_token)
-        db.commit()
+        try:
+            db.add(db_refresh_token)
+            db.commit()
+        except Exception as e:
+            db.rollback()
+            logger.error(f"Failed to create refresh token: {e}")
+            raise
     
     return refresh_token
 
@@ -210,8 +218,13 @@ def verify_refresh_token(refresh_token: str, db: Session) -> Optional[User]:
         return None
     
     # Update last used timestamp
-    db_token.last_used_at = datetime.now(UTC)
-    db.commit()
+    try:
+        db_token.last_used_at = datetime.now(UTC)
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Failed to update refresh token last_used_at: {e}")
+        return None
     
     # Get user
     user = get_user(db, username)
@@ -228,42 +241,57 @@ def revoke_refresh_token(refresh_token: str, db: Session) -> bool:
     ).first()
     
     if db_token:
-        db_token.is_revoked = True
-        db_token.revoked_at = datetime.now(UTC)
-        db.commit()
+        try:
+            db_token.is_revoked = True
+            db_token.revoked_at = datetime.now(UTC)
+            db.commit()
+        except Exception as e:
+            db.rollback()
+            logger.error(f"Failed to revoke refresh token: {e}")
+            raise
         return True
     return False
 
 
 def revoke_all_user_refresh_tokens(user_id: int, db: Session) -> bool:
     """Revoke all refresh tokens for a user"""
-    db.query(RefreshToken).filter(
-        RefreshToken.user_id == user_id,
-        RefreshToken.is_revoked == False
-    ).update({
-        RefreshToken.is_revoked: True,
-        RefreshToken.revoked_at: datetime.now(UTC)
-    })
-    db.commit()
+    try:
+        db.query(RefreshToken).filter(
+            RefreshToken.user_id == user_id,
+            RefreshToken.is_revoked == False
+        ).update({
+            RefreshToken.is_revoked: True,
+            RefreshToken.revoked_at: datetime.now(UTC)
+        })
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Failed to revoke all refresh tokens for user {user_id}: {e}")
+        raise
     return True
 
 
 def cleanup_expired_refresh_tokens(db: Session) -> int:
     """Clean up expired and revoked refresh tokens"""
-    # Delete expired tokens
-    expired_count = db.query(RefreshToken).filter(
-        RefreshToken.expires_at < datetime.now(UTC)
-    ).delete()
-    
-    # Delete revoked tokens older than 30 days
-    thirty_days_ago = datetime.now(UTC) - timedelta(days=30)
-    revoked_count = db.query(RefreshToken).filter(
-        RefreshToken.is_revoked == True,
-        RefreshToken.revoked_at < thirty_days_ago
-    ).delete()
-    
-    db.commit()
-    return expired_count + revoked_count
+    try:
+        # Delete expired tokens
+        expired_count = db.query(RefreshToken).filter(
+            RefreshToken.expires_at < datetime.now(UTC)
+        ).delete()
+        
+        # Delete revoked tokens older than 30 days
+        thirty_days_ago = datetime.now(UTC) - timedelta(days=30)
+        revoked_count = db.query(RefreshToken).filter(
+            RefreshToken.is_revoked == True,
+            RefreshToken.revoked_at < thirty_days_ago
+        ).delete()
+        
+        db.commit()
+        return expired_count + revoked_count
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Failed to cleanup expired refresh tokens: {e}")
+        raise
 
 
 async def get_current_active_user(current_user: User = Depends(get_current_user)):
