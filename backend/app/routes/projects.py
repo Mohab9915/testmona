@@ -17,19 +17,27 @@ from ..models import Project, TestSuite, TestCase, TestRun, User, AuditAction
 logger = logging.getLogger(__name__)
 
 
-def _record_project_audit(db: Session, user, action: str, project_id: int, description: str) -> None:
+def _record_project_audit(
+    db: Session,
+    user,
+    action: str,
+    project_id: int,
+    description: str,
+    project_deleted: bool = False,
+) -> None:
     """Best-effort audit trail entry for a project action. Never raises."""
     try:
         from ..services.audit_service import get_audit_service
         from ..schemas_audit import AuditTrailCreate
         from ..models import EntityType
         audit_service = get_audit_service(db)
+        audit_project_id = None if project_deleted else project_id
         audit_service.create_audit_trail(AuditTrailCreate(
             user_id=user.id if user else None,
             action=action,
             entity_type=EntityType.PROJECT.value,
             entity_id=project_id,
-            project_id=project_id,
+            project_id=audit_project_id,
             description=description,
         ))
     except Exception as e:
@@ -261,7 +269,8 @@ def register_project_routes(app):
             raise HTTPException(status_code=404, detail="Project not found")
         _record_project_audit(
             db, current_user, AuditAction.DELETE.value, project_id,
-            f"Project '{project_name}' deleted"
+            f"Project '{project_name}' deleted",
+            project_deleted=True,
         )
         return {"message": "Project deleted successfully"}
 
@@ -298,7 +307,8 @@ def register_project_routes(app):
             raise HTTPException(status_code=404, detail="Project not found")
         _record_project_audit(
             db, current_user, AuditAction.DELETE.value, project_id,
-            f"Project '{project_name}' deleted"
+            f"Project '{project_name}' deleted",
+            project_deleted=True,
         )
         return {"message": "Project deleted successfully"}
 

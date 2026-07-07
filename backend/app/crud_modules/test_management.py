@@ -1,6 +1,6 @@
 from sqlalchemy.orm import Session, joinedload, noload, selectinload
 from sqlalchemy.orm.attributes import set_committed_value
-from sqlalchemy import func, or_, select, text
+from sqlalchemy import func, or_, text
 from sqlalchemy.exc import IntegrityError, OperationalError
 from typing import List, Optional
 from datetime import datetime, timedelta, timezone
@@ -53,6 +53,7 @@ from ..schemas import (
     SystemSettingsCreate, SystemSettingsUpdate
 )
 
+from .deletion_helpers import delete_test_run_dependents as _delete_test_run_dependents
 from .projects import *
 
 logger = logging.getLogger(__name__)
@@ -486,32 +487,7 @@ def delete_test_run(db: Session, test_run_id: int):
         # Remove dependent rows first: test_results.test_run_id is NOT NULL, so
         # the ORM's default null-out cascade would fail the moment a run has
         # results; MariaDB additionally enforces the FKs on the other tables.
-        from ..models import (
-            CoverageReport,
-            CustomFieldValue,
-            Defect,
-            ExecutionLog,
-            JiraIssue,
-            TestExecution,
-            TestResultDefectLink,
-            TestRunEnvironment,
-            TestStepResult,
-        )
-
-        result_ids = select(TestResult.id).where(TestResult.test_run_id == test_run_id)
-        for model in (TestResultDefectLink, TestStepResult):
-            db.query(model).filter(model.test_result_id.in_(result_ids)).delete(
-                synchronize_session=False
-            )
-        db.query(JiraIssue).filter(JiraIssue.test_result_id.in_(result_ids)).update(
-            {JiraIssue.test_result_id: None}, synchronize_session=False
-        )
-        for model in (ExecutionLog, TestExecution, TestRunEnvironment, TestResult):
-            db.query(model).filter(model.test_run_id == test_run_id).delete(synchronize_session=False)
-        for model in (Defect, CoverageReport, CustomFieldValue):
-            db.query(model).filter(model.test_run_id == test_run_id).update(
-                {model.test_run_id: None}, synchronize_session=False
-            )
+        _delete_test_run_dependents(db, [test_run_id])
 
         db.delete(db_test_run)
         safe_commit(db)

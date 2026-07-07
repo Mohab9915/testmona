@@ -51,6 +51,8 @@ from ..schemas import (
     SystemSettingsCreate, SystemSettingsUpdate
 )
 
+from .deletion_helpers import delete_project_dependents as _delete_project_dependents
+
 
 def safe_commit(db: Session) -> bool:
     """Safely commit a transaction with rollback on error.
@@ -137,81 +139,7 @@ def delete_project(db: Session, project_id: int):
         noload(Project.jira_integrations)
     ).filter(Project.id == project_id).first()
     if db_project:
-        # Delete all related data in the correct order to avoid foreign key constraints.
-        # Import related models up front: a `from ..models import` further down would
-        # otherwise make these names function-locals and raise UnboundLocalError when
-        # they are referenced above that import statement.
-        from ..models import (
-            TestPlan, Milestone, Requirement, Defect, CoverageReport,
-            ProjectAssignment, CustomFieldDefinition, JiraIntegration,
-            TraceabilityMatrix, KPIData, ShareableReport, DashboardWidget
-        )
-        test_suites = db.query(TestSuite).filter(TestSuite.project_id == project_id).all()
-        test_suite_ids = [suite.id for suite in test_suites]
-        test_case_ids = [
-            row[0]
-            for row in db.query(TestCase.id)
-            .filter(TestCase.test_suite_id.in_(test_suite_ids))
-            .all()
-        ] if test_suite_ids else []
-        requirement_ids = [req[0] for req in db.query(Requirement.id).filter(Requirement.project_id == project_id).all()]
-        test_plan_ids = [plan[0] for plan in db.query(TestPlan.id).filter(TestPlan.project_id == project_id).all()]
-        
-        # Delete test results (through test runs)
-        test_runs = db.query(TestRun).filter(TestRun.project_id == project_id).all()
-        for test_run in test_runs:
-            db.query(TestResult).filter(TestResult.test_run_id == test_run.id).delete()
-        
-        # Delete test runs
-        db.query(TestRun).filter(TestRun.project_id == project_id).delete()
-
-        # Delete traceability matrix entries — TraceabilityMatrix links requirements
-        # to test cases, so remove entries for either side belonging to this project.
-        if test_case_ids:
-            db.query(TraceabilityMatrix).filter(TraceabilityMatrix.test_case_id.in_(test_case_ids)).delete()
-            db.execute(
-                requirement_test_case_links.delete().where(
-                    requirement_test_case_links.c.test_case_id.in_(test_case_ids)
-                )
-            )
-        if requirement_ids:
-            db.query(TraceabilityMatrix).filter(TraceabilityMatrix.requirement_id.in_(requirement_ids)).delete()
-            db.execute(
-                requirement_test_case_links.delete().where(
-                    requirement_test_case_links.c.requirement_id.in_(requirement_ids)
-                )
-            )
-            db.execute(
-                requirement_test_plan_links.delete().where(
-                    requirement_test_plan_links.c.requirement_id.in_(requirement_ids)
-                )
-            )
-        if test_plan_ids:
-            db.execute(
-                requirement_test_plan_links.delete().where(
-                    requirement_test_plan_links.c.test_plan_id.in_(test_plan_ids)
-                )
-            )
-
-        # Delete test cases (through test suites)
-        for test_suite in test_suites:
-            db.query(TestCase).filter(TestCase.test_suite_id == test_suite.id).delete()
-
-        # Delete test suites
-        db.query(TestSuite).filter(TestSuite.project_id == project_id).delete()
-
-        # Delete test plans
-        db.query(Defect).filter(Defect.project_id == project_id).delete()
-        db.query(TestPlan).filter(TestPlan.project_id == project_id).delete()
-        db.query(Milestone).filter(Milestone.project_id == project_id).delete()
-        db.query(Requirement).filter(Requirement.project_id == project_id).delete()
-        db.query(CoverageReport).filter(CoverageReport.project_id == project_id).delete()
-        db.query(ProjectAssignment).filter(ProjectAssignment.project_id == project_id).delete()
-        db.query(CustomFieldDefinition).filter(CustomFieldDefinition.project_id == project_id).delete()
-        db.query(JiraIntegration).filter(JiraIntegration.project_id == project_id).delete()
-        db.query(KPIData).filter(KPIData.project_id == project_id).delete()
-        db.query(ShareableReport).filter(ShareableReport.project_id == project_id).delete()
-        db.query(DashboardWidget).filter(DashboardWidget.project_id == project_id).delete()
+        _delete_project_dependents(db, project_id)
         
         # Finally delete the project
         db.delete(db_project)
