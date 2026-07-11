@@ -1,10 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { defectsAPI, requirementsAPI, projectAssignmentsAPI, testResultsAPI } from '@/lib/api';
+import { defectsAPI, requirementsAPI, projectAssignmentsAPI, testResultsAPI, testCasesAPI } from '@/lib/api';
 
 export const defectDetailKeys = {
   detail: (defectId: number | null) => ['defectDetail', defectId] as const,
   requirements: (projectId: number | null) => ['defectDetail', 'requirements', projectId] as const,
   members: (projectId: number | null) => ['defectDetail', 'members', projectId] as const,
+  promptTestCase: (testCaseId: number | null) => ['defectDetail', 'promptTestCase', testCaseId] as const,
 };
 
 export function useDefectDetail(defectId: number | null, enabled: boolean) {
@@ -37,6 +38,25 @@ export function useDefectProjectMembers(projectId: number | null, enabled: boole
       }));
     },
     enabled,
+  });
+}
+
+// Full test-case fields (steps/preconditions/etc.) for the "Create Prompt" dialog.
+// The defect-detail response only carries an id/key/title/status summary, so this
+// is fetched separately and only when the user picks the "defect + test case" mode.
+export function useDefectPromptTestCase(testCaseId: number | null, enabled: boolean) {
+  return useQuery({
+    queryKey: defectDetailKeys.promptTestCase(testCaseId),
+    queryFn: async () => {
+      const [testCase, steps] = await Promise.all([
+        testCasesAPI.getById(testCaseId as number),
+        testCasesAPI.getSteps(testCaseId as number),
+      ]);
+      return { ...testCase, test_steps: Array.isArray(steps) ? steps : testCase?.test_steps };
+    },
+    enabled: enabled && testCaseId != null,
+    staleTime: 60_000,
+    retry: 1,
   });
 }
 

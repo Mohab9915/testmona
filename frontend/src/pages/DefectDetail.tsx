@@ -15,6 +15,7 @@ import {
   RefreshCw,
   Save,
   ShieldAlert,
+  Sparkles,
   TestTube2,
   User,
   X,
@@ -26,6 +27,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { CustomFieldsPanel } from '@/components/CustomFieldsPanel';
 import { DefectRootCauseCard } from '@/components/Defects/DefectRootCauseCard';
+import { CreatePromptDialog } from '@/components/Defects/CreatePromptDialog';
 import { WatchButton } from '@/components/WatchButton';
 import { useProjectPermissions } from '@/hooks/useProjectPermissions';
 import {
@@ -131,6 +133,7 @@ export function DefectDetail() {
   const [updatingLinkId, setUpdatingLinkId] = useState<number | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [editForm, setEditForm] = useState<DefectEditForm>(() => buildEditForm(null));
+  const [promptDialogOpen, setPromptDialogOpen] = useState(false);
 
   // The URL carries the per-project sequence; resolve it to the global defect id.
   const { id: numericDefectId, loading: defectIdLoading } = useResolvedEntityId(projectId, 'defects', defectId);
@@ -357,6 +360,10 @@ export function DefectDetail() {
         </div>
         <div className="flex flex-wrap gap-2">
           <WatchButton entityType="defect" entityId={defect.id} />
+          <Button variant="outline" onClick={() => setPromptDialogOpen(true)}>
+            <Sparkles className={`h-4 w-4 ${isRTL ? 'ml-2' : 'mr-2'}`} />
+            {t('createPrompt')}
+          </Button>
           {isSafeExternalUrl(defect.external_issue_url) && (
             <Button asChild variant="outline">
               <a href={defect.external_issue_url} target="_blank" rel="noreferrer">
@@ -700,6 +707,13 @@ export function DefectDetail() {
           )}
         </aside>
       </div>
+
+      <CreatePromptDialog
+        open={promptDialogOpen}
+        onClose={() => setPromptDialogOpen(false)}
+        defect={defect}
+        linkedTestCase={detail.test_case ? { id: detail.test_case.id, title: detail.test_case.title, key: detail.test_case.key } : null}
+      />
     </div>
   );
 }
