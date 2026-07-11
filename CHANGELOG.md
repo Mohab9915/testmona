@@ -16,6 +16,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - README: fold the feature-table emoji into the **Feature** column, dropping the separate
   leading icon column.
 
+## [0.5.9] - 2026-07-11
+
+### Added
+- **Create Prompt** on the defect detail page: generate a copy-ready AI/IDE prompt from a
+  defect, optionally including its linked test case, with a live preview and one-click copy.
+
+### Fixed
+- Defects: delete project dependents in FK order to prevent project-deletion failures.
+- Reliability: add error handling and transaction safety to database commits; remove a
+  premature commit in `reset_test_run_time` that broke atomicity.
+
 ## [0.5.5] - 2026-06-13
 
 ### Added
