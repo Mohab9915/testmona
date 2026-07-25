@@ -90,9 +90,9 @@ export function UserManagement() {
   const usersQuery = useManagedUsers(isAdmin);
   const invitationsQuery = useManagedInvitations(isAdmin);
   const projectsQuery = useManagedProjects(isAdmin);
-  const users: User[] = usersQuery.data ?? [];
-  const invitations: Invitation[] = invitationsQuery.data ?? [];
-  const projects: Project[] = projectsQuery.data ?? [];
+  const users: User[] = Array.isArray(usersQuery.data) ? usersQuery.data : [];
+  const invitations: Invitation[] = Array.isArray(invitationsQuery.data) ? invitationsQuery.data : [];
+  const projects: Project[] = Array.isArray(projectsQuery.data) ? projectsQuery.data : [];
 
   const createUser = useCreateUser();
   const updateUser = useUpdateUser();

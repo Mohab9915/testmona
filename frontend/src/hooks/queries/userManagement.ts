@@ -10,7 +10,10 @@ export const userManagementKeys = {
 export function useManagedUsers(enabled: boolean) {
   return useQuery({
     queryKey: userManagementKeys.users,
-    queryFn: async () => (await api.get('/users')).data,
+    queryFn: async () => {
+      const { data } = await api.get('/users');
+      return Array.isArray(data) ? data : [];
+    },
     enabled,
   });
 }
@@ -18,7 +21,10 @@ export function useManagedUsers(enabled: boolean) {
 export function useManagedInvitations(enabled: boolean) {
   return useQuery({
     queryKey: userManagementKeys.invitations,
-    queryFn: async () => (await api.get('/invitations')).data,
+    queryFn: async () => {
+      const { data } = await api.get('/invitations');
+      return Array.isArray(data) ? data : [];
+    },
     enabled,
   });
 }
@@ -26,7 +32,10 @@ export function useManagedInvitations(enabled: boolean) {
 export function useManagedProjects(enabled: boolean) {
   return useQuery({
     queryKey: userManagementKeys.projects,
-    queryFn: async () => (await api.get('/projects/')).data,
+    queryFn: async () => {
+      const { data } = await api.get('/projects/');
+      return Array.isArray(data) ? data : [];
+    },
     enabled,
   });
 }
