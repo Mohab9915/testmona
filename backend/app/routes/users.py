@@ -3,6 +3,7 @@ User management routes for user profiles, CRUD operations, and invitations.
 """
 
 from fastapi import Depends, HTTPException, UploadFile
+from sqlalchemy import inspect as sa_inspect, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from typing import List
@@ -17,6 +18,31 @@ from ..utils import sanitize_data
 
 
 logger = logging.getLogger(__name__)
+
+
+def _cleanup_user_foreign_keys(db: Session, user_id: int) -> None:
+    """Nullify nullable FK columns and delete non-nullable dependent rows
+    that reference ``users.id``, so the user row can be safely deleted."""
+    mapper = sa_inspect(db.get_bind())
+    for table_name in mapper.get_table_names():
+        table = mapper.tables[table_name]
+        for fk in table.foreign_keys:
+            if fk.refers_table.name != "users":
+                continue
+            col = fk.parent
+            if table_name == "users" and col.name == "id":
+                continue
+            if col.nullable:
+                db.execute(
+                    text(f'UPDATE "{table_name}" SET "{col.name}" = NULL WHERE "{col.name}" = :uid'),
+                    {"uid": user_id},
+                )
+            else:
+                db.execute(
+                    text(f'DELETE FROM "{table_name}" WHERE "{col.name}" = :uid'),
+                    {"uid": user_id},
+                )
+    db.flush()
 
 
 def _revoke_user_sessions(db: Session, user: models.User) -> None:
@@ -659,12 +685,13 @@ def register_user_routes(app):
         user_identifier = db_user.username or db_user.email
 
         try:
+            _cleanup_user_foreign_keys(db, user_id)
             db_user = crud.delete_user(db, user_id=user_id)
         except IntegrityError:
             db.rollback()
             raise HTTPException(
                 status_code=409,
-                detail="Cannot delete user: the user has associated records (test runs, audit trails, etc.). Deactivate the user instead."
+                detail="Cannot delete user: the user has associated records that cannot be automatically removed. Deactivate the user instead."
             )
 
         # Create audit trail
