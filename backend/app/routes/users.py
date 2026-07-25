@@ -3,6 +3,7 @@ User management routes for user profiles, CRUD operations, and invitations.
 """
 
 from fastapi import Depends, HTTPException, UploadFile
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from typing import List
 from datetime import datetime
@@ -656,9 +657,16 @@ def register_user_routes(app):
         
         user_id_val = db_user.id
         user_identifier = db_user.username or db_user.email
-        
-        db_user = crud.delete_user(db, user_id=user_id)
-        
+
+        try:
+            db_user = crud.delete_user(db, user_id=user_id)
+        except IntegrityError:
+            db.rollback()
+            raise HTTPException(
+                status_code=409,
+                detail="Cannot delete user: the user has associated records (test runs, audit trails, etc.). Deactivate the user instead."
+            )
+
         # Create audit trail
         try:
             from ..services.audit_service import get_audit_service
