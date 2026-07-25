@@ -48,7 +48,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Plus, MoreHorizontal, Trash2, Edit, Mail, KeyRound } from 'lucide-react';
+import { Plus, MoreHorizontal, Trash2, Edit, Mail, KeyRound, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { USER_ROLES, isAdminRole, isAdminUser, normalizeRole } from '@/utils/roles';
 
@@ -715,7 +715,13 @@ export function UserManagement() {
       </Dialog>
 
       {/* Delete Confirmation Dialog */}
-      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+      <Dialog
+        open={deleteDialogOpen}
+        onOpenChange={(open) => {
+          if (!open && deleteUser.isPending) return;
+          setDeleteDialogOpen(open);
+        }}
+      >
         <DialogContent isRTL={isRTL} className="sm:max-w-[400px]">
           <DialogHeader>
             <DialogTitle>{t('deleteUser')}</DialogTitle>
@@ -724,10 +730,19 @@ export function UserManagement() {
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteDialogOpen(false)}>
+            <Button
+              variant="outline"
+              onClick={() => setDeleteDialogOpen(false)}
+              disabled={deleteUser.isPending}
+            >
               {t('cancel')}
             </Button>
-            <Button variant="destructive" onClick={confirmDeleteUser}>
+            <Button
+              variant="destructive"
+              onClick={confirmDeleteUser}
+              disabled={deleteUser.isPending}
+            >
+              {deleteUser.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
               {t('delete')}
             </Button>
           </DialogFooter>

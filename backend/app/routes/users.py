@@ -23,7 +23,9 @@ logger = logging.getLogger(__name__)
 def _cleanup_user_foreign_keys(db: Session, user_id: int) -> None:
     """Nullify nullable FK columns and delete non-nullable dependent rows
     that reference ``users.id``, so the user row can be safely deleted."""
-    inspector = sa_inspect(db.get_bind())
+    bind = db.get_bind()
+    inspector = sa_inspect(bind)
+    quote = bind.dialect.identifier_preparer.quote
     for table_name in inspector.get_table_names():
         if table_name == "users":
             continue
@@ -37,14 +39,16 @@ def _cleanup_user_foreign_keys(db: Session, user_id: int) -> None:
                 continue
             col_name = constrained_cols[0]
             nullable = col_meta.get(col_name, {}).get("nullable", True)
+            quoted_table = quote(table_name)
+            quoted_col = quote(col_name)
             if nullable:
                 db.execute(
-                    text(f'UPDATE "{table_name}" SET "{col_name}" = NULL WHERE "{col_name}" = :uid'),
+                    text(f'UPDATE {quoted_table} SET {quoted_col} = NULL WHERE {quoted_col} = :uid'),
                     {"uid": user_id},
                 )
             else:
                 db.execute(
-                    text(f'DELETE FROM "{table_name}" WHERE "{col_name}" = :uid'),
+                    text(f'DELETE FROM {quoted_table} WHERE {quoted_col} = :uid'),
                     {"uid": user_id},
                 )
     db.flush()
