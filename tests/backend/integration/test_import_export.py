@@ -141,7 +141,12 @@ def test_export_roundtrips_multistep_and_flags(client):
     )
     rows = [
         {"title": "Plain case", "order_index": "0", "is_multistep": "false"},
-        {"title": "Steps case", "is_multistep": "true", "multistep_data": multistep},
+        {
+            "title": "Steps case",
+            "tags": "login,regression",
+            "is_multistep": "true",
+            "multistep_data": multistep,
+        },
     ]
     created = _import_previewed(client, rows, dry_run=False, key="exp-seed")
     assert created.status_code == 200, created.text
@@ -160,6 +165,7 @@ def test_export_roundtrips_multistep_and_flags(client):
     assert by_title["Plain case"]["is_multistep"] == "false"
     assert by_title["Steps case"]["is_multistep"] == "true"
     assert "open app" in by_title["Steps case"]["multistep_data"]
+    assert by_title["Steps case"]["tags"] == "login,regression"
 
 
 def test_import_template_handles_dict_options(client):

@@ -16,6 +16,7 @@ from ..database import get_db
 from .. import crud, schemas, auth, rbac
 from ..models import Priority, Status, CustomFieldDefinition, CustomFieldValue, CustomFieldType, TestCase, TestCaseStep, TestSuite, TestCaseSection, Project, User, ImportOperation
 from ..security_utils import validate_file_size, validate_file_extension, MAX_CSV_IMPORT_SIZE
+from ..crud_modules.tags import resolve_or_create_tags, sync_tags_cache
 from ..services.import_export_utils import (
     DuplicateAction,
     EXPORT_TIMEOUT_SECONDS,
@@ -795,6 +796,7 @@ def create_import_test_case_without_commit(
     created_by: int,
 ) -> TestCase:
     test_steps_data = test_case_data.pop('test_steps', None) or []
+    tag_names = test_case_data.pop('tags', None) or []
     db_test_case = TestCase(**test_case_data)
     db_test_case.created_by = created_by
     if test_steps_data:
@@ -802,6 +804,15 @@ def create_import_test_case_without_commit(
 
     db.add(db_test_case)
     db.flush()
+
+    if tag_names:
+        project_id = db_test_case.project_id or db.query(TestSuite.project_id).filter(
+            TestSuite.id == db_test_case.test_suite_id
+        ).scalar()
+        db_test_case.tags = resolve_or_create_tags(
+            db, project_id, tag_names, created_by=created_by
+        )
+        sync_tags_cache(db_test_case)
 
     for step_data in test_steps_data:
         step_dict = step_data.model_dump(exclude={'test_case_id'})
@@ -817,10 +828,19 @@ def update_import_test_case_without_commit(
     test_case_data: Dict[str, Any],
 ) -> TestCase:
     test_steps_data = test_case_data.pop('test_steps', None)
+    tags_provided = 'tags' in test_case_data
+    tag_names = test_case_data.pop('tags', None) or []
 
     for key, value in test_case_data.items():
         if key != 'test_suite_id':
             setattr(test_case, key, value)
+
+    if tags_provided:
+        project_id = test_case.project_id or db.query(TestSuite.project_id).filter(
+            TestSuite.id == test_case.test_suite_id
+        ).scalar()
+        test_case.tags = resolve_or_create_tags(db, project_id, tag_names)
+        sync_tags_cache(test_case)
 
     if test_steps_data is not None or not test_case_data.get('is_multistep'):
         db.query(TestCaseStep).filter(TestCaseStep.test_case_id == test_case.id).delete(synchronize_session=False)
