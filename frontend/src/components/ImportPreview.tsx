@@ -1039,7 +1039,7 @@ export function ImportPreview({ file, testSuiteId, sectionId, customFields, onCo
         onProgress: setProgress,
       });
       setLastResult(result);
-      if (!dryRun && !result.errors?.length) {
+      if (!dryRun) {
         localStorage.removeItem(idempotencyStorageKey);
       }
       if (result.errors?.length) {
