@@ -16,6 +16,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - README: fold the feature-table emoji into the **Feature** column, dropping the separate
   leading icon column.
 
+### Fixed
+- Test cases page: fetch all of a project's test cases (paginating past the per-request
+  limit) instead of only the first 100, so older suites such as login were never hidden
+  from the list and the header count matched the dashboard total.
+
 ## [0.5.9] - 2026-07-11
 
 ### Added
