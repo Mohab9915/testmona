@@ -128,6 +128,16 @@ def _build_engine(database_url: str):
 
     if backend == "sqlite":
         connect_args["check_same_thread"] = False
+        # SQLite is used with FastAPI's threaded request handling, so concurrent
+        # writers collide. Raise the driver's default busy wait (5s) so a writer
+        # waits for the lock instead of failing with "database is locked".
+        connect_args["timeout"] = 30
+        # A single page load fires ~20 parallel requests (auth + settings +
+        # projects + inbox), so the SQLAlchemy default pool (5 + 10 overflow)
+        # exhausts under load and 500s every other request. WAL makes many
+        # concurrent readers cheap, so give SQLite a pool that matches real
+        # request fan-out; writers still serialize via the busy timeout.
+        engine_kwargs.update(pool_size=20, max_overflow=20, pool_pre_ping=True)
     else:
         engine_kwargs.update(pool_pre_ping=True, pool_recycle=1800)
         if backend == "mysql":
@@ -144,6 +154,12 @@ if settings.database_url.startswith("sqlite"):
     def _enable_sqlite_foreign_keys(dbapi_connection, connection_record):  # noqa: ARG001
         cursor = dbapi_connection.cursor()
         cursor.execute("PRAGMA foreign_keys=ON")
+        # WAL allows concurrent readers alongside a single writer and removes
+        # the whole-database write lock that made threaded handlers hit
+        # "database is locked" under load. Busy timeout makes a writer wait for
+        # the write lock (mirrors connect_args timeout for safety).
+        cursor.execute("PRAGMA journal_mode=WAL")
+        cursor.execute("PRAGMA busy_timeout=30000")
         cursor.close()
 elif _normalize_url(settings.database_url).get_backend_name() == "mysql":
     @event.listens_for(engine, "connect")

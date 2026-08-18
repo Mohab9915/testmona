@@ -771,6 +771,11 @@ def sweep_due_snoozes(db: Session, user_id: Optional[int] = None):
     When ``user_id`` is omitted every elapsed snooze is swept, so inactive users do
     not retain stale snooze timestamps indefinitely while the app is in use.
     Returns how many rows resurfaced.
+
+    This runs on inbox read paths, so the write transaction is always released
+    (committed when rows changed, rolled back otherwise) — an open write
+    transaction holds SQLite's write lock for the rest of the request and, under
+    concurrent load, makes every other inbox read block on "database is locked".
     """
     now = datetime.now(timezone.utc)
     query = db.query(Notification).filter(
@@ -782,6 +787,8 @@ def sweep_due_snoozes(db: Session, user_id: Optional[int] = None):
     result = query.update({"snoozed_until": None}, synchronize_session=False)
     if result:
         safe_commit(db)
+    else:
+        db.rollback()
     return result
 
 

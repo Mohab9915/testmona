@@ -24,6 +24,7 @@ def register_notifications_routes(app):
     # segment is matched here rather than parsed as a (non-integer) id.
     @app.get("/notifications/stream", tags=["Notifications"])
     def stream_notifications(
+        db: Session = Depends(get_db),
         current_user: schemas.User = Depends(get_current_active_user),
     ):
         """Server-Sent Events stream that pushes a 'refetch' ping to the bell.
@@ -40,6 +41,11 @@ def register_notifications_routes(app):
             raise HTTPException(status_code=404, detail="Realtime stream is disabled")
 
         user_id = current_user.id
+        # Release the pooled DB connection before the stream starts: FastAPI
+        # closes yield-dependencies (get_db) only after the response body has
+        # fully streamed, so without this the connection would be pinned for the
+        # stream's entire ~25 min lifetime and exhaust the pool under load.
+        db.close()
         q = realtime_service.subscribe(user_id)
 
         def event_stream():
