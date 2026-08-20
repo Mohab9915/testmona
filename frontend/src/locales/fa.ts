@@ -171,6 +171,7 @@ export const fa = {
     showing: 'نمایش {start}-{end} از {total}',
     showingRange: 'نمایش {start} - {end} از {total}',
     itemsPerPage: 'آیتم در هر صفحه',
+    openInNewTab: 'باز کردن در برگه جدید',
     testCaseSections: 'بخش‌های مورد تست',
     noSectionsFound: 'بخشی یافت نشد',
     tryDifferentSearchTerm: 'عبارت جستجوی دیگری را امتحان کنید',

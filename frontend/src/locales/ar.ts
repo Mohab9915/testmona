@@ -171,6 +171,7 @@ export const ar = {
     showing: 'عرض {start}-{end} من {total}',
     showingRange: 'عرض {start} - {end} من {total}',
     itemsPerPage: 'العناصر لكل صفحة',
+    openInNewTab: 'فتح في تبويب جديد',
     testCaseSections: 'أقسام حالات الاختبار',
     noSectionsFound: 'لم يتم العثور على أقسام',
     tryDifferentSearchTerm: 'جرب مصطلح بحث مختلف',

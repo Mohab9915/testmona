@@ -169,6 +169,7 @@ export const en = {
   pageOf: 'Page {current} of {total}',
   showing: 'Showing {start}-{end} of {total}',
   itemsPerPage: 'Items per page',
+  openInNewTab: 'Open in a new tab',
   testCaseSections: 'Test Case Sections',
   noSectionsFound: 'No sections found',
   tryDifferentSearchTerm: 'Try a different search term',

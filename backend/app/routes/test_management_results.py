@@ -475,8 +475,7 @@ def register_result_routes(app):
         db: Session = Depends(get_db)
     ):
         # Get user's preference for items per page, default to 10
-        # For now, return a default value. In a real implementation, this would be stored in a user preferences table
-        return {"items_per_page": 10}
+        return {"items_per_page": current_user.items_per_page if current_user.items_per_page else 10}
 
     @app.put("/user/preferences/items-per-page")
     def update_items_per_page_preference(
@@ -495,6 +494,8 @@ def register_result_routes(app):
             raise HTTPException(status_code=400, detail="items_per_page must be an integer")
         
         if 5 <= items_per_page <= 100:
+            current_user.items_per_page = items_per_page
+            db.commit()
             return {"items_per_page": items_per_page}
         else:
             raise HTTPException(status_code=400, detail="Items per page must be between 5 and 100")

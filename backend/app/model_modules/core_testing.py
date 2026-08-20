@@ -335,6 +335,9 @@ class User(Base):
     do_not_disturb = Column(Boolean, default=False)
     notification_sound_enabled = Column(Boolean, default=True)
 
+    # List pagination preference (rows per page on list views)
+    items_per_page = Column(Integer, default=10, nullable=False, server_default="10")
+
     # Relationships
     project_assignments = relationship("ProjectAssignment", back_populates="user", foreign_keys="ProjectAssignment.user_id")
     created_projects = relationship("Project", back_populates="owner")

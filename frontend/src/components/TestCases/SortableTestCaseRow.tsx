@@ -110,7 +110,8 @@ export function SortableTestCaseRow({
         <Button
           variant="link"
           className="p-0 h-auto font-medium text-xs text-blue-600 hover:text-blue-800"
-          onClick={() => navigate(getTestCaseDetailUrl(testCase.project_seq ?? testCase.id))}
+          onClick={() => window.open(getTestCaseDetailUrl(testCase.project_seq ?? testCase.id), '_blank', 'noopener,noreferrer')}
+          title={t('openInNewTab')}
         >
           {entityKey('TC', testCase)}
         </Button>
