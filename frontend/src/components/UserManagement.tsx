@@ -120,6 +120,8 @@ export function UserManagement() {
   // Edit user dialog state
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [editFullName, setEditFullName] = useState('');
+  const [originalFullName, setOriginalFullName] = useState('');
   const [editRole, setEditRole] = useState('');
   const [originalRole, setOriginalRole] = useState('');
   const [editIsActive, setEditIsActive] = useState(true);
@@ -257,6 +259,8 @@ export function UserManagement() {
 
   const handleEditUser = (user: User) => {
     setEditingUser(user);
+    setEditFullName(user.full_name || '');
+    setOriginalFullName(user.full_name || '');
     const normalizedRole = normalizeRole(user.role);
     setEditRole(normalizedRole);
     setOriginalRole(normalizedRole);
@@ -271,6 +275,7 @@ export function UserManagement() {
       await updateUser.mutateAsync({
         id: editingUser.id,
         payload: {
+          full_name: editFullName.trim(),
           role: normalizeRole(editRole),
           is_active: editIsActive,
         },
@@ -679,6 +684,15 @@ export function UserManagement() {
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <div className="grid gap-2">
+              <Label htmlFor="edit-fullname">{t('fullName')}</Label>
+              <Input
+                id="edit-fullname"
+                value={editFullName}
+                onChange={(e) => setEditFullName(e.target.value)}
+                placeholder={t('fullNamePlaceholder')}
+              />
+            </div>
+            <div className="grid gap-2">
               <Label htmlFor="edit-role">{t('role')}</Label>
               <Select value={editRole} onValueChange={setEditRole}>
                 <SelectTrigger id="edit-role">
@@ -707,7 +721,7 @@ export function UserManagement() {
             <Button variant="outline" onClick={() => setEditDialogOpen(false)}>
               {t('cancel')}
             </Button>
-            <Button onClick={handleUpdateUser} disabled={editRole === originalRole}>
+            <Button onClick={handleUpdateUser} disabled={editRole === originalRole && editFullName.trim() === originalFullName}>
               {t('saveChanges')}
             </Button>
           </DialogFooter>

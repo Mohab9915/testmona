@@ -927,7 +927,7 @@ export const en = {
   assignToProjects: 'Assign to Projects',
   sendInvitation: 'Send Invitation',
   editUser: 'Edit User',
-  editUserDialogDesc: 'Update user role and status.',
+  editUserDialogDesc: 'Update the user\'s full name, role, and status.',
   deleteUser: 'Delete User',
   deleteUserConfirmDesc: 'Are you sure you want to delete {username}? This action cannot be undone.',
   manageUsers: 'Manage user accounts and permissions',

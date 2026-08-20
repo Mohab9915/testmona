@@ -1143,7 +1143,7 @@ export const fa = {
     assignToProjects: 'اختصاص به پروژه‌ها',
     sendInvitation: 'ارسال دعوت‌نامه',
     editUser: 'ویرایش کاربر',
-    editUserDialogDesc: 'نقش و وضعیت کاربر را به‌روزرسانی کنید.',
+    editUserDialogDesc: 'نام کامل، نقش و وضعیت کاربر را به‌روزرسانی کنید.',
     deleteUser: 'حذف کاربر',
     deleteUserConfirmDesc: 'آیا مطمئن هستید که می‌خواهید {username} را حذف کنید؟ این عمل قابل بازگشت نیست.',
     manageUsers: 'مدیریت حساب‌های کاربری و مجوزها',

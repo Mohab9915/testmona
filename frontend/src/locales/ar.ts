@@ -1112,7 +1112,7 @@ export const ar = {
     assignToProjects: 'تعيين إلى المشاريع',
     sendInvitation: 'إرسال الدعوة',
     editUser: 'تعديل المستخدم',
-    editUserDialogDesc: 'تحديث دور المستخدم وحالته.',
+    editUserDialogDesc: 'تحديث الاسم الكامل ودور المستخدم وحالته.',
     deleteUser: 'حذف المستخدم',
     deleteUserConfirmDesc: 'هل أنت متأكد أنك تريد حذف {username}؟ لا يمكن التراجع عن هذا الإجراء.',
     manageUsers: 'إدارة حسابات المستخدمين والأذونات',
