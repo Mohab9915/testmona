@@ -233,6 +233,19 @@ export const defectManagementAPI = {
     return response.data;
   },
 
+  // Azure DevOps only. The available types depend on the project process
+  // template, so the integration form offers the real set rather than
+  // assuming "Bug" (which the Basic template does not have).
+  getIntegrationWorkItemTypes: async (projectId: number, integrationId: number): Promise<{
+    success: boolean;
+    message?: string;
+    work_item_types: Array<{ name: string; reference_name?: string }>;
+  }> => {
+    const response = await api.get(
+      `/projects/${projectId}/issue-tracker-integrations/${integrationId}/work-item-types`,
+    );
+    return response.data;
+  },
   syncDefectWithExternal: async (projectId: number, defectId: number, syncData: {
     integration_id: number;
     sync_type?: string;

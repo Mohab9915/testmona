@@ -10,6 +10,11 @@ from .base_client import BaseClient
 
 
 class AzureDevOpsClient(BaseClient):
+
+    # Every Azure DevOps REST call must carry an api-version. Without it ADO does
+    # not return a clean error - it routes the request to the web front end and
+    # replies 203 with an HTML sign-in page, which reads like an auth failure.
+    API_VERSION = "7.0"
     """Client for interacting with Azure DevOps API."""
     
     def __init__(self, api_url: str, api_token: str, organization: str, project: str, timeout: int = 30):
@@ -73,6 +78,17 @@ class AzureDevOpsClient(BaseClient):
             return "Validation error."
         elif status_code >= 500:
             return f"Azure DevOps API server error: {status_code}"
+        elif status_code in (203, 302):
+            # ADO redirects API calls to an Entra ID sign-in page when the
+            # organization will not accept the Basic/PAT credential at all. This is
+            # returned before the token is evaluated, so it is NOT a scope problem:
+            # a deliberately bogus token produces the identical response.
+            return (
+                "Azure DevOps redirected to a Microsoft sign-in page instead of answering the API. "
+                "The organization is not accepting this personal access token: it may belong to a "
+                "different organization, PAT/basic auth may be disabled by org policy, or a "
+                "Conditional Access policy may be blocking non-interactive sign-in."
+            )
         return f"Azure DevOps API error: {status_code}"
     
     def test_connection(self) -> Dict[str, Any]:
@@ -87,7 +103,9 @@ class AzureDevOpsClient(BaseClient):
             response = self._make_request(
                 'GET',
                 f"{self.api_url}/{self.organization}/_apis/projects/{self.project}",
-                headers=self.headers
+                headers=self.headers,
+                params={"api-version": self.API_VERSION},
+                allow_redirects=False,
             )
             
             if response.status_code == 200:
@@ -99,7 +117,7 @@ class AzureDevOpsClient(BaseClient):
             else:
                 return {
                     'success': False,
-                    'message': f'Failed to connect to Azure DevOps: {response.status_code}'
+                    'message': self.get_error_message(response.status_code)
                 }
         except Exception as e:
             return {
@@ -107,6 +125,38 @@ class AzureDevOpsClient(BaseClient):
                 'message': f'Connection error: {str(e)}'
             }
     
+    def list_work_item_types(self) -> Dict[str, Any]:
+        """List the work item types available in the configured project.
+
+        The available set depends on the project process template: Basic has
+        Issue/Epic/Task, while Agile/Scrum/CMMI have Bug. Callers use this to
+        offer a real choice instead of assuming "Bug" exists.
+        """
+        try:
+            response = self._make_request(
+                'GET',
+                f"{self.api_url}/{self.organization}/{self.project}/_apis/wit/workitemtypes",
+                headers=self.headers,
+                params={"api-version": self.API_VERSION},
+                allow_redirects=False,
+            )
+            if response.status_code == 200:
+                values = response.json().get("value", [])
+                return {
+                    'success': True,
+                    'work_item_types': [
+                        {"name": v.get("name"), "reference_name": v.get("referenceName")}
+                        for v in values if v.get("name")
+                    ],
+                }
+            return {
+                'success': False,
+                'message': self.get_error_message(response.status_code),
+                'work_item_types': [],
+            }
+        except Exception as e:
+            return {'success': False, 'message': str(e), 'work_item_types': []}
+
     def create_work_item(self, title: str, description: str, work_item_type: str = 'Bug', 
                         priority: str = '2', assignee: Optional[str] = None) -> Dict[str, Any]:
         """
@@ -127,7 +177,9 @@ class AzureDevOpsClient(BaseClient):
             type_response = self._make_request(
                 'GET',
                 f"{self.api_url}/{self.organization}/{self.project}/_apis/wit/workitemtypes/{work_item_type}",
-                headers=self.headers
+                headers=self.headers,
+                params={"api-version": self.API_VERSION},
+                allow_redirects=False,
             )
             
             if type_response.status_code != 200:
@@ -171,6 +223,8 @@ class AzureDevOpsClient(BaseClient):
                 'POST',
                 f"{self.api_url}/{self.organization}/{self.project}/_apis/wit/workitems/${work_item_type}",
                 headers=patch_headers,
+                params={"api-version": self.API_VERSION},
+                allow_redirects=False,
                 json=payload
             )
 
@@ -245,6 +299,8 @@ class AzureDevOpsClient(BaseClient):
                 'PATCH',
                 f"{self.api_url}/{self.organization}/{self.project}/_apis/wit/workitems/{work_item_id}",
                 headers=patch_headers,
+                params={"api-version": self.API_VERSION},
+                allow_redirects=False,
                 json=payload
             )
             
@@ -279,7 +335,9 @@ class AzureDevOpsClient(BaseClient):
             response = self._make_request(
                 'GET',
                 f"{self.api_url}/{self.organization}/{self.project}/_apis/wit/workitems/{work_item_id}",
-                headers=self.headers
+                headers=self.headers,
+                params={"api-version": self.API_VERSION},
+                allow_redirects=False,
             )
             
             if response.status_code == 200:

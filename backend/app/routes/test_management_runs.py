@@ -199,6 +199,9 @@ def register_run_routes(app):
             test_run.completed_at = None
         
         # Perform the update
+        from ..services.audit_service import audit_snapshot, audit_change_payload
+        _audit_before = audit_snapshot(db_test_run, changed_fields.keys())
+
         db_test_run = crud.update_test_run(db, test_run_id=test_run_id, test_run=test_run)
         _attach_test_run_progress(db, [db_test_run])
 
@@ -259,15 +262,17 @@ def register_run_routes(app):
             from ..schemas_audit import AuditTrailCreate
             from ..models import AuditAction, EntityType
             audit_service = get_audit_service(db)
-            audit_data = AuditTrailCreate(
-                user_id=current_user.id if current_user else None,
-                action=AuditAction.UPDATE.value,
-                entity_type=EntityType.TEST_RUN.value,
-                entity_id=db_test_run.id,
-                project_id=db_test_run.project_id,
-                description=f"Test run updated: {db_test_run.name or 'Untitled'}",
-            )
-            audit_service.create_audit_trail(audit_data)
+            _audit_changes = audit_change_payload(_audit_before, db_test_run)
+            if _audit_changes["field_changes"]:
+                audit_service.create_audit_trail(AuditTrailCreate(
+                    user_id=current_user.id if current_user else None,
+                    action=AuditAction.UPDATE.value,
+                    entity_type=EntityType.TEST_RUN.value,
+                    entity_id=db_test_run.id,
+                    project_id=db_test_run.project_id,
+                    **_audit_changes,
+                    description=f"Test run updated: {db_test_run.name or 'Untitled'}",
+                ))
         except Exception as e:
             logger.warning(f"Failed to create audit trail for test run update: {e}")
         

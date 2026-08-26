@@ -1,0 +1,21 @@
+# Normalize all text files to LF in the repository.
+# Without this, a Windows checkout with core.autocrlf=true rewrites shell
+# scripts to CRLF, and Docker copies them into the Linux image as-is. The
+# shebang then reads "#!/bin/bash\r" and the container dies with the very
+# misleading "exec /app/docker-entrypoint.sh: no such file or directory"
+# (the missing file is the interpreter, not the script).
+* text=auto eol=lf
+
+# Files executed inside Linux containers — must be LF, never CRLF.
+*.sh            text eol=lf
+Dockerfile      text eol=lf
+*.dockerignore  text eol=lf
+
+# Binary assets: never touch.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.db  binary

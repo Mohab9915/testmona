@@ -28,6 +28,7 @@ import {
   BookOpen,
   ScanSearch,
   HeartPulse,
+  Activity,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuthStore } from '@/stores/authStore';
@@ -159,6 +160,7 @@ export function Sidebar({
           { name: t('defects'), href: `/projects/${projectId}/defects`, icon: Bug, feature: 'defects' },
           { name: t('advancedSearch'), href: `/projects/${projectId}/advanced-search`, icon: ScanSearch, feature: 'advanced_search' },
           { name: t('reports'), href: `/projects/${projectId}/reports`, icon: BarChart3, feature: 'reports' },
+          { name: t('projectActivityNav'), href: `/projects/${projectId}/activity`, icon: Activity },
           { name: t('testAssetHealth'), href: `/projects/${projectId}/test-asset-health`, icon: HeartPulse, feature: 'test_asset_health' },
         ]
       },
@@ -187,6 +189,10 @@ export function Sidebar({
           { name: t('profile'), href: '/profile', icon: User },
           { name: t('apiTokens'), href: '/api-tokens', icon: KeyRound },
           { name: t('settings'), href: '/settings', icon: Settings2 },
+          // Present in the other two nav variants too. Without it here the
+          // Administrator area (integrations, users, audit config) becomes
+          // unreachable by clicking as soon as a project is selected.
+          ...(isAdminUser(user) ? [{ name: t('administrator'), href: '/administrator', icon: ShieldCheck }] : []),
         ]
       }
     ];

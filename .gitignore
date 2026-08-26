@@ -131,3 +131,8 @@ docs/_build/
 # Backup files
 *.bak
 *.backup
+
+# SQLite sidecar files - live database internals, never commit them.
+*.db-wal
+*.db-shm
+*.db-journal

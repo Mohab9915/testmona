@@ -1,81 +1,91 @@
 import React, { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Button } from '../ui/button';
-import { Badge } from '../ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import { VersionHistory } from './VersionHistory';
 import { VersionComparison } from './VersionComparison';
-import { 
-  History, 
-  GitCompare, 
-  Plus, 
-  RotateCcw,
-  GitBranch,
-  Tag,
-  Lock,
-  Settings
-} from 'lucide-react';
+import { History, GitCompare, Plus, Settings } from 'lucide-react';
+import { useTranslation } from '@/hooks/useTranslation';
+import { useToast } from '@/hooks/use-toast';
+import { useDateFormat } from '@/hooks/useDateFormat';
+import { getApiErrorMessage } from '@/lib/api';
+import {
+  useCompareTestCaseVersions,
+  useCreateTestCaseVersion,
+  useTestCaseVersionStats,
+} from '@/hooks/queries/testCaseVersions';
 import { TestCaseVersion, VersionComparisonResponse } from '../../types/versioning';
-import { versioningApi } from '../../api/versioning';
 
 interface VersionManagerProps {
   testCaseId: number;
   testCaseTitle: string;
+  enabled?: boolean;
   onVersionCreated?: () => void;
 }
 
 export const VersionManager: React.FC<VersionManagerProps> = ({
   testCaseId,
   testCaseTitle,
-  onVersionCreated
+  enabled = true,
+  onVersionCreated,
 }) => {
+  const { t } = useTranslation();
+  const { toast } = useToast();
+  const { formatDateTime } = useDateFormat();
+
   const [activeTab, setActiveTab] = useState('history');
-  const [selectedVersions, setSelectedVersions] = useState<[TestCaseVersion | null, TestCaseVersion | null]>([null, null]);
+  const [selectedVersions, setSelectedVersions] = useState<
+    [TestCaseVersion | null, TestCaseVersion | null]
+  >([null, null]);
   const [comparison, setComparison] = useState<VersionComparisonResponse | null>(null);
-  const [loading, setLoading] = useState(false);
 
-  const handleVersionSelect = (_version: TestCaseVersion) => {
-    // Placeholder: a future enhancement could open a modal to view version details.
-  };
+  const createVersion = useCreateTestCaseVersion(testCaseId);
+  const compareVersions = useCompareTestCaseVersions();
 
-  const handleCompareVersions = async (fromVersion: TestCaseVersion, toVersion: TestCaseVersion) => {
-    setLoading(true);
+  const handleCompareVersions = async (
+    fromVersion: TestCaseVersion,
+    toVersion: TestCaseVersion,
+  ) => {
     try {
-      const comparisonData = await versioningApi.compareVersions(fromVersion.id, toVersion.id);
+      const comparisonData = await compareVersions.mutateAsync({
+        fromVersionId: fromVersion.id,
+        toVersionId: toVersion.id,
+      });
       setComparison(comparisonData);
       setSelectedVersions([fromVersion, toVersion]);
       setActiveTab('comparison');
-    } catch (error) {
-      console.error('Error comparing versions:', error);
-      alert('Failed to compare versions');
-    } finally {
-      setLoading(false);
+    } catch (error: unknown) {
+      toast({
+        title: t('error'),
+        description: getApiErrorMessage(error, t('compareFailed')),
+        variant: 'destructive',
+      });
     }
   };
 
   const handleCreateNewVersion = async () => {
     try {
-      await versioningApi.createVersion(testCaseId, {
-        version_name: `New version - ${new Date().toLocaleDateString()}`,
-        change_summary: 'Created new version',
-        change_reason: 'Manual version creation'
+      await createVersion.mutateAsync({
+        version_name: t('versionDefaultName', {
+          date: formatDateTime(new Date().toISOString()) || '',
+        }),
+        change_summary: t('versionDefaultSummary'),
+        change_reason: t('versionDefaultReason'),
       });
-
-      if (onVersionCreated) {
-        onVersionCreated();
-      }
-      
-      // Refresh the version history
+      toast({ title: t('success'), description: t('versionCreated') });
+      onVersionCreated?.();
       setActiveTab('history');
-    } catch (error) {
-      console.error('Error creating version:', error);
-      alert('Failed to create version');
+    } catch (error: unknown) {
+      toast({
+        title: t('error'),
+        description: getApiErrorMessage(error, t('versionCreateFailed')),
+        variant: 'destructive',
+      });
     }
   };
 
   const handleRefreshComparison = async () => {
     if (!selectedVersions[0] || !selectedVersions[1]) return;
-    
     await handleCompareVersions(selectedVersions[0], selectedVersions[1]);
   };
 
@@ -87,50 +97,46 @@ export const VersionManager: React.FC<VersionManagerProps> = ({
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <CardTitle className="flex items-center gap-2">
                 <History className="h-5 w-5" />
-                Version Management
+                {t('versionManagement')}
               </CardTitle>
-              <p className="text-sm text-gray-600 mt-1">
-                Test Case: {testCaseTitle}
+              <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
+                {t('versionManagementFor', { title: testCaseTitle })}
               </p>
             </div>
-            <div className="flex gap-2">
-              <Button onClick={handleCreateNewVersion}>
-                <Plus className="h-4 w-4 mr-2" />
-                Create Version
-              </Button>
-            </div>
+            <Button onClick={handleCreateNewVersion} disabled={createVersion.isPending}>
+              <Plus className="me-2 h-4 w-4" />
+              {createVersion.isPending ? t('creatingVersion') : t('createVersion')}
+            </Button>
           </div>
         </CardHeader>
       </Card>
 
-      {/* Main Content */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="history" className="flex items-center gap-2">
             <History className="h-4 w-4" />
-            Version History
+            {t('tabVersionHistory')}
           </TabsTrigger>
           <TabsTrigger value="comparison" className="flex items-center gap-2">
             <GitCompare className="h-4 w-4" />
-            Comparison
+            {t('tabVersionComparison')}
           </TabsTrigger>
           <TabsTrigger value="operations" className="flex items-center gap-2">
             <Settings className="h-4 w-4" />
-            Operations
+            {t('tabVersionOperations')}
           </TabsTrigger>
         </TabsList>
 
         <TabsContent value="history" className="space-y-4">
           <VersionHistory
             testCaseId={testCaseId}
-            onVersionSelect={handleVersionSelect}
+            enabled={enabled}
             onCompareVersions={handleCompareVersions}
           />
         </TabsContent>
@@ -147,15 +153,11 @@ export const VersionManager: React.FC<VersionManagerProps> = ({
           ) : (
             <Card>
               <CardContent className="p-6">
-                <div className="text-center text-gray-500">
-                  <GitCompare className="h-12 w-12 mx-auto mb-4 text-gray-300" />
-                  <p>Select two versions from the history tab to compare them.</p>
-                  <Button
-                    variant="outline"
-                    className="mt-4"
-                    onClick={() => setActiveTab('history')}
-                  >
-                    Go to Version History
+                <div className="text-center text-slate-500 dark:text-slate-400">
+                  <GitCompare className="mx-auto mb-4 h-12 w-12 text-slate-300 dark:text-slate-700" />
+                  <p>{t('selectTwoVersionsToCompare')}</p>
+                  <Button variant="outline" className="mt-4" onClick={() => setActiveTab('history')}>
+                    {t('goToVersionHistory')}
                   </Button>
                 </div>
               </CardContent>
@@ -164,159 +166,108 @@ export const VersionManager: React.FC<VersionManagerProps> = ({
         </TabsContent>
 
         <TabsContent value="operations" className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Quick Actions */}
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
             <Card>
               <CardHeader>
-                <CardTitle className="text-lg">Quick Actions</CardTitle>
+                <CardTitle className="text-lg">{t('quickActions')}</CardTitle>
               </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="p-4 border rounded-lg">
-                  <h4 className="font-medium mb-2 flex items-center gap-2">
+              <CardContent>
+                <div className="rounded-lg border border-slate-200 p-4 dark:border-slate-800">
+                  <h4 className="mb-2 flex items-center gap-2 font-medium">
                     <Plus className="h-4 w-4" />
-                    Create Version
+                    {t('createNewVersion')}
                   </h4>
-                  <p className="text-sm text-gray-600 mb-3">
-                    Create a new version of this test case
+                  <p className="mb-3 text-sm text-slate-600 dark:text-slate-400">
+                    {t('createVersionDesc')}
                   </p>
-                  <Button size="sm" onClick={handleCreateNewVersion}>
-                    Create New Version
-                  </Button>
-                </div>
-
-                <div className="p-4 border rounded-lg">
-                  <h4 className="font-medium mb-2 flex items-center gap-2">
-                    <GitBranch className="h-4 w-4" />
-                    Create Branch
-                  </h4>
-                  <p className="text-sm text-gray-600 mb-3">
-                    Create a branch from an existing version
-                  </p>
-                  <Button size="sm" variant="outline">
-                    Select Version to Branch
-                  </Button>
-                </div>
-
-                <div className="p-4 border rounded-lg">
-                  <h4 className="font-medium mb-2 flex items-center gap-2">
-                    <RotateCcw className="h-4 w-4" />
-                    Rollback
-                  </h4>
-                  <p className="text-sm text-gray-600 mb-3">
-                    Rollback to a previous version
-                  </p>
-                  <Button size="sm" variant="outline">
-                    Select Version to Rollback
+                  <Button
+                    size="sm"
+                    onClick={handleCreateNewVersion}
+                    disabled={createVersion.isPending}
+                  >
+                    {createVersion.isPending ? t('creatingVersion') : t('createNewVersion')}
                   </Button>
                 </div>
               </CardContent>
             </Card>
 
-            {/* Version Statistics */}
             <Card>
               <CardHeader>
-                <CardTitle className="text-lg">Version Statistics</CardTitle>
+                <CardTitle className="text-lg">{t('versionStatistics')}</CardTitle>
               </CardHeader>
               <CardContent>
-                <VersionStats testCaseId={testCaseId} />
+                <VersionStats testCaseId={testCaseId} enabled={enabled} />
               </CardContent>
             </Card>
           </div>
-
-          {/* Version Operations Guide */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Version Operations Guide</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                  <h4 className="font-medium mb-3 flex items-center gap-2">
-                    <Tag className="h-4 w-4" />
-                    Version Control Features
-                  </h4>
-                  <ul className="space-y-2 text-sm text-gray-600">
-                    <li>• <strong>Semantic Versioning:</strong> v1.0.0 format with major.minor.patch</li>
-                    <li>• <strong>Branching:</strong> Create feature branches from any version</li>
-                    <li>• <strong>Merging:</strong> Merge branches back to main line</li>
-                    <li>• <strong>Rollback:</strong> Revert to any previous version</li>
-                    <li>• <strong>Comparison:</strong> Detailed diff between versions</li>
-                  </ul>
-                </div>
-                <div>
-                  <h4 className="font-medium mb-3 flex items-center gap-2">
-                    <Lock className="h-4 w-4" />
-                    Workflow & Security
-                  </h4>
-                  <ul className="space-y-2 text-sm text-gray-600">
-                    <li>• <strong>Draft Status:</strong> Work on versions before publishing</li>
-                    <li>• <strong>Review Process:</strong> Optional review before approval</li>
-                    <li>• <strong>Version Locking:</strong> Prevent conflicts during editing</li>
-                    <li>• <strong>Access Control:</strong> Role-based permissions</li>
-                    <li>• <strong>Audit Trail:</strong> Complete history of changes</li>
-                  </ul>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
         </TabsContent>
       </Tabs>
     </div>
   );
 };
 
-// Component for version statistics
-const VersionStats: React.FC<{ testCaseId: number }> = ({ testCaseId }) => {
-  const [stats, setStats] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
+const VersionStats: React.FC<{ testCaseId: number; enabled: boolean }> = ({
+  testCaseId,
+  enabled,
+}) => {
+  const { t } = useTranslation();
+  const statsQuery = useTestCaseVersionStats(testCaseId, enabled && !!testCaseId);
 
-  React.useEffect(() => {
-    const fetchStats = async () => {
-      try {
-        const data = await versioningApi.getVersionStats(testCaseId);
-        setStats(data);
-      } catch (error) {
-        console.error('Error fetching stats:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchStats();
-  }, [testCaseId]);
-
-  if (loading) {
-    return <div className="text-center py-4">Loading statistics...</div>;
+  if (statsQuery.isLoading) {
+    return (
+      <div className="py-4 text-center text-slate-500 dark:text-slate-400">
+        {t('loadingStatistics')}
+      </div>
+    );
   }
 
-  if (!stats) {
-    return <div className="text-center py-4 text-gray-500">No statistics available</div>;
+  if (statsQuery.isError || !statsQuery.data) {
+    return (
+      <div className="py-4 text-center text-slate-500 dark:text-slate-400">
+        {t('noStatisticsAvailable')}
+      </div>
+    );
   }
+
+  const stats = statsQuery.data;
+
+  const tiles: Array<{ label: string; value: number; className: string }> = [
+    {
+      label: t('totalVersions'),
+      value: stats.total_versions,
+      className: 'bg-blue-50 text-blue-700 dark:bg-blue-950/30 dark:text-blue-400',
+    },
+    {
+      label: t('publishedVersions'),
+      value: stats.published_versions,
+      className: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400',
+    },
+    {
+      label: t('draftVersions'),
+      value: stats.draft_versions,
+      className: 'bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-400',
+    },
+    {
+      label: t('branchCount'),
+      value: stats.branches,
+      className: 'bg-purple-50 text-purple-700 dark:bg-purple-950/30 dark:text-purple-400',
+    },
+  ];
 
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-4">
-        <div className="text-center p-3 bg-blue-50 rounded">
-          <div className="text-2xl font-bold text-blue-600">{stats.total_versions}</div>
-          <div className="text-sm text-gray-600">Total Versions</div>
-        </div>
-        <div className="text-center p-3 bg-green-50 rounded">
-          <div className="text-2xl font-bold text-green-600">{stats.published_versions}</div>
-          <div className="text-sm text-gray-600">Published</div>
-        </div>
-        <div className="text-center p-3 bg-yellow-50 rounded">
-          <div className="text-2xl font-bold text-yellow-600">{stats.draft_versions}</div>
-          <div className="text-sm text-gray-600">Drafts</div>
-        </div>
-        <div className="text-center p-3 bg-purple-50 rounded">
-          <div className="text-2xl font-bold text-purple-600">{stats.branches}</div>
-          <div className="text-sm text-gray-600">Branches</div>
-        </div>
+        {tiles.map((tile) => (
+          <div key={tile.label} className={`rounded p-3 text-center ${tile.className}`}>
+            <div className="text-2xl font-bold">{tile.value}</div>
+            <div className="text-sm text-slate-600 dark:text-slate-400">{tile.label}</div>
+          </div>
+        ))}
       </div>
-      
+
       {stats.current_version && (
-        <div className="text-center p-3 bg-gray-50 rounded">
-          <div className="text-sm text-gray-600">Current Version</div>
+        <div className="rounded bg-slate-50 p-3 text-center dark:bg-slate-900/50">
+          <div className="text-sm text-slate-600 dark:text-slate-400">{t('currentVersion')}</div>
           <div className="font-medium">{stats.current_version}</div>
         </div>
       )}

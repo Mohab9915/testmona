@@ -219,6 +219,66 @@ def create_branch(
         raise HTTPException(status_code=400, detail=str(e))
 
 
+@router.post("/versions/{version_id}/approve")
+def approve_version(
+    version_id: int,
+    approval_data: dict | None = None,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+    versioning_service: VersioningService = Depends(get_versioning_service)
+):
+    """Approve a draft version so it can be published."""
+    version = versioning_service.get_version(version_id)
+    require_version_permission(current_user, db, version, "write")
+
+    try:
+        approved = versioning_service.approve_version(
+            version_id=version_id,
+            approved_by=get_user_id(current_user),
+            comments=(approval_data or {}).get("comments"),
+        )
+        return {
+            "id": approved.id,
+            "version_string": approved.version_string,
+            "status": approved.status.value,
+            "title": approved.title,
+            "approved_at": approved.approved_at.isoformat() if approved.approved_at else None,
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/versions/{version_id}/publish")
+def publish_version(
+    version_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+    versioning_service: VersioningService = Depends(get_versioning_service)
+):
+    """Publish an approved version, making it the current state of the test case.
+
+    Publishing writes the version snapshot back onto the test case row and is what
+    makes the next created version increment its patch number.
+    """
+    version = versioning_service.get_version(version_id)
+    require_version_permission(current_user, db, version, "write")
+
+    try:
+        published = versioning_service.publish_version(
+            version_id=version_id,
+            published_by=get_user_id(current_user),
+        )
+        return {
+            "id": published.id,
+            "version_string": published.version_string,
+            "status": published.status.value,
+            "title": published.title,
+            "published_at": published.published_at.isoformat() if published.published_at else None,
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
 @router.post("/test-cases/{test_case_id}/rollback")
 def rollback_to_version(
     test_case_id: int,

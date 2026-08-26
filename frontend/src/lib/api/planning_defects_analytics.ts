@@ -312,6 +312,15 @@ export const auditAPI = {
     const response = await api.get(`/audit-trails/${id}`);
     return response.data;
   },
+  // Full change history for one entity, newest first.
+  getEntityHistory: async (
+    entityType: string,
+    entityId: number,
+    signal?: AbortSignal,
+  ): Promise<EntityHistory> => {
+    const response = await api.get(`/audit-trails/entity/${entityType}/${entityId}`, { signal });
+    return response.data;
+  },
   getProjectActivitySummary: async (projectId: number, days: number) => {
     const response = await api.get(`/audit-trails/project/${projectId}/summary?days=${days}`);
     return response.data;

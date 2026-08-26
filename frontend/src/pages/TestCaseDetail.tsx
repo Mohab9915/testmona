@@ -10,6 +10,7 @@ import {
   Edit,
   Eye,
   FileText,
+  GitBranch,
   History,
   PanelRightClose,
   PanelRightOpen,
@@ -24,6 +25,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
 import { WatchButton } from '@/components/WatchButton';
+import { EntityHistoryPanel } from '@/components/audit/EntityHistoryPanel';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useDateFormat } from '@/hooks/useDateFormat';
 import { useToast } from '@/hooks/use-toast';
@@ -482,6 +484,7 @@ export function TestCaseDetail() {
   };
 
   const revisionsPath = effectiveProjectId ? `/projects/${effectiveProjectId}/test-cases/${testCase?.project_seq ?? testCase?.id}/revisions` : `/test-cases/${testCase?.project_seq ?? testCase?.id}/revisions`;
+  const versionsPath = effectiveProjectId ? `/projects/${effectiveProjectId}/test-cases/${testCase?.project_seq ?? testCase?.id}/versions` : `/test-cases/${testCase?.project_seq ?? testCase?.id}/versions`;
   const executionHistoryPath = effectiveProjectId ? `/projects/${effectiveProjectId}/test-cases/${testCase?.project_seq ?? testCase?.id}/execution-history` : `/test-cases/${testCase?.project_seq ?? testCase?.id}/execution-history`;
   const getLinkedRequirementPath = (requirement: Requirement) => (
     effectiveProjectId ? `/projects/${effectiveProjectId}/requirements/${requirement.id}` : null
@@ -521,6 +524,7 @@ export function TestCaseDetail() {
     );
   };
   const openRevisionsPage = () => navigate(revisionsPath);
+  const openVersionsPage = () => navigate(versionsPath);
   const openExecutionHistoryPage = () => navigate(executionHistoryPath);
 
   if (loading || isValidatingProject) {
@@ -596,6 +600,10 @@ export function TestCaseDetail() {
                 <Button variant="outline" onClick={handleShare} className="h-10 justify-center">
                   <Share2 className={`${isRTL ? 'ml-2' : 'mr-2'} h-4 w-4`} />
                   {t('copyLink')}
+                </Button>
+                <Button variant="outline" onClick={openVersionsPage} className="h-10 justify-center">
+                  <GitBranch className={`${isRTL ? 'ml-2' : 'mr-2'} h-4 w-4`} />
+                  {t('versionManagementNav')}
                 </Button>
                 <WatchButton entityType="test_case" entityId={testCase.id} />
                 <Button
@@ -1027,6 +1035,10 @@ export function TestCaseDetail() {
                 )}
               </CardContent>
             </Card>
+
+            {testCase?.id && (
+              <EntityHistoryPanel entityType="test_case" entityId={testCase.id} limit={8} />
+            )}
 
             {(revisionsLoading || revisions.length > 0) && (
               <Card id="revision-history" className="border-slate-200 shadow-xs dark:border-slate-800">

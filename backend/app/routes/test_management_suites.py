@@ -194,6 +194,9 @@ def register_suite_routes(app):
         if not rbac.has_permission(current_user, "write", db_test_suite.project_id, db):
             raise HTTPException(status_code=403, detail="Not authorized to update this test suite")
 
+        from ..services.audit_service import audit_snapshot, audit_change_payload
+        _audit_before = audit_snapshot(db_test_suite, test_suite.model_fields_set)
+
         db_test_suite = crud.update_test_suite(db, test_suite_id=test_suite_id, test_suite=test_suite)
 
         counts = crud.get_test_case_counts_by_suite(db, [db_test_suite.id])
@@ -204,15 +207,17 @@ def register_suite_routes(app):
             from ..schemas_audit import AuditTrailCreate
             from ..models import AuditAction, EntityType
             audit_service = get_audit_service(db)
-            audit_data = AuditTrailCreate(
-                user_id=current_user.id if current_user else None,
-                action=AuditAction.UPDATE.value,
-                entity_type=EntityType.TEST_SUITE.value,
-                entity_id=db_test_suite.id,
-                project_id=db_test_suite.project_id,
-                description=f"Test suite updated: {db_test_suite.name or 'Untitled'}",
-            )
-            audit_service.create_audit_trail(audit_data)
+            _audit_changes = audit_change_payload(_audit_before, db_test_suite)
+            if _audit_changes["field_changes"]:
+                audit_service.create_audit_trail(AuditTrailCreate(
+                    user_id=current_user.id if current_user else None,
+                    action=AuditAction.UPDATE.value,
+                    entity_type=EntityType.TEST_SUITE.value,
+                    entity_id=db_test_suite.id,
+                    project_id=db_test_suite.project_id,
+                    **_audit_changes,
+                    description=f"Test suite updated: {db_test_suite.name or 'Untitled'}",
+                ))
         except Exception:
             logger.exception("Failed to create audit trail for test suite update")
 

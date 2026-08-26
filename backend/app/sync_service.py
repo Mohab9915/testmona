@@ -695,6 +695,14 @@ class SyncService:
         )
     
     @staticmethod
+    def list_work_item_types(integration: Dict[str, Any], timeout: int = 30) -> Dict[str, Any]:
+        """Work item types for an Azure DevOps integration; empty for other trackers."""
+        if (integration.get("tracker_type") or "").lower() != "azure-devops":
+            return {"success": False, "message": "Not an Azure DevOps integration", "work_item_types": []}
+        client = SyncService.create_azure_devops_client(integration, timeout=timeout)
+        return client.list_work_item_types()
+
+    @staticmethod
     def create_linear_client(integration: Dict[str, Any], timeout: int = 30) -> LinearClient:
         """
         Create a Linear client from integration configuration.
@@ -889,6 +897,12 @@ class SyncService:
             elif tracker_type == 'azure-devops':
                 client = SyncService.create_azure_devops_client(integration, timeout=30)
                 issue_data = SyncService.map_defect_to_azure_devops(defect)
+                # "Bug" only exists in the Agile/Scrum/CMMI process templates. A
+                # project on the Basic template has Issue/Epic/Task instead, so the
+                # type is configurable per integration and defaults to Bug.
+                configured_type = (integration.get("sync_config") or {}).get("work_item_type")
+                if configured_type:
+                    issue_data["work_item_type"] = configured_type
                 
                 if action == 'create':
                     result = client.create_work_item(

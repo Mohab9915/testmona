@@ -164,6 +164,64 @@ class VersioningService:
         self.db.refresh(version)
         return version
     
+    def _apply_version_to_test_case(self, version: TestCaseVersion) -> None:
+        """Write a version's snapshot back onto the live test case row.
+
+        Shared by publish_version and rollback_to_version -- both make a stored
+        version the current state of the test case.
+        """
+        test_case = self.db.query(TestCase).filter(
+            TestCase.id == version.test_case_id,
+            self._active_test_case_filter(),
+        ).first()
+        if not test_case:
+            return
+
+        test_case.title = version.title
+        test_case.test_type = version.test_type
+        test_case.preconditions = version.preconditions
+        test_case.steps = version.steps
+        test_case.expected_result = version.expected_result
+        test_case.priority = version.priority
+        # Resolve the version's comma-string snapshot back to normalized Tag rows.
+        from ..crud_modules.tags import resolve_or_create_tags, sync_tags_cache
+        test_case.tags = resolve_or_create_tags(
+            self.db, test_case.project_id,
+            [t.strip() for t in (version.tags or "").split(",") if t.strip()],
+        )
+        sync_tags_cache(test_case)
+        self._update_custom_fields_from_version(version.test_case_id, version.custom_fields_data)
+
+    def approve_version(
+        self, version_id: int, approved_by: int, comments: Optional[str] = None
+    ) -> TestCaseVersion:
+        """Move a draft or in-review version to APPROVED so it can be published.
+
+        publish_version refuses anything that is not APPROVED, and create_version
+        always produces DRAFT, so without this step nothing could ever be published
+        and version numbering would stay pinned at v1.0.0 forever.
+        """
+        version = self.get_version(version_id)
+        if not version:
+            raise ValueError("Version not found")
+        if version.status == VersionStatus.PUBLISHED:
+            raise ValueError("Version is already published")
+        if version.status == VersionStatus.ARCHIVED:
+            raise ValueError("Archived versions cannot be approved")
+
+        now = datetime.now(UTC)
+        version.status = VersionStatus.APPROVED
+        version.reviewed_by = approved_by
+        version.reviewed_at = now
+        version.approved_by = approved_by
+        version.approved_at = now
+        if comments:
+            version.review_comments = comments
+
+        self.db.commit()
+        self.db.refresh(version)
+        return version
+
     def publish_version(self, version_id: int, published_by: int) -> TestCaseVersion:
         """Publish a version"""
         version = self.get_version(version_id)
@@ -176,29 +234,8 @@ class VersioningService:
         version.status = VersionStatus.PUBLISHED
         version.published_at = datetime.now(UTC)
         
-        # Update the actual test case with this version's data
-        test_case = self.db.query(TestCase).filter(
-            TestCase.id == version.test_case_id,
-            self._active_test_case_filter(),
-        ).first()
-        if test_case:
-            test_case.title = version.title
-            test_case.test_type = version.test_type
-            test_case.preconditions = version.preconditions
-            test_case.steps = version.steps
-            test_case.expected_result = version.expected_result
-            test_case.priority = version.priority
-            # Resolve the version's comma-string snapshot back to normalized Tag rows.
-            from ..crud_modules.tags import resolve_or_create_tags, sync_tags_cache
-            test_case.tags = resolve_or_create_tags(
-                self.db, test_case.project_id,
-                [t.strip() for t in (version.tags or "").split(",") if t.strip()],
-            )
-            sync_tags_cache(test_case)
+        self._apply_version_to_test_case(version)
 
-            # Update custom fields
-            self._update_custom_fields_from_version(version.test_case_id, version.custom_fields_data)
-        
         self.db.commit()
         self.db.refresh(version)
         return version
@@ -225,9 +262,15 @@ class VersioningService:
                 changed_fields={"action": "rollback", "target_version": target_version.version_string}
             ),
             created_by=rollback_by,
-            parent_version_id=target_version_id
         )
-        
+
+        # Record provenance without inheriting the target version numbers. A
+        # rollback is a NEW state of the test case, so it has to sort above the
+        # version it replaces -- reusing the target numbers would duplicate a
+        # version string and leave get_latest_version pointing at the superseded
+        # version while the test case held the rolled-back content.
+        rollback_version.parent_version_id = target_version_id
+
         # Copy data from target version
         rollback_version.title = target_version.title
         rollback_version.test_type = target_version.test_type
@@ -237,7 +280,19 @@ class VersioningService:
         rollback_version.priority = target_version.priority
         rollback_version.tags = target_version.tags
         rollback_version.custom_fields_data = target_version.custom_fields_data
-        
+
+        # A rollback is an applied change, not a proposal: mark it published and
+        # write the restored content back onto the test case. Without this the
+        # rollback would only append to history and leave the live row untouched.
+        now = datetime.now(UTC)
+        rollback_version.status = VersionStatus.PUBLISHED
+        rollback_version.reviewed_by = rollback_by
+        rollback_version.reviewed_at = now
+        rollback_version.approved_by = rollback_by
+        rollback_version.approved_at = now
+        rollback_version.published_at = now
+        self._apply_version_to_test_case(rollback_version)
+
         self.db.commit()
         self.db.refresh(rollback_version)
         

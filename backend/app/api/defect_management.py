@@ -674,6 +674,32 @@ def test_issue_tracker_connection(
     result = SyncService.test_connection(integration_dict)
     return result
 
+@router.get("/projects/{project_id}/issue-tracker-integrations/{integration_id}/work-item-types")
+def get_integration_work_item_types(
+    project_id: int,
+    integration_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    """Work item types available in the linked Azure DevOps project.
+
+    Lets the integration form offer the project's real types rather than
+    assuming "Bug", which does not exist on the Basic process template.
+    """
+    if not has_permission(current_user, "view", project_id, db):
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    integration = _get_project_integration_or_404(db, project_id, integration_id)
+
+    from app.sync_service import SyncService
+    return SyncService.list_work_item_types({
+        'tracker_type': integration.tracker_type,
+        'api_url': integration.api_url,
+        'api_token': integration.api_token,
+        'project_key': integration.project_key,
+    })
+
+
 @router.post("/projects/{project_id}/defects-management/{defect_id}/sync-with-external")
 def sync_defect_with_external(
     project_id: int,
@@ -748,14 +774,20 @@ def sync_defect_with_external(
         app_name_setting = crud.get_system_setting(db, key="app_name")
         app_name = app_name_setting.value.strip() if app_name_setting and app_name_setting.value else "TestMona"
 
+        # severity/priority/status are Enum columns on Defect. Every tracker
+        # mapper treats them as plain strings (priority.lower(), sanitize_text),
+        # so hand over the enum values rather than the members themselves.
+        def _plain(value):
+            return getattr(value, "value", value)
+
         defect_dict = {
             'defect_id': defect.defect_id,
             'app_name': app_name,
             'title': defect.title,
             'description': defect.description,
-            'severity': defect.severity,
-            'priority': defect.priority,
-            'status': defect.status,
+            'severity': _plain(defect.severity),
+            'priority': _plain(defect.priority),
+            'status': _plain(defect.status),
             'steps_to_reproduce': defect.steps_to_reproduce,
             'expected_result': defect.expected_result,
             'actual_result': defect.actual_result,
@@ -773,7 +805,10 @@ def sync_defect_with_external(
             'api_url': integration.api_url,
             'api_token': integration.api_token,
             'project_key': integration.project_key,
-            'name': integration.name
+            'name': integration.name,
+            # Per-integration options, e.g. Azure DevOps work_item_type. The
+            # Basic process template has no "Bug" type, so it must be settable.
+            'sync_config': integration.sync_config or {},
         }
         
         result = SyncService.sync_defect_to_external(defect_dict, integration_dict, action=sync_data.action or 'create')
@@ -784,12 +819,19 @@ def sync_defect_with_external(
         else:
             logger.error(f"Sync failure: Defect {defect.defect_id} sync failed. Error: {result.get('message')}")
         
-        # Update defect with sync result
-        defect.external_issue_id = result.get('issue_id')
-        defect.external_issue_url = result.get('issue_url')
-        defect.external_sync_status = 'synced'
-        defect.sync_status = 'synced'
-        defect.sync_error = None
+        # Only record a link when the push actually succeeded. Writing these
+        # unconditionally wiped an existing external_issue_id on failure and
+        # marked the defect "synced" when nothing had been created.
+        if result.get('success'):
+            defect.external_issue_id = result.get('issue_id')
+            defect.external_issue_url = result.get('issue_url')
+            defect.external_sync_status = 'synced'
+            defect.sync_status = 'synced'
+            defect.sync_error = None
+        else:
+            defect.external_sync_status = 'error'
+            defect.sync_status = 'error'
+            defect.sync_error = str(result.get('message') or 'Sync failed')[:2000]
         db.commit()
         
         return result

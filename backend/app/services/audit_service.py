@@ -505,6 +505,66 @@ class AuditService:
         
         return self.create_audit_trail(audit_data)
 
+def _audit_normalize(value):
+    """Render a column value as a comparable, JSON-safe scalar.
+
+    Enums become their value, datetimes their ISO form, everything else str().
+    None is preserved so an unset field is distinguishable from an empty one.
+    """
+    if value is None:
+        return None
+    value = getattr(value, "value", value)
+    if isinstance(value, datetime):
+        return value.isoformat()
+    if isinstance(value, (int, float, bool, str)):
+        return value
+    return str(value)
+
+
+def audit_snapshot(obj, fields) -> Dict[str, Any]:
+    """Capture the current value of `fields` off an ORM object.
+
+    Call this BEFORE the write; pair it with :func:audit_diff afterwards. Only
+    attributes that exist on the object are captured, so passing the raw keys of
+    an update payload is safe.
+    """
+    return {
+        f: _audit_normalize(getattr(obj, f, None))
+        for f in (fields or [])
+        if hasattr(obj, f)
+    }
+
+
+def audit_diff(before: Dict[str, Any], obj) -> Dict[str, Any]:
+    """Compare a snapshot against the object's post-write state.
+
+    Returns {field: {"from": old, "to": new}} for fields that actually moved, so
+    a no-op save records no diff rather than a wall of unchanged values.
+    """
+    diff = {}
+    for field, old in (before or {}).items():
+        new = _audit_normalize(getattr(obj, field, None))
+        if old != new:
+            diff[field] = {"from": old, "to": new}
+    return diff
+
+
+def audit_change_payload(before: Dict[str, Any], obj) -> Dict[str, Any]:
+    """Build the old_values / new_values / field_changes trio for AuditTrailCreate.
+
+    Values are None rather than {} when nothing changed, so an unchanged save is
+    stored as "no diff recorded" instead of an empty object.
+    """
+    diff = audit_diff(before, obj)
+    if not diff:
+        return {"old_values": None, "new_values": None, "field_changes": None}
+    return {
+        "old_values": {k: v["from"] for k, v in diff.items()},
+        "new_values": {k: v["to"] for k, v in diff.items()},
+        "field_changes": diff,
+    }
+
+
 # Dependency to get audit service
 def get_audit_service(db: Session = Depends(get_db)) -> AuditService:
     return AuditService(db)

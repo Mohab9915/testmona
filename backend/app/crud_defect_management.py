@@ -539,6 +539,17 @@ def get_defect_history(db: Session, defect_id: int, skip: int = 0, limit: int = 
 
 # Issue Tracker Integrations CRUD Functions
 
+def get_issue_tracker_integration(db: Session, integration_id: int):
+    """Get a single integration by id.
+
+    The api layer (_get_project_integration_or_404, and the sync-with-external
+    endpoint) calls this; without it every per-integration route raised
+    AttributeError and surfaced as a 500.
+    """
+    return db.query(models.IssueTrackerIntegration).filter(
+        models.IssueTrackerIntegration.id == integration_id
+    ).first()
+
 def get_issue_tracker_integrations(db: Session, project_id: int):
     """Get all integrations for a project"""
     return db.query(models.IssueTrackerIntegration).filter(

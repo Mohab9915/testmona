@@ -1,6 +1,6 @@
 // Issue-tracker Integrations tab, extracted from the SettingsPage monolith and
 // rebuilt on the shared settings primitives.
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link as LinkIcon, Plus, FolderTree, Loader2, RefreshCw, Edit, Trash2, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -15,7 +15,7 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { IssueTrackerIntegration } from '@/lib/defectManagementAPI';
+import { defectManagementAPI, IssueTrackerIntegration } from '@/lib/defectManagementAPI';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useDateFormat } from '@/hooks/useDateFormat';
 import { useProjectPermissions } from '@/hooks/useProjectPermissions';
@@ -36,6 +36,17 @@ const TRACKER_TYPES: Array<{ value: string; label: string }> = [
   { value: 'asana', label: 'Asana' },
 ];
 
+// A Select item cannot use an empty string as its value, so "leave unset" needs
+// a sentinel. Unset means the backend default (Bug) applies.
+const WORK_ITEM_TYPE_UNSET = '__default__';
+
+// Offered before an integration has been saved, when the live list cannot be
+// fetched yet (it needs stored credentials). Spans the Agile/Scrum/CMMI and
+// Basic process templates.
+const FALLBACK_WORK_ITEM_TYPES = [
+  'Bug', 'Issue', 'Task', 'User Story', 'Product Backlog Item', 'Requirement', 'Epic', 'Feature',
+];
+
 export function IntegrationsTab({ projectId }: { projectId?: number }) {
   const { t } = useTranslation();
   const { formatDateTime } = useDateFormat();
@@ -44,6 +55,11 @@ export function IntegrationsTab({ projectId }: { projectId?: number }) {
   const { canManageProject } = useProjectPermissions(data.selectedProjectId);
 
   const [formOpen, setFormOpen] = useState(false);
+  // Live work item types for the Azure DevOps project. Only fetchable for an
+  // already-saved integration, since it needs stored credentials -- a brand new
+  // one falls back to the common types below until it has been saved once.
+  const [witTypes, setWitTypes] = useState<string[]>([]);
+  const [witLoading, setWitLoading] = useState(false);
   const [editing, setEditing] = useState<IssueTrackerIntegration | null>(null);
   const [form, setForm] = useState<IntegrationForm>(emptyIntegrationForm());
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -71,11 +87,29 @@ export function IntegrationsTab({ projectId }: { projectId?: number }) {
       project_key: integration.project_key || '',
       sync_direction: integration.sync_direction,
       is_active: integration.is_active,
+      work_item_type: integration.sync_config?.work_item_type || '',
     });
     setErrors({});
     setTouched({});
     setFormOpen(true);
   };
+
+  useEffect(() => {
+    if (!formOpen || form.tracker_type !== 'azure-devops' || !editing || !data.selectedProjectId) {
+      setWitTypes([]);
+      return;
+    }
+    let cancelled = false;
+    setWitLoading(true);
+    defectManagementAPI
+      .getIntegrationWorkItemTypes(data.selectedProjectId, editing.id)
+      .then((res) => {
+        if (!cancelled && res.success) setWitTypes(res.work_item_types.map((w) => w.name));
+      })
+      .catch(() => { /* fall back to the static list */ })
+      .finally(() => { if (!cancelled) setWitLoading(false); });
+    return () => { cancelled = true; };
+  }, [formOpen, form.tracker_type, editing, data.selectedProjectId]);
 
   const submit = async () => {
     setTouched({ name: true, api_url: true, api_token: true, project_key: true });
@@ -262,6 +296,35 @@ export function IntegrationsTab({ projectId }: { projectId?: number }) {
               {fieldError('project_key') && <p className="text-xs text-destructive">{fieldError('project_key')}</p>}
               <p className="text-xs text-muted-foreground">{ph.projectKeyDesc}</p>
             </div>
+
+            {form.tracker_type === 'azure-devops' && (
+              <div className="space-y-2">
+                <Label htmlFor="i-wit">{t('workItemTypeLabel')}</Label>
+                <Select
+                  value={form.work_item_type || WORK_ITEM_TYPE_UNSET}
+                  onValueChange={(value) =>
+                    setForm({ ...form, work_item_type: value === WORK_ITEM_TYPE_UNSET ? '' : value })
+                  }
+                >
+                  <SelectTrigger id="i-wit">
+                    <SelectValue placeholder={t('workItemTypeDefault')} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={WORK_ITEM_TYPE_UNSET}>{t('workItemTypeDefault')}</SelectItem>
+                    {(witTypes.length ? witTypes : FALLBACK_WORK_ITEM_TYPES).map((name) => (
+                      <SelectItem key={name} value={name}>{name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  {witLoading
+                    ? t('workItemTypeLoading')
+                    : witTypes.length
+                      ? t('workItemTypeFromProject')
+                      : t('workItemTypeSaveFirst')}
+                </p>
+              </div>
+            )}
 
             <div className="space-y-2">
               <Label htmlFor="i-direction">{t('syncDirection')}</Label>

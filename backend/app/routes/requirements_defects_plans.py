@@ -1739,6 +1739,11 @@ def register_requirements_defects_plans_routes(app):
         # change (and never re-notify when other fields are edited).
         prior_assigned_to = db_requirement.assigned_to
 
+        # Snapshot the fields this request touches so the audit trail can record
+        # a real before/after diff rather than just "something changed".
+        from ..services.audit_service import audit_snapshot, audit_change_payload
+        _audit_before = audit_snapshot(db_requirement, update_fields)
+
         try:
             # One batch for the whole save: the watch broadcast queued inside
             # update_requirement and the assignment notice below are flushed once
@@ -1754,15 +1759,17 @@ def register_requirements_defects_plans_routes(app):
                 from ..schemas_audit import AuditTrailCreate
                 from ..models import AuditAction, EntityType
                 audit_service = get_audit_service(db)
-                audit_data = AuditTrailCreate(
-                    user_id=current_user.id if current_user else None,
-                    action=AuditAction.UPDATE.value,
-                    entity_type=EntityType.REQUIREMENT.value,
-                    entity_id=db_requirement.id,
-                    project_id=db_requirement.project_id,
-                    description=f"Requirement updated: {db_requirement.title or 'Untitled'}",
-                )
-                audit_service.create_audit_trail(audit_data)
+                _audit_changes = audit_change_payload(_audit_before, db_requirement)
+                if _audit_changes["field_changes"]:
+                    audit_service.create_audit_trail(AuditTrailCreate(
+                        user_id=current_user.id if current_user else None,
+                        action=AuditAction.UPDATE.value,
+                        entity_type=EntityType.REQUIREMENT.value,
+                        entity_id=db_requirement.id,
+                        project_id=db_requirement.project_id,
+                        **_audit_changes,
+                        description=f"Requirement updated: {db_requirement.title or 'Untitled'}",
+                    ))
             except Exception as e:
                 logger.warning(f"Failed to create audit trail for requirement update: {e}")
 
@@ -2129,6 +2136,10 @@ def register_requirements_defects_plans_routes(app):
         watch_before = {
             k: getattr(db_defect, k) for k in update_data if k in _DEFECT_WATCH_FIELDS
         }
+        # Audit snapshots every field this request touches, not just the watched
+        # subset, so an empty diff reliably means nothing actually changed.
+        from ..services.audit_service import audit_snapshot, audit_change_payload
+        _audit_before = audit_snapshot(db_defect, update_data.keys())
         try:
             db_defect = update_defect(db, defect_id=defect_id, defect=defect)
         except IntegrityError as e:
@@ -2142,15 +2153,19 @@ def register_requirements_defects_plans_routes(app):
             from ..schemas_audit import AuditTrailCreate
             from ..models import AuditAction, EntityType
             audit_service = get_audit_service(db)
-            audit_data = AuditTrailCreate(
-                user_id=current_user.id if current_user else None,
-                action=AuditAction.UPDATE.value,
-                entity_type=EntityType.DEFECT.value,
-                entity_id=db_defect.id,
-                project_id=db_defect.project_id,
-                description=f"Defect updated: {db_defect.title or 'Untitled'}",
-            )
-            audit_service.create_audit_trail(audit_data)
+            _audit_changes = audit_change_payload(_audit_before, db_defect)
+            # A save that changed nothing is not an update: skip the row entirely
+            # rather than logging "Defect updated" over an identical record.
+            if _audit_changes["field_changes"]:
+                audit_service.create_audit_trail(AuditTrailCreate(
+                    user_id=current_user.id if current_user else None,
+                    action=AuditAction.UPDATE.value,
+                    entity_type=EntityType.DEFECT.value,
+                    entity_id=db_defect.id,
+                    project_id=db_defect.project_id,
+                    **_audit_changes,
+                    description=f"Defect updated: {db_defect.title or 'Untitled'}",
+                ))
         except Exception as e:
             logger.warning(f"Failed to create audit trail for defect update: {e}")
 
@@ -3305,6 +3320,9 @@ def register_requirements_defects_plans_routes(app):
             schemas.MilestoneStatus.CANCELLED,
         } and "actual_date" not in update_data:
             update_data["actual_date"] = None
+        from ..services.audit_service import audit_snapshot, audit_change_payload
+        _audit_before = audit_snapshot(db_milestone, update_data.keys())
+
         db_milestone = update_milestone(
             db,
             milestone_id=milestone_id,
@@ -3323,15 +3341,17 @@ def register_requirements_defects_plans_routes(app):
             from ..schemas_audit import AuditTrailCreate
             from ..models import AuditAction, EntityType
             audit_service = get_audit_service(db)
-            audit_data = AuditTrailCreate(
-                user_id=current_user.id if current_user else None,
-                action=AuditAction.UPDATE.value,
-                entity_type=EntityType.MILESTONE.value,
-                entity_id=db_milestone.id,
-                project_id=db_milestone.project_id,
-                description=f"Milestone updated: {db_milestone.title or 'Untitled'}",
-            )
-            audit_service.create_audit_trail(audit_data)
+            _audit_changes = audit_change_payload(_audit_before, db_milestone)
+            if _audit_changes["field_changes"]:
+                audit_service.create_audit_trail(AuditTrailCreate(
+                    user_id=current_user.id if current_user else None,
+                    action=AuditAction.UPDATE.value,
+                    entity_type=EntityType.MILESTONE.value,
+                    entity_id=db_milestone.id,
+                    project_id=db_milestone.project_id,
+                    **_audit_changes,
+                    description=f"Milestone updated: {db_milestone.title or 'Untitled'}",
+                ))
         except Exception as e:
             logger.warning(f"Failed to create audit trail for milestone update: {e}")
 

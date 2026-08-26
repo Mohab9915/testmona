@@ -34,6 +34,8 @@ const TestCases = lazyPage(() => import('@/pages/TestCases'), 'TestCases');
 const TestCaseDetail = lazyPage(() => import('@/pages/TestCaseDetail'), 'TestCaseDetail');
 const TestCaseEdit = lazyPage(() => import('@/pages/TestCaseEdit'), 'TestCaseEdit');
 const TestCaseRevisions = lazyPage(() => import('@/pages/TestCaseRevisions'), 'TestCaseRevisions');
+const TestCaseVersions = lazyPage(() => import('@/pages/TestCaseVersions'), 'TestCaseVersions');
+const ProjectActivity = lazyPage(() => import('@/pages/ProjectActivity'), 'ProjectActivity');
 const TestCaseExecutionHistory = lazyPage(() => import('@/pages/TestCaseExecutionHistory'), 'TestCaseExecutionHistory');
 const TestCaseExecute = lazyPage(() => import('@/pages/TestCaseExecute'), 'TestCaseExecute');
 const TestCaseExecution = lazyPage(() => import('@/pages/TestCaseExecution'), 'TestCaseExecution');
@@ -307,6 +309,16 @@ function AppWithRouter() {
             <TestCaseRevisions />
           </ProjectGuard>
         } />
+        <Route path="/projects/:projectId/test-cases/:id/versions" element={
+          <ProjectGuard>
+            <TestCaseVersions />
+          </ProjectGuard>
+        } />
+        <Route path="/projects/:projectId/activity" element={
+          <ProjectGuard>
+            <ProjectActivity />
+          </ProjectGuard>
+        } />
         <Route path="/projects/:projectId/test-cases/:id/execution-history" element={
           <ProjectGuard>
             <TestCaseExecutionHistory />
@@ -553,6 +565,11 @@ function AppWithRouter() {
         <Route path="/test-cases/:id/revisions" element={
           <ProjectGuard>
             <TestCaseRevisions />
+          </ProjectGuard>
+        } />
+        <Route path="/test-cases/:id/versions" element={
+          <ProjectGuard>
+            <TestCaseVersions />
           </ProjectGuard>
         } />
         <Route path="/test-cases/:id/execution-history" element={

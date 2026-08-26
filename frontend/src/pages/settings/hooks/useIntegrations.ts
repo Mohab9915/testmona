@@ -20,6 +20,8 @@ export interface IntegrationForm {
   project_key: string;
   sync_direction: string;
   is_active: boolean;
+  /** Azure DevOps only; persisted inside sync_config, not as a column. */
+  work_item_type: string;
 }
 
 export const emptyIntegrationForm = (): IntegrationForm => ({
@@ -31,6 +33,7 @@ export const emptyIntegrationForm = (): IntegrationForm => ({
   project_key: '',
   sync_direction: 'bidirectional',
   is_active: true,
+  work_item_type: '',
 });
 
 export function useIntegrations(preferredProjectId?: number) {
@@ -98,12 +101,23 @@ export function useIntegrations(preferredProjectId?: number) {
     editing: IssueTrackerIntegration | null,
   ): Promise<boolean> => {
     if (!selectedProjectId) return false;
+    // work_item_type is a UI-level field: the backend keeps it in the
+    // sync_config JSON blob, so fold it in and drop the flat key. Existing
+    // sync_config entries are preserved.
+    const { work_item_type, ...rest } = form;
+    const payload: Partial<IssueTrackerIntegration> = { ...rest };
+    if (form.tracker_type === 'azure-devops') {
+      payload.sync_config = {
+        ...(editing?.sync_config ?? {}),
+        ...(work_item_type ? { work_item_type } : {}),
+      };
+    }
     try {
       if (editing) {
-        await defectManagementAPI.updateIssueTrackerIntegration(selectedProjectId, editing.id, form);
+        await defectManagementAPI.updateIssueTrackerIntegration(selectedProjectId, editing.id, payload);
         success(t('integrationUpdatedSuccessfully'));
       } else {
-        await defectManagementAPI.createIssueTrackerIntegration(selectedProjectId, form);
+        await defectManagementAPI.createIssueTrackerIntegration(selectedProjectId, payload);
         success(t('integrationCreatedSuccessfully'));
       }
       await loadIntegrations();

@@ -592,15 +592,26 @@ def register_case_routes(app):
             from ..schemas_audit import AuditTrailCreate
             from ..models import AuditAction, EntityType
             audit_service = get_audit_service(db)
-            audit_data = AuditTrailCreate(
-                user_id=current_user.id,
-                action=AuditAction.UPDATE.value,
-                entity_type=EntityType.TEST_CASE.value,
-                entity_id=db_test_case.id,
-                project_id=original_project_id,
-                description=f"Test case updated: {db_test_case.title or 'Untitled'}",
-            )
-            audit_service.create_audit_trail(audit_data)
+            # changed_fields already excludes untouched values, so an empty list
+            # means the save was a no-op: record nothing rather than logging
+# "Test case updated" over an identical record.
+            _audit_diff = {
+                field: {"from": _normalize(original_data.get(field)),
+                        "to": _normalize(update_fields.get(field))}
+                for field in changed_fields
+            }
+            if _audit_diff:
+                audit_service.create_audit_trail(AuditTrailCreate(
+                    user_id=current_user.id,
+                    action=AuditAction.UPDATE.value,
+                    entity_type=EntityType.TEST_CASE.value,
+                    entity_id=db_test_case.id,
+                    project_id=original_project_id,
+                    old_values={f: v["from"] for f, v in _audit_diff.items()},
+                    new_values={f: v["to"] for f, v in _audit_diff.items()},
+                    field_changes=_audit_diff,
+                    description=f"Test case updated: {db_test_case.title or 'Untitled'}",
+                ))
         except Exception:
             logger.exception("Failed to create audit trail for test case update %s", test_case_id)
 
