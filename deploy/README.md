@@ -24,6 +24,22 @@ Expect **10–20 minutes**. The frontend build is the slow part: `vite build` on
 shared core with 1 GB of RAM is why the script creates 4 GB of swap before
 touching Docker.
 
+The build runs detached from the terminal, so an SSH drop will not kill it.
+Follow it live, or after reconnecting, with:
+
+```bash
+tail -f ~/testmona/build.log
+```
+
+For long sessions generally, run inside `tmux` so a dropped connection leaves
+the shell intact:
+
+```bash
+tmux new -s deploy
+```
+
+Reattach after reconnecting with `tmux attach -t deploy`.
+
 ## Open the firewall
 
 GCP blocks inbound ports by default. Run this **from your workstation or Cloud

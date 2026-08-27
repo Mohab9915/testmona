@@ -12,6 +12,11 @@
 # which is the only genuinely memory-hungry step.
 set -euo pipefail
 
+# swapon, mkswap and friends live in /sbin and /usr/sbin, which Debian leaves off
+# a non-root PATH. Without this the swap detection below silently "fails open"
+# and tries to recreate a swapfile that is already in use.
+export PATH="/usr/local/sbin:/usr/sbin:/sbin:$PATH"
+
 REPO="${REPO:-https://github.com/Mohab9915/testmona.git}"
 APP_DIR="${APP_DIR:-$HOME/testmona}"
 SWAP_GB="${SWAP_GB:-4}"
@@ -22,7 +27,18 @@ warn() { printf '\033[1;33m !\033[0m %s\n' "$*"; }
 # ---------------------------------------------------------------- swap -----
 # vite build peaks well above what 1 GB allows. Swap is the difference between
 # a slow build and an OOM-killed one, and costs nothing but disk.
-if ! swapon --show | grep -q '/swapfile'; then
+if grep -q '/swapfile' /proc/swaps 2>/dev/null; then
+  log "Swap already active, skipping"
+elif [ -e /swapfile ]; then
+  # Present but not active: a previous run was interrupted between creating and
+  # enabling it. Enable rather than recreate - fallocate refuses to touch a file
+  # already in use, which is what turns a re-run into a hard failure.
+  log "Swapfile exists but is inactive, enabling it"
+  sudo chmod 600 /swapfile
+  sudo mkswap /swapfile >/dev/null 2>&1 || true
+  sudo swapon /swapfile 2>/dev/null || true
+  grep -q '^/swapfile' /etc/fstab || echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab >/dev/null
+else
   log "Creating ${SWAP_GB}GB swap"
   sudo fallocate -l "${SWAP_GB}G" /swapfile
   sudo chmod 600 /swapfile
@@ -32,8 +48,6 @@ if ! swapon --show | grep -q '/swapfile'; then
   # A shared-core VM benefits from swapping late rather than eagerly.
   sudo sysctl -w vm.swappiness=10 >/dev/null
   grep -q '^vm.swappiness' /etc/sysctl.conf || echo 'vm.swappiness=10' | sudo tee -a /etc/sysctl.conf >/dev/null
-else
-  log "Swap already present, skipping"
 fi
 
 # -------------------------------------------------------------- docker -----
@@ -102,8 +116,20 @@ else
 fi
 
 # --------------------------------------------------------------- build -----
-log "Building and starting (first build is slow on a shared core - 10-20 min)"
-sudo docker compose up -d --build
+# The build takes 10-20 minutes on a shared core, which is long enough that an
+# SSH drop will kill it mid-way. setsid detaches it from the terminal so a lost
+# connection cannot take the build with it; output is tee'd so it is followable
+# either live or after reconnecting.
+BUILD_LOG="${APP_DIR}/build.log"
+log "Building and starting - 10-20 min on a shared core"
+log "Detached from the terminal; follow with: tail -f ${BUILD_LOG}"
+if sudo setsid bash -c "cd '${APP_DIR}' && docker compose up -d --build" > "${BUILD_LOG}" 2>&1 < /dev/null; then
+  log "Build finished"
+else
+  warn "Build failed - last 30 lines:"
+  tail -30 "${BUILD_LOG}"
+  exit 1
+fi
 
 # -------------------------------------------------------------- backup -----
 # The database is ~2 MB. There is no snapshot schedule on the free tier, so a
