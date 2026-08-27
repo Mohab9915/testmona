@@ -1,0 +1,23 @@
+# Pull prebuilt images instead of compiling on the host.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml pull
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+# Images are published to ghcr.io by .github/workflows/docker-build.yml on every
+# push to main. Building on a small VM is slow and can fail outright: `vite
+# build` needs more memory than a 1GB host gives it, whereas pulling a finished
+# image is inbound traffic, which is neither slow nor metered.
+#
+# `image:` here replaces the `build:` in the base file for these services, so
+# nothing is compiled locally.
+
+services:
+  backend:
+    image: ${BACKEND_IMAGE:-ghcr.io/mohab9915/testmona-backend:latest}
+    build: !reset null
+    pull_policy: always
+
+  frontend:
+    image: ${FRONTEND_IMAGE:-ghcr.io/mohab9915/testmona-frontend:latest}
+    build: !reset null
+    pull_policy: always

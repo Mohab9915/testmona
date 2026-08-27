@@ -24,6 +24,8 @@ concurrency:
 
 permissions:
   contents: read
+  # Required to publish to ghcr.io.
+  packages: write
 
 jobs:
   compose:
@@ -51,8 +53,11 @@ jobs:
           - service: frontend
             context: frontend
             dockerfile: frontend/Dockerfile
+            # Must match the runtime default in docker-compose.yml: the API base
+            # is baked into the bundle at build time, and a relative /api keeps
+            # the app same-origin behind nginx.
             build-args: |
-              VITE_API_URL=http://localhost:8000
+              VITE_API_URL=/api
 
     steps:
       - name: Checkout
@@ -61,13 +66,43 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
-      - name: Build image
+      # ghcr.io rejects uppercase in image paths, and repository owners are
+      # frequently mixed-case.
+      - name: Resolve image name
+        id: img
+        run: echo "name=ghcr.io/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')-${{ matrix.service }}" >> "$GITHUB_OUTPUT"
+
+      # Pull requests only verify that the image builds. Publishing is limited to
+      # pushes on the default branch, and a fork's token cannot write packages.
+      - name: Log in to ghcr.io
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
         uses: docker/build-push-action@v7
         with:
           context: ${{ matrix.context }}
           file: ${{ matrix.dockerfile }}
-          push: false
-          load: false
+          push: ${{ github.event_name != 'pull_request' }}
           build-args: ${{ matrix.build-args }}
+          tags: |
+            ${{ steps.img.outputs.name }}:latest
+            ${{ steps.img.outputs.name }}:${{ github.sha }}
           cache-from: type=gha,scope=${{ matrix.service }}
           cache-to: type=gha,mode=max,scope=${{ matrix.service }}
+
+      - name: Summary
+        if: github.event_name != 'pull_request'
+        run: |
+          {
+            echo "### ${{ matrix.service }}"
+            echo ""
+            echo '```'
+            echo "${{ steps.img.outputs.name }}:latest"
+            echo "${{ steps.img.outputs.name }}:${{ github.sha }}"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -20,6 +20,10 @@ export PATH="/usr/local/sbin:/usr/sbin:/sbin:$PATH"
 REPO="${REPO:-https://github.com/Mohab9915/testmona.git}"
 APP_DIR="${APP_DIR:-$HOME/testmona}"
 SWAP_GB="${SWAP_GB:-4}"
+# USE_PREBUILT=1 pulls images published by CI instead of compiling here.
+# Building on a 1GB shared-core host takes 10-20 minutes and needs the swap
+# below; pulling takes about a minute and is inbound, so unmetered.
+USE_PREBUILT="${USE_PREBUILT:-0}"
 
 log()  { printf '\n\033[1;34m==>\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33m !\033[0m %s\n' "$*"; }
@@ -121,10 +125,17 @@ fi
 # connection cannot take the build with it; output is tee'd so it is followable
 # either live or after reconnecting.
 BUILD_LOG="${APP_DIR}/build.log"
-log "Building and starting - 10-20 min on a shared core"
+if [ "$USE_PREBUILT" = "1" ]; then
+  COMPOSE_ARGS="-f docker-compose.yml -f docker-compose.prod.yml"
+  log "Pulling prebuilt images from ghcr.io"
+  BUILD_CMD="docker compose $COMPOSE_ARGS pull && docker compose $COMPOSE_ARGS up -d"
+else
+  log "Building locally - 10-20 min on a shared core"
+  BUILD_CMD="docker compose up -d --build"
+fi
 log "Detached from the terminal; follow with: tail -f ${BUILD_LOG}"
-if sudo setsid bash -c "cd '${APP_DIR}' && docker compose up -d --build" > "${BUILD_LOG}" 2>&1 < /dev/null; then
-  log "Build finished"
+if sudo setsid bash -c "cd '${APP_DIR}' && ${BUILD_CMD}" > "${BUILD_LOG}" 2>&1 < /dev/null; then
+  log "Done"
 else
   warn "Build failed - last 30 lines:"
   tail -30 "${BUILD_LOG}"

@@ -90,7 +90,43 @@ restart, or the browser will block API calls as cross-origin.
 
 Once Caddy is fronting the app, close port 3000 and open 80/443 instead.
 
-## Updating
+## Using prebuilt images (recommended)
+
+`.github/workflows/docker-build.yml` builds both images on every push to
+`main` and publishes them to ghcr.io. Pulling those beats building on the VM
+in every respect: GitHub runners have 4 cores and 16 GB, so a build takes ~2
+minutes instead of 10-20, it cannot run out of memory, and pulling is *inbound*
+traffic, which the free tier does not meter.
+
+### One-time: make the packages public
+
+ghcr.io packages are private by default, so the VM cannot pull them anonymously.
+After the first successful workflow run, for **each** of
+`testmona-backend` and `testmona-frontend`:
+
+GitHub → your profile → **Packages** → select the package → **Package settings**
+→ **Change visibility** → **Public**.
+
+Skip this and the pull fails with `denied` or `manifest unknown`. The
+alternative is logging the VM into ghcr.io with a PAT, which is more moving
+parts for a public repo.
+
+### First boot, pulling instead of building
+
+```bash
+USE_PREBUILT=1 bash -c "$(curl -fsSL https://raw.githubusercontent.com/Mohab9915/testmona/main/deploy/gcp-setup.sh)"
+```
+
+### Updating thereafter
+
+```bash
+cd ~/testmona && git pull && docker compose -f docker-compose.yml -f docker-compose.prod.yml pull && docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+```
+
+About a minute, with no compilation on the VM at all. Wait for the workflow to
+go green before pulling, or you will get the previous image.
+
+## Updating (building on the VM)
 
 ```bash
 cd ~/testmona && git pull && sudo docker compose up -d --build
@@ -99,10 +135,9 @@ cd ~/testmona && git pull && sudo docker compose up -d --build
 `.env` and the `backend_data` volume are untouched by a rebuild, so
 configuration and the database survive.
 
-Rebuilding on the VM costs 10–20 minutes each time. If that becomes tiresome,
-build in CI and pull instead: `.github/workflows/docker-build.yml` already runs
-buildx — adding `push: true` and a `ghcr.io` login turns it into a deployment
-pipeline, and the VM then only pulls.
+Rebuilding on the VM costs 10–20 minutes each time and needs the swap created
+by the setup script — `vite build` exceeds what 1 GB gives it. Prefer the
+prebuilt path above.
 
 ## Backups
 
