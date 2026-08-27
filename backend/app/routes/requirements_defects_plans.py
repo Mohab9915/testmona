@@ -1960,6 +1960,16 @@ def register_requirements_defects_plans_routes(app):
         # Tell the assignee they have a new defect (no-op when self/unassigned).
         notify_defect_assignee(db, db_defect, current_user)
 
+        # Push to any tracker configured for sync-on-create, so a defect reaches
+        # Azure DevOps (or Jira, GitHub, ...) without anyone clicking Sync. This
+        # never raises: the defect is already committed, and a tracker outage must
+        # not turn a successful creation into a 500.
+        try:
+            from ..services.defect_autosync import auto_sync_new_defect
+            auto_sync_new_defect(db, db_defect)
+        except Exception:
+            logger.exception("Auto-sync failed for defect %s", getattr(db_defect, "defect_id", None))
+
         return db_defect
 
     @app.get("/defects", response_model=List[schemas.Defect],
@@ -2579,6 +2589,19 @@ def register_requirements_defects_plans_routes(app):
             ))
         except Exception as e:
             logger.warning(f"Failed to create audit trail for defect link: {e}")
+
+        # Third defect-creation path (auto-sync on the defect-link path): raising a
+        # defect from a test-run execution creates it here, inline with the link,
+        # not via POST /defects or /defects-management. Only push when this request
+        # actually created the defect - linking an existing one must not re-push it.
+        if payload.new_defect is not None:
+            try:
+                from ..services.defect_autosync import auto_sync_new_defect
+                auto_sync_new_defect(db, defect)
+            except Exception:
+                logger.exception(
+                    "Auto-sync failed for defect %s", getattr(defect, "defect_id", None)
+                )
 
         return crud.get_test_result_defect_link(db, link.id)
 

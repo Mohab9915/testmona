@@ -5004,4 +5004,8 @@ export const en = {
   workItemTypeLoading: 'Loading types from Azure DevOps…',
   workItemTypeFromProject: 'Types available in the linked Azure DevOps project.',
   workItemTypeSaveFirst: 'Save the integration to load the types your project actually has. “Bug” does not exist on the Basic process template.',
+  autoSyncOnCreateLabel: 'Create issues automatically',
+  autoSyncOnCreateDesc: 'Push every new defect to this tracker as soon as it is created, without clicking Sync. A tracker failure never blocks the defect — it is recorded on the defect instead.',
+  apiVersionLabel: 'API version',
+  apiVersionDesc: 'Azure requires an api-version on every request. Change this only if your resource is pinned to a different version.',
 };

@@ -14,13 +14,19 @@ logger = logging.getLogger(__name__)
 
 AI_MANAGER_CONFIG_KEY = "ai_manager_config"
 AI_MANAGER_USAGE_KEY = "ai_manager_usage"
-SUPPORTED_AI_PROVIDERS = {"openai", "openrouter", "anthropic", "huggingface", "litellm"}
+SUPPORTED_AI_PROVIDERS = {"openai", "openrouter", "anthropic", "huggingface", "litellm", "azure", "azure_foundry"}
 DEFAULT_MODELS = {
     "openai": "gpt-4o-mini",
     "openrouter": "openai/gpt-4o-mini",
     "anthropic": "claude-3-5-haiku-latest",
     "huggingface": "openai/gpt-oss-20b",
     "litellm": "gpt-4o-mini",
+    # Azure routes by deployment name, not model id. This is only a
+    # placeholder: it must match a deployment in the target resource.
+    "azure": "gpt-4o-mini",
+    # Foundry selects the deployment through the request body, but the value
+    # is still the deployment name shown in the Foundry portal.
+    "azure_foundry": "gpt-4o-mini",
 }
 DEFAULT_BASE_URLS = {
     "openai": "https://api.openai.com/v1",
@@ -28,6 +34,21 @@ DEFAULT_BASE_URLS = {
     "anthropic": "https://api.anthropic.com/v1",
     "huggingface": "https://router.huggingface.co/v1",
     "litellm": "http://localhost:4000/v1",
+    # Resource endpoint only - the deployment path is appended at call time.
+    "azure": "https://YOUR-RESOURCE.openai.azure.com",
+    # Foundry resource root. NOT the /api/projects/<project> endpoint, which is
+    # the Agents SDK surface and has no chat-completions route.
+    "azure_foundry": "https://YOUR-RESOURCE.services.ai.azure.com",
+}
+
+# Both Azure surfaces require an explicit api-version on every request.
+# Overridable per provider via the api_version setting, because resources can
+# be pinned to versions other than these defaults.
+AZURE_OPENAI_API_VERSION = "2024-10-21"
+AZURE_FOUNDRY_API_VERSION = "2024-05-01-preview"
+DEFAULT_API_VERSIONS = {
+    "azure": AZURE_OPENAI_API_VERSION,
+    "azure_foundry": AZURE_FOUNDRY_API_VERSION,
 }
 MAX_RECENT_USAGE_EVENTS = 50
 DEFAULT_AI_REQUEST_TIMEOUT_SECONDS = 60
@@ -45,12 +66,60 @@ AI_LIMIT_WARNING_THRESHOLD = 80
 REASONING_TOKEN_HEADROOM = 2048
 
 
+def adapt_unsupported_parameter(body: Dict[str, Any], error: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Rewrite a chat body that a model rejected for one unsupported parameter.
+
+    Reasoning-class models (o-series, gpt-5 family) changed the chat API:
+    ``max_tokens`` became ``max_completion_tokens``, and some reject a
+    ``temperature`` other than the default. The API names the offending
+    parameter, so rather than maintaining a model allow-list that goes stale
+    with every release, adapt once and retry.
+
+    Returns a new body, or None when the error is not an adaptable one.
+    """
+    code = str(error.get("code") or "")
+    message = str(error.get("message") or "")
+
+    # Two distinct codes show up for the same class of problem: the parameter is
+    # rejected outright (unsupported_parameter) or only its value is
+    # (unsupported_value, e.g. temperature must stay at the default). Message
+    # matching is the fallback for deployments that omit the code.
+    adaptable = code in {"unsupported_parameter", "unsupported_value"} or (
+        "not supported" in message or "does not support" in message
+    )
+    if not adaptable:
+        return None
+
+    param = str(error.get("param") or "")
+    if not param:
+        if "max_tokens" in message:
+            param = "max_tokens"
+        elif "temperature" in message:
+            param = "temperature"
+
+    if param == "max_tokens" and "max_tokens" in body:
+        adapted = dict(body)
+        adapted["max_completion_tokens"] = adapted.pop("max_tokens")
+        return adapted
+
+    if param == "temperature" and "temperature" in body:
+        # These models only accept their default temperature; omitting the
+        # parameter is the documented way to get it.
+        adapted = dict(body)
+        adapted.pop("temperature")
+        return adapted
+
+    return None
+
+
 class AIProviderConfigPayload(BaseModel):
     provider: str = Field(..., description="Supported values: openai, openrouter, anthropic, huggingface, litellm")
     enabled: bool = False
     api_key: Optional[str] = Field(default=None, max_length=4000)
     model: Optional[str] = Field(default=None, max_length=160)
     base_url: Optional[str] = Field(default=None, max_length=500)
+    # Azure only: the api-version query parameter. Ignored by other providers.
+    api_version: Optional[str] = Field(default=None, max_length=40)
     request_timeout_seconds: int = Field(default=DEFAULT_AI_REQUEST_TIMEOUT_SECONDS, ge=5, le=MAX_AI_REQUEST_TIMEOUT_SECONDS)
     monthly_token_limit: Optional[int] = Field(default=None, ge=1, le=1_000_000_000)
 
@@ -238,6 +307,7 @@ def default_ai_config() -> Dict[str, Any]:
                 "api_key": None,
                 "model": DEFAULT_MODELS[provider],
                 "base_url": DEFAULT_BASE_URLS[provider],
+                "api_version": DEFAULT_API_VERSIONS.get(provider),
                 "request_timeout_seconds": DEFAULT_AI_REQUEST_TIMEOUT_SECONDS,
                 "monthly_token_limit": None,
             }
@@ -935,24 +1005,65 @@ async def generate_ai_completion(
         completion_tokens = 0
         try:
             async with httpx.AsyncClient(timeout=httpx.Timeout(timeout)) as client:
-                if provider in {"openai", "openrouter", "huggingface", "litellm"}:
+                if provider in {"openai", "openrouter", "huggingface", "litellm", "azure", "azure_foundry"}:
                     headers = {"Content-Type": "application/json"}
-                    if api_key:
-                        headers["Authorization"] = f"Bearer {api_key}"
+                    params = None
+                    if provider in {"azure", "azure_foundry"}:
+                        # Both Azure surfaces speak the OpenAI request/response shape
+                        # but authenticate with an api-key header rather than a bearer
+                        # token, and both require an api-version query parameter.
+                        # They differ in how the deployment is selected:
+                        #   azure          -> deployment in the URL path
+                        #   azure_foundry  -> deployment in the body "model" field
+                        #                     against a single /models route
+                        if api_key:
+                            headers["api-key"] = api_key
+                        api_version = (
+                            provider_config.get("api_version")
+                            or DEFAULT_API_VERSIONS.get(provider)
+                        )
+                        params = {"api-version": api_version}
+                        if provider == "azure_foundry":
+                            url = f"{base_url}/models/chat/completions"
+                        else:
+                            url = f"{base_url}/openai/deployments/{model}/chat/completions"
+                    else:
+                        if api_key:
+                            headers["Authorization"] = f"Bearer {api_key}"
+                        url = f"{base_url}/chat/completions"
                     messages = []
                     if system_prompt:
                         messages.append({"role": "system", "content": system_prompt})
                     messages.append({"role": "user", "content": request.prompt})
-                    response = await client.post(
-                        f"{base_url}/chat/completions",
-                        headers=headers,
-                        json={
-                            "model": model,
-                            "messages": messages,
-                            "max_tokens": request.max_tokens + REASONING_TOKEN_HEADROOM,
-                            "temperature": request.temperature,
-                        },
-                    )
+                    body = {
+                        "model": model,
+                        "messages": messages,
+                        "max_tokens": request.max_tokens + REASONING_TOKEN_HEADROOM,
+                        "temperature": request.temperature,
+                    }
+                    response = await client.post(url, headers=headers, params=params, json=body)
+
+                    # A model may reject a parameter this API version still sends
+                    # (max_tokens -> max_completion_tokens on reasoning models).
+                    # The response names the parameter, so adapt and retry rather
+                    # than failing with a message only a developer could act on.
+                    retries_left = 3
+                    while response.status_code == 400 and retries_left > 0:
+                        try:
+                            error_detail = (response.json() or {}).get("error") or {}
+                        except Exception:
+                            break
+                        adapted = adapt_unsupported_parameter(body, error_detail)
+                        if adapted is None:
+                            break
+                        logger.info(
+                            "Retrying %s with adapted parameters: %s",
+                            provider, error_detail.get("param") or error_detail.get("message"),
+                        )
+                        body = adapted
+                        retries_left -= 1
+                        response = await client.post(url, headers=headers, params=params, json=body)
+
                     response.raise_for_status()
                     data = response.json()
                     choices = data.get("choices") or []

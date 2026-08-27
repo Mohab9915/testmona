@@ -695,6 +695,23 @@ class SyncService:
         )
     
     @staticmethod
+    def _normalize_azure_result(result: Dict[str, Any]) -> Dict[str, Any]:
+        """Map the Azure client's work_item_* keys onto the issue_* contract.
+
+        Callers (the sync endpoint, auto-sync) read issue_id / issue_url. Without
+        this a successful Azure push reported success while recording no link,
+        leaving the defect unlinked and re-syncable forever.
+        """
+        if not isinstance(result, dict):
+            return result
+        mapped = dict(result)
+        if "issue_id" not in mapped and mapped.get("work_item_id") is not None:
+            mapped["issue_id"] = str(mapped["work_item_id"])
+        if "issue_url" not in mapped and mapped.get("work_item_url"):
+            mapped["issue_url"] = mapped["work_item_url"]
+        return mapped
+
+    @staticmethod
     def list_work_item_types(integration: Dict[str, Any], timeout: int = 30) -> Dict[str, Any]:
         """Work item types for an Azure DevOps integration; empty for other trackers."""
         if (integration.get("tracker_type") or "").lower() != "azure-devops":
@@ -911,7 +928,8 @@ class SyncService:
                         work_item_type=issue_data['work_item_type'],
                         priority=issue_data['priority']
                     )
-                    return result
+                    # The client speaks work_item_*; every caller reads issue_*.
+                    return SyncService._normalize_azure_result(result)
                 else:  # update
                     if defect.get('external_issue_id'):
                         result = client.update_work_item(
@@ -920,7 +938,7 @@ class SyncService:
                             description=issue_data['description'],
                             priority=issue_data['priority']
                         )
-                        return result
+                        return SyncService._normalize_azure_result(result)
                     else:
                         return {
                             'success': False,

@@ -88,6 +88,7 @@ export function IntegrationsTab({ projectId }: { projectId?: number }) {
       sync_direction: integration.sync_direction,
       is_active: integration.is_active,
       work_item_type: integration.sync_config?.work_item_type || '',
+      auto_sync_on_create: Boolean(integration.sync_config?.auto_sync_on_create),
     });
     setErrors({});
     setTouched({});
@@ -325,6 +326,18 @@ export function IntegrationsTab({ projectId }: { projectId?: number }) {
                 </p>
               </div>
             )}
+
+            <div className="flex items-start justify-between gap-4 rounded-lg border p-3">
+              <div className="space-y-0.5">
+                <Label htmlFor="i-autosync">{t('autoSyncOnCreateLabel')}</Label>
+                <p className="text-xs text-muted-foreground">{t('autoSyncOnCreateDesc')}</p>
+              </div>
+              <Switch
+                id="i-autosync"
+                checked={form.auto_sync_on_create}
+                onCheckedChange={(checked) => setForm({ ...form, auto_sync_on_create: checked })}
+              />
+            </div>
 
             <div className="space-y-2">
               <Label htmlFor="i-direction">{t('syncDirection')}</Label>

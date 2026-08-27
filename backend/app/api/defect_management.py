@@ -230,12 +230,26 @@ def create_defect_management(
     if not has_permission(current_user, "write", project_id, db):
         raise HTTPException(status_code=403, detail="Write permission required")
     
-    return crud_defect_management.create_defect_management(
+    db_defect = crud_defect_management.create_defect_management(
         db=db,
         defect=defect,
         project_id=project_id,
         reported_by=current_user.id
     )
+
+    # Defects raised from a test-run execution come through here, not POST
+    # /defects, so the sync-on-create hook has to exist on both paths. Never
+    # raises: the defect is already committed and a tracker outage must not
+    # turn a successful creation into a 500.
+    try:
+        from app.services.defect_autosync import auto_sync_new_defect
+        auto_sync_new_defect(db, db_defect)
+    except Exception:
+        logger.exception(
+            "Auto-sync failed for defect %s", getattr(db_defect, "defect_id", None)
+        )
+
+    return db_defect
 
 @router.put("/projects/{project_id}/defects-management/{defect_id}", response_model=schemas.DefectManagement)
 def update_defect_management(
@@ -822,16 +836,17 @@ def sync_defect_with_external(
         # Only record a link when the push actually succeeded. Writing these
         # unconditionally wiped an existing external_issue_id on failure and
         # marked the defect "synced" when nothing had been created.
+        # Defect has external_sync_status / external_last_sync; there are no
+        # sync_status or sync_error columns, so assigning those silently set
+        # throwaway attributes. Failures are logged instead.
         if result.get('success'):
             defect.external_issue_id = result.get('issue_id')
             defect.external_issue_url = result.get('issue_url')
             defect.external_sync_status = 'synced'
-            defect.sync_status = 'synced'
-            defect.sync_error = None
+            defect.external_last_sync = datetime.now(UTC)
         else:
             defect.external_sync_status = 'error'
-            defect.sync_status = 'error'
-            defect.sync_error = str(result.get('message') or 'Sync failed')[:2000]
+            logger.error('Sync failed for defect %s: %s', defect.defect_id, result.get('message'))
         db.commit()
         
         return result

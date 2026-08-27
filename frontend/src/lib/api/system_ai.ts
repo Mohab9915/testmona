@@ -41,7 +41,7 @@ export const systemSettingsAPI = {
   },
 };
 
-export type AIProviderName = "openai" | "openrouter" | "anthropic" | "huggingface" | "litellm";
+export type AIProviderName = "openai" | "openrouter" | "anthropic" | "huggingface" | "litellm" | "azure" | "azure_foundry";
 
 export interface AIProviderConfig {
   provider: AIProviderName;
@@ -49,6 +49,8 @@ export interface AIProviderConfig {
   api_key?: string;
   model: string;
   base_url: string;
+  /** Azure only: the api-version query parameter. Ignored by other providers. */
+  api_version?: string | null;
   request_timeout_seconds: number;
   monthly_token_limit?: number | null;
   token_configured?: boolean;

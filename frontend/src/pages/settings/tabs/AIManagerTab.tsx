@@ -29,6 +29,13 @@ const defaultAIProviders: AIProviderConfig[] = [
   { provider: 'anthropic', enabled: false, model: 'claude-3-5-haiku-latest', base_url: 'https://api.anthropic.com/v1', request_timeout_seconds: 60, monthly_token_limit: null },
   { provider: 'huggingface', enabled: false, model: 'openai/gpt-oss-20b', base_url: 'https://router.huggingface.co/v1', request_timeout_seconds: 60, monthly_token_limit: null },
   { provider: 'litellm', enabled: false, model: 'gpt-4o-mini', base_url: 'http://localhost:4000/v1', request_timeout_seconds: 60, monthly_token_limit: null },
+  // Azure routes by deployment name: 'model' is the deployment, and base_url is
+  // the resource endpoint without the /openai/deployments path.
+  { provider: 'azure', enabled: false, model: 'gpt-4o-mini', base_url: 'https://YOUR-RESOURCE.openai.azure.com', api_version: '2024-10-21', request_timeout_seconds: 60, monthly_token_limit: null },
+  // Foundry: base_url is the resource root, NOT the /api/projects/<project>
+  // endpoint (that is the Agents SDK surface and has no chat route). 'model' is
+  // the deployment name from the Foundry portal.
+  { provider: 'azure_foundry', enabled: false, model: 'gpt-4o-mini', base_url: 'https://YOUR-RESOURCE.services.ai.azure.com', api_version: '2024-05-01-preview', request_timeout_seconds: 60, monthly_token_limit: null },
 ];
 
 const normalizeMonthlyTokenLimit = (value: unknown): number | null => {
@@ -77,6 +84,8 @@ const aiProviderLabels: Record<AIProviderName, string> = {
   anthropic: 'Claude',
   huggingface: 'Hugging Face',
   litellm: 'LiteLLM',
+  azure: 'Azure OpenAI',
+  azure_foundry: 'Azure AI Foundry',
 };
 
 const aiOperationLabel = (operation: string, t: (k: string) => string): string => {
@@ -943,6 +952,18 @@ export function AIManagerTab() {
                             <Label>{t('baseUrl')}</Label>
                             <Input value={provider.base_url} onChange={(event) => updateAIProvider(provider.provider, { base_url: event.target.value })} />
                           </div>
+                          {/* Both Azure surfaces require an api-version, and resources
+                              can be pinned to versions other than our defaults. */}
+                          {(provider.provider === 'azure' || provider.provider === 'azure_foundry') && (
+                            <div className="space-y-2 md:col-span-2 xl:col-span-5">
+                              <Label>{t('apiVersionLabel')}</Label>
+                              <Input
+                                value={provider.api_version ?? ''}
+                                onChange={(event) => updateAIProvider(provider.provider, { api_version: event.target.value })}
+                              />
+                              <p className="text-xs text-muted-foreground">{t('apiVersionDesc')}</p>
+                            </div>
+                          )}
                         </div>
                         </>
                         )}

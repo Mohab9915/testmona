@@ -22,6 +22,8 @@ export interface IntegrationForm {
   is_active: boolean;
   /** Azure DevOps only; persisted inside sync_config, not as a column. */
   work_item_type: string;
+  /** Push new defects to this tracker on creation. Also lives in sync_config. */
+  auto_sync_on_create: boolean;
 }
 
 export const emptyIntegrationForm = (): IntegrationForm => ({
@@ -34,6 +36,7 @@ export const emptyIntegrationForm = (): IntegrationForm => ({
   sync_direction: 'bidirectional',
   is_active: true,
   work_item_type: '',
+  auto_sync_on_create: false,
 });
 
 export function useIntegrations(preferredProjectId?: number) {
@@ -104,14 +107,15 @@ export function useIntegrations(preferredProjectId?: number) {
     // work_item_type is a UI-level field: the backend keeps it in the
     // sync_config JSON blob, so fold it in and drop the flat key. Existing
     // sync_config entries are preserved.
-    const { work_item_type, ...rest } = form;
+    const { work_item_type, auto_sync_on_create, ...rest } = form;
     const payload: Partial<IssueTrackerIntegration> = { ...rest };
-    if (form.tracker_type === 'azure-devops') {
-      payload.sync_config = {
-        ...(editing?.sync_config ?? {}),
-        ...(work_item_type ? { work_item_type } : {}),
-      };
-    }
+    // Both are UI-level fields the backend keeps inside the sync_config blob.
+    // auto_sync_on_create applies to every tracker; work_item_type is ADO-only.
+    payload.sync_config = {
+      ...(editing?.sync_config ?? {}),
+      auto_sync_on_create,
+      ...(form.tracker_type === 'azure-devops' && work_item_type ? { work_item_type } : {}),
+    };
     try {
       if (editing) {
         await defectManagementAPI.updateIssueTrackerIntegration(selectedProjectId, editing.id, payload);
