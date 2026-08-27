@@ -34,8 +34,11 @@ services:
           cpus: '${BACKEND_CPUS:-1.0}'
           memory: '${BACKEND_MEMORY_LIMIT:-512m}'
         reservations:
-          cpus: '0.5'
-          memory: '256m'
+          # Reservations must stay at or below the limits above, or the daemon
+          # refuses to create the container. Parameterised so a small host can
+          # lower both together.
+          cpus: '${BACKEND_CPUS_RESERVED:-0.25}'
+          memory: '${BACKEND_MEMORY_RESERVED:-192m}'
 
   frontend:
     build:
@@ -68,8 +71,8 @@ services:
           cpus: '${FRONTEND_CPUS:-1.0}'
           memory: '${FRONTEND_MEMORY_LIMIT:-512m}'
         reservations:
-          cpus: '0.5'
-          memory: '256m'
+          cpus: '${FRONTEND_CPUS_RESERVED:-0.1}'
+          memory: '${FRONTEND_MEMORY_RESERVED:-32m}'
 
   # Optional MariaDB backend. SQLite is the zero-config default; enable this
   # with `docker compose --profile mariadb up` and point DATABASE_URL at it:

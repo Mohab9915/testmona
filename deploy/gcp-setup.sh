@@ -106,12 +106,18 @@ DATABASE_URL=sqlite:////app/data/test_management.db
 ALLOWED_ORIGINS=${ORIGIN}
 VITE_API_URL=/api
 
-# 1 GB of RAM, shared with the OS and Docker. The app needs ~210 MB; these caps
-# leave room rather than dividing the box evenly.
+# 1 GB of RAM, shared with the OS and Docker. Measured usage is ~186 MB for the
+# backend and ~22 MB for nginx, so these caps leave headroom rather than
+# dividing the box evenly. Reservations must stay <= limits or the daemon
+# refuses to create the container.
 BACKEND_MEMORY_LIMIT=640m
-FRONTEND_MEMORY_LIMIT=128m
+BACKEND_MEMORY_RESERVED=192m
+FRONTEND_MEMORY_LIMIT=192m
+FRONTEND_MEMORY_RESERVED=32m
 BACKEND_CPUS=1.5
+BACKEND_CPUS_RESERVED=0.25
 FRONTEND_CPUS=0.5
+FRONTEND_CPUS_RESERVED=0.1
 EOF
   chmod 600 .env
   echo "    ALLOWED_ORIGINS=${ORIGIN}"
