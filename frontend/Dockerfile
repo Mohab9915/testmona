@@ -9,6 +9,13 @@ COPY package*.json ./
 RUN if [ -f package-lock.json ]; then npm ci; else npm install; fi
 
 COPY . .
+
+# V8 caps its own heap (~512MB by default on a 1GB host) and aborts on reaching
+# it rather than growing into swap - so adding swap alone does not rescue this
+# build on a small VM. Raise the ceiling so the allocation can spill to swap.
+# Overridable at build time: --build-arg NODE_HEAP_MB=4096 on a larger machine.
+ARG NODE_HEAP_MB=2048
+ENV NODE_OPTIONS=--max-old-space-size=${NODE_HEAP_MB}
 RUN npm run build
 
 FROM nginx:1.27-alpine
