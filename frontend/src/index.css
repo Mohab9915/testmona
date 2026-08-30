@@ -826,7 +826,7 @@ html[data-ui-density="compact"] {
 
 .compact-mode [role="dialog"] input,
 .compact-mode [role="dialog"] textarea,
-.compact-mode [role="dialog"] button {
+.compact-mode [role="dialog"] button:not([role="checkbox"]):not([role="switch"]):not([role="radio"]) {
   min-height: 30px;
 }
 

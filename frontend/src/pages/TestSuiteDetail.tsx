@@ -16,6 +16,7 @@ import {
   Folder,
   FolderMinus,
   FolderTree,
+  Link2,
   Loader2,
   Play,
   Plus,
@@ -277,6 +278,14 @@ export function TestSuiteDetail() {
   });
   const [testCaseFormError, setTestCaseFormError] = useState<string | null>(null);
   const [isCreatingCase, setIsCreatingCase] = useState(false);
+
+  // Assign existing test case dialog
+  const [isAssignDialogOpen, setIsAssignDialogOpen] = useState(false);
+  const [assignSearch, setAssignSearch] = useState('');
+  const [availableCases, setAvailableCases] = useState<TestCase[]>([]);
+  const [isLoadingAvailableCases, setIsLoadingAvailableCases] = useState(false);
+  const [assignSelectedIds, setAssignSelectedIds] = useState<number[]>([]);
+  const [isAssigning, setIsAssigning] = useState(false);
 
   // URL-driven selection so deep-links keep working after the section page was folded in.
   // 'unsectioned' is a virtual selection that scopes the test-case list to cases without
@@ -963,6 +972,83 @@ export function TestSuiteDetail() {
     }
   };
 
+  // ─── Assign existing test case ──────────────────────────────────────────
+  const openAssignDialog = async () => {
+    if (!numericProjectId || !numericSuiteId) return;
+    setAssignSearch('');
+    setAssignSelectedIds([]);
+    setIsAssignDialogOpen(true);
+    setIsLoadingAvailableCases(true);
+    try {
+      const data = await testCasesAPI.getAll(numericProjectId, undefined, undefined, 'title', 'asc', 0, 500);
+      const cases = normalizeTestCasesResponse(data).filter((tc) => tc.test_suite_id !== numericSuiteId);
+      setAvailableCases(cases);
+    } catch (err: any) {
+      toast({ title: t('error'), description: t('failedToAssignTestCases'), variant: 'destructive' });
+      setAvailableCases([]);
+    } finally {
+      setIsLoadingAvailableCases(false);
+    }
+  };
+
+  const closeAssignDialog = (force = false) => {
+    if (!force && isAssigning) return;
+    setIsAssignDialogOpen(false);
+  };
+
+  const filteredAvailableCases = useMemo(() => {
+    const trimmed = assignSearch.trim().toLowerCase();
+    if (!trimmed) return availableCases;
+    return availableCases.filter((tc) => tc.title.toLowerCase().includes(trimmed));
+  }, [availableCases, assignSearch]);
+
+  const toggleAssignSelection = (testCaseId: number) => {
+    setAssignSelectedIds((prev) =>
+      prev.includes(testCaseId) ? prev.filter((id) => id !== testCaseId) : [...prev, testCaseId],
+    );
+  };
+
+  const handleAssignSelected = async () => {
+    if (!numericSuiteId || assignSelectedIds.length === 0) return;
+    setIsAssigning(true);
+    const targets = [...assignSelectedIds];
+    // section_id must be explicitly cleared when moving a case to another suite,
+    // since its old section belongs to the old suite.
+    const results = await Promise.allSettled(
+      targets.map((id) => testCasesAPI.update(id, { test_suite_id: numericSuiteId, section_id: null })),
+    );
+    const successes = results
+      .map((r) => (r.status === 'fulfilled' ? r.value : null))
+      .filter(Boolean) as TestCase[];
+    const failureCount = results.length - successes.length;
+
+    if (successes.length > 0) {
+      setTestCases((prev) => [...prev, ...successes]);
+      setAvailableCases((prev) => prev.filter((tc) => !successes.some((s) => s.id === tc.id)));
+      setAssignSelectedIds((prev) => prev.filter((id) => !successes.some((s) => s.id === id)));
+      setTestSuite((prev) =>
+        prev
+          ? { ...prev, test_case_count: (prev.test_case_count ?? testCases.length) + successes.length }
+          : prev,
+      );
+      void loadSections();
+    }
+
+    if (failureCount === 0) {
+      toast({ title: t('success'), description: t('testCasesAssignedSuccessfully', { count: successes.length }) });
+      closeAssignDialog(true);
+    } else if (successes.length === 0) {
+      toast({ title: t('error'), description: t('failedToAssignTestCases'), variant: 'destructive' });
+    } else {
+      toast({
+        title: t('error'),
+        description: t('assignedPartially', { success: successes.length, failed: failureCount }),
+        variant: 'destructive',
+      });
+    }
+    setIsAssigning(false);
+  };
+
   const toggleTestCaseSelection = (testCaseId: number) => {
     setSelectedTestCases((prev) =>
       prev.includes(testCaseId) ? prev.filter((tcId) => tcId !== testCaseId) : [...prev, testCaseId],
@@ -1316,10 +1402,16 @@ export function TestSuiteDetail() {
         <CardHeader>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <CardTitle>{t('testCasesCount', { count: filteredTestCases.length })}</CardTitle>
-            <Button size="sm" onClick={openCreateCaseDialog}>
-              <Plus className={`h-4 w-4 ${isRTL ? 'ml-2' : 'mr-2'}`} />
-              {t('addNewTestCase')}
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button size="sm" variant="outline" onClick={openAssignDialog}>
+                <Link2 className={`h-4 w-4 ${isRTL ? 'ml-2' : 'mr-2'}`} />
+                {t('assignExistingTestCase')}
+              </Button>
+              <Button size="sm" onClick={openCreateCaseDialog}>
+                <Plus className={`h-4 w-4 ${isRTL ? 'ml-2' : 'mr-2'}`} />
+                {t('addNewTestCase')}
+              </Button>
+            </div>
           </div>
           <div className="mt-4 flex flex-col gap-3">
             <div className="flex flex-col gap-3 sm:flex-row">
@@ -1331,7 +1423,7 @@ export function TestSuiteDetail() {
                   value={searchInput}
                   placeholder={t('searchTestCasesPlaceholder')}
                   onChange={(e) => setSearchInput(e.target.value)}
-                  className={isRTL ? 'pr-10' : 'pl-10'}
+                  className={isRTL ? '!pr-10' : '!pl-10'}
                 />
               </div>
               <Select value={statusFilter} onValueChange={setStatusFilter}>
@@ -1437,10 +1529,16 @@ export function TestSuiteDetail() {
                 {testCases.length === 0 ? t('noTestCasesInSuite') : t('tryAdjustingSearchFilters')}
               </p>
               {testCases.length === 0 && (
-                <Button className="mt-4" size="sm" onClick={openCreateCaseDialog}>
-                  <Plus className={`h-4 w-4 ${isRTL ? 'ml-2' : 'mr-2'}`} />
-                  {t('addNewTestCase')}
-                </Button>
+                <div className="mt-4 flex items-center justify-center gap-2">
+                  <Button size="sm" variant="outline" onClick={openAssignDialog}>
+                    <Link2 className={`h-4 w-4 ${isRTL ? 'ml-2' : 'mr-2'}`} />
+                    {t('assignExistingTestCase')}
+                  </Button>
+                  <Button size="sm" onClick={openCreateCaseDialog}>
+                    <Plus className={`h-4 w-4 ${isRTL ? 'ml-2' : 'mr-2'}`} />
+                    {t('addNewTestCase')}
+                  </Button>
+                </div>
               )}
             </div>
           ) : (
@@ -2017,6 +2115,77 @@ export function TestSuiteDetail() {
             <Button onClick={handleCreateTestCase} disabled={!testCaseForm.title.trim() || isCreatingCase}>
               {isCreatingCase && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               {isCreatingCase ? t('creating') : t('createTestCase')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Assign existing test case dialog */}
+      <Dialog
+        open={isAssignDialogOpen}
+        onOpenChange={(open) => {
+          if (!open) closeAssignDialog();
+        }}
+      >
+        <DialogContent isRTL={isRTL} className="sm:max-w-[680px]">
+          <DialogHeader>
+            <DialogTitle>{t('assignExistingTestCase')}</DialogTitle>
+            <DialogDescription>{t('assignExistingTestCaseDescription')}</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div className="relative">
+              <Search
+                className={`absolute top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400 ${isRTL ? 'right-3' : 'left-3'}`}
+              />
+              <Input
+                value={assignSearch}
+                placeholder={t('searchTestCasesToAssignPlaceholder')}
+                onChange={(e) => setAssignSearch(e.target.value)}
+                className={isRTL ? '!pr-10' : '!pl-10'}
+              />
+            </div>
+            <div className="max-h-[50vh] space-y-1 overflow-y-auto rounded-md border p-2">
+              {isLoadingAvailableCases ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                </div>
+              ) : filteredAvailableCases.length === 0 ? (
+                <p className="py-8 text-center text-sm text-muted-foreground">
+                  {availableCases.length === 0 ? t('noTestCasesAvailableToAssign') : t('noMatchingTestCasesToAssign')}
+                </p>
+              ) : (
+                filteredAvailableCases.map((tc) => (
+                  <div
+                    key={tc.id}
+                    onClick={() => toggleAssignSelection(tc.id)}
+                    className="flex cursor-pointer items-start gap-3 rounded-md p-2 hover:bg-accent/60"
+                  >
+                    <Checkbox
+                      checked={assignSelectedIds.includes(tc.id)}
+                      onCheckedChange={() => toggleAssignSelection(tc.id)}
+                      onClick={(e) => e.stopPropagation()}
+                      className="mt-1 shrink-0"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium">{tc.title}</p>
+                      {tc.test_suite?.name && (
+                        <p className="truncate text-xs text-muted-foreground">
+                          {t('currentSuiteLabel')}: {tc.test_suite.name}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => closeAssignDialog()} disabled={isAssigning}>
+              {t('cancel')}
+            </Button>
+            <Button onClick={handleAssignSelected} disabled={assignSelectedIds.length === 0 || isAssigning}>
+              {isAssigning && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {t('assignSelectedCount', { count: assignSelectedIds.length })}
             </Button>
           </DialogFooter>
         </DialogContent>
