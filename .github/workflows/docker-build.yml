@@ -106,3 +106,24 @@ jobs:
             echo "${{ steps.img.outputs.name }}:${{ github.sha }}"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+
+  deploy:
+    name: Deploy to GCP VM
+    runs-on: ubuntu-latest
+    needs: images
+    # Never on PRs (a fork's secrets are unset anyway) and only on main - avoids
+    # redeploying on every branch this workflow happens to run on. Both a normal
+    # push and a manual workflow_dispatch (re-deploy without a new commit) qualify.
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    steps:
+      - name: Pull and restart on the VM
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script: |
+            set -e
+            cd ~/testmona
+            docker compose -f docker-compose.yml -f docker-compose.prod.yml pull
+            docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
