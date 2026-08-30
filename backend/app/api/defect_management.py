@@ -11,7 +11,7 @@ from app.services.mentions import project_member_users, resolve_mentions
 import logging
 import os
 import uuid
-from datetime import datetime
+from datetime import datetime, UTC
 import re
 import pathlib
 
