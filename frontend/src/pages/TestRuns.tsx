@@ -15,6 +15,16 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -43,8 +53,9 @@ import {
   Ban,
   PauseCircle,
   Grid3X3,
+  Trash2,
 } from 'lucide-react';
-import { testRunsAPI, testCasesAPI, sectionsAPI, usersAPI, testSuitesAPI, testResultsAPI, environmentsAPI, enumsAPI } from '@/lib/api';
+import { testRunsAPI, testCasesAPI, sectionsAPI, usersAPI, testSuitesAPI, testResultsAPI, environmentsAPI, enumsAPI, getApiErrorMessage } from '@/lib/api';
 import { TestRun, TestCase } from '@/types';
 import { entityKey } from '@/lib/utils';
 import { useTranslation } from '@/hooks/useTranslation';
@@ -90,7 +101,9 @@ export function TestRuns() {
   const [searchParams] = useSearchParams();
   const { t, isRTL } = useTranslation();
   const { formatDateTime: fmtDateTime } = useDateFormat();
-  const { canWrite } = usePermissions();
+  const { canWrite, canDelete } = usePermissions();
+  const [runToDelete, setRunToDelete] = useState<TestRun | null>(null);
+  const [isDeletingRun, setIsDeletingRun] = useState(false);
   const { user: currentUser } = useAuthStore();
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [runName, setRunName] = useState('');
@@ -479,6 +492,21 @@ export function TestRuns() {
       setError(t('failedToCreateTestRun'));
     } finally {
       setIsCreating(false);
+    }
+  };
+
+  const confirmDeleteRun = async () => {
+    if (!runToDelete) return;
+    setIsDeletingRun(true);
+    try {
+      await testRunsAPI.delete(runToDelete.id);
+      setTestRuns((prev) => prev.filter((r) => r.id !== runToDelete.id));
+      setRunToDelete(null);
+    } catch (err) {
+      console.error('Failed to delete test run:', err);
+      setError(getApiErrorMessage(err, t('failedToDeleteTestRun')));
+    } finally {
+      setIsDeletingRun(false);
     }
   };
 
@@ -1403,10 +1431,26 @@ export function TestRuns() {
                           {run.name}
                         </CardTitle>
                       </div>
-                      <Badge variant="outline" className={`shrink-0 gap-1.5 border px-2.5 py-1 font-semibold ${statusMeta.badgeClass}`}>
-                        <StatusIcon className="h-3.5 w-3.5" />
-                        {statusMeta.label}
-                      </Badge>
+                      <div className="flex shrink-0 items-center gap-1.5">
+                        <Badge variant="outline" className={`gap-1.5 border px-2.5 py-1 font-semibold ${statusMeta.badgeClass}`}>
+                          <StatusIcon className="h-3.5 w-3.5" />
+                          {statusMeta.label}
+                        </Badge>
+                        {canDelete && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 text-slate-400 hover:text-red-600 dark:hover:text-red-400"
+                            title={t('deleteTestRun')}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setRunToDelete(run);
+                            }}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        )}
+                      </div>
                     </div>
                   </CardHeader>
                   <CardContent className="space-y-4">
@@ -1531,6 +1575,23 @@ export function TestRuns() {
         </div>
       )}
 
+      <AlertDialog open={!!runToDelete} onOpenChange={(open) => (isDeletingRun ? null : (!open && setRunToDelete(null)))}>
+        <AlertDialogContent isRTL={isRTL}>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('deleteTestRun')}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t('confirmDeleteTestRunDesc', { name: runToDelete?.name || '' })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeletingRun}>{t('cancel')}</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDeleteRun} disabled={isDeletingRun} className="bg-red-600 hover:bg-red-700">
+              {isDeletingRun && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {t('delete')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

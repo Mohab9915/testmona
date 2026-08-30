@@ -94,7 +94,7 @@ export function Navbar({
     if (parts[0] === 'projects') {
       crumbs.push({ label: t('projects'), href: parts.length > 1 ? '/projects' : undefined });
       if (parts.length >= 2) {
-        crumbs.push({ label: selectedProject?.name || `#${parts[1]}` });
+        crumbs.push({ label: selectedProject?.name || `#${parts[1]}`, href: parts.length > 2 ? '/dashboard' : undefined });
       }
       if (parts.length >= 3) {
         crumbs.push({ label: sectionLabel(parts[2]) });
