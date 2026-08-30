@@ -205,7 +205,9 @@ export function TestCaseEdit() {
           test_type: (testCaseData.test_type as TestCaseType) || 'manual',
           priority: (testCaseData.priority as TestCasePriority) || 'medium',
           status: (testCaseData.status as TestCaseStatus) || 'active',
-          tags: testCaseData.tags || '',
+          tags: Array.isArray(testCaseData.tags)
+            ? testCaseData.tags.map((tag: any) => (typeof tag === 'string' ? tag : tag?.name)).filter(Boolean).join(', ')
+            : (testCaseData.tags || ''),
           reference: testCaseData.reference || '',
           test_suite_id: suiteId,
           section_id: sectionId,
