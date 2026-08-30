@@ -505,7 +505,8 @@ def register_case_routes(app):
                     detail="Section must belong to the selected test suite",
                 )
         elif (
-            "test_suite_id" in update_fields
+            "section_id" not in update_fields
+            and "test_suite_id" in update_fields
             and update_fields["test_suite_id"] != original_test_case.test_suite_id
             and original_test_case.section_id is not None
         ):

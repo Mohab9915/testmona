@@ -263,6 +263,21 @@ export function TestSuiteDetail() {
   } | null>(null);
   const [isDeletingSection, setIsDeletingSection] = useState(false);
 
+  // Create test case dialog
+  const [isCreateCaseDialogOpen, setIsCreateCaseDialogOpen] = useState(false);
+  const [testCaseForm, setTestCaseForm] = useState({
+    title: '',
+    description: '',
+    priority: 'medium' as (typeof TEST_CASE_PRIORITIES)[number],
+    status: 'active' as (typeof TEST_CASE_STATUSES)[number],
+    section_id: '',
+    preconditions: '',
+    steps: '',
+    expected_result: '',
+  });
+  const [testCaseFormError, setTestCaseFormError] = useState<string | null>(null);
+  const [isCreatingCase, setIsCreatingCase] = useState(false);
+
   // URL-driven selection so deep-links keep working after the section page was folded in.
   // 'unsectioned' is a virtual selection that scopes the test-case list to cases without
   // a section_id (the orphans that used to be invisible in the old tree).
@@ -880,6 +895,74 @@ export function TestSuiteDetail() {
     [toast, t],
   );
 
+  // ─── Test case creation ─────────────────────────────────────────────────
+  const openCreateCaseDialog = () => {
+    setTestCaseForm({
+      title: '',
+      description: '',
+      priority: 'medium',
+      status: 'active',
+      section_id: selectedSectionId ? String(selectedSectionId) : '',
+      preconditions: '',
+      steps: '',
+      expected_result: '',
+    });
+    setTestCaseFormError(null);
+    setIsCreateCaseDialogOpen(true);
+  };
+
+  const closeCreateCaseDialog = (force = false) => {
+    if (!force && isCreatingCase) return;
+    setIsCreateCaseDialogOpen(false);
+  };
+
+  const handleCreateTestCase = async () => {
+    if (!numericSuiteId) return;
+    const trimmedTitle = testCaseForm.title.trim();
+    if (!trimmedTitle) {
+      setTestCaseFormError(t('testCaseTitleRequired'));
+      return;
+    }
+    setIsCreatingCase(true);
+    setTestCaseFormError(null);
+    try {
+      const payload: Record<string, unknown> = {
+        title: trimmedTitle,
+        description: testCaseForm.description.trim() || undefined,
+        priority: testCaseForm.priority,
+        status: testCaseForm.status,
+        test_suite_id: numericSuiteId,
+        section_id: testCaseForm.section_id ? Number(testCaseForm.section_id) : undefined,
+        preconditions: testCaseForm.preconditions.trim() || undefined,
+        steps: testCaseForm.steps.trim() || undefined,
+        expected_result: testCaseForm.expected_result.trim() || undefined,
+      };
+      const created = await testCasesAPI.create(payload);
+      setTestCases((prev) => [...prev, created]);
+      setTestSuite((prev) =>
+        prev
+          ? { ...prev, test_case_count: (prev.test_case_count ?? testCases.length) + 1 }
+          : prev,
+      );
+      void loadSections();
+      closeCreateCaseDialog(true);
+      const sectionName = payload.section_id
+        ? flattenSectionTree(sections).find((opt) => opt.id === payload.section_id)?.label
+        : undefined;
+      toast({
+        title: t('success'),
+        description: t('testCaseCreatedSuccessfully', { section: sectionName || testSuite?.name || '' }),
+      });
+    } catch (err: any) {
+      const detail = err?.response?.data?.detail;
+      const message = typeof detail === 'string' ? detail : t('failedToCreateTestCase');
+      setTestCaseFormError(message);
+      toast({ title: t('error'), description: message, variant: 'destructive' });
+    } finally {
+      setIsCreatingCase(false);
+    }
+  };
+
   const toggleTestCaseSelection = (testCaseId: number) => {
     setSelectedTestCases((prev) =>
       prev.includes(testCaseId) ? prev.filter((tcId) => tcId !== testCaseId) : [...prev, testCaseId],
@@ -1231,7 +1314,13 @@ export function TestSuiteDetail() {
 
       <Card>
         <CardHeader>
-          <CardTitle>{t('testCasesCount', { count: filteredTestCases.length })}</CardTitle>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <CardTitle>{t('testCasesCount', { count: filteredTestCases.length })}</CardTitle>
+            <Button size="sm" onClick={openCreateCaseDialog}>
+              <Plus className={`h-4 w-4 ${isRTL ? 'ml-2' : 'mr-2'}`} />
+              {t('addNewTestCase')}
+            </Button>
+          </div>
           <div className="mt-4 flex flex-col gap-3">
             <div className="flex flex-col gap-3 sm:flex-row">
               <div className="relative flex-1">
@@ -1347,6 +1436,12 @@ export function TestSuiteDetail() {
               <p className="mt-1 text-sm text-gray-500">
                 {testCases.length === 0 ? t('noTestCasesInSuite') : t('tryAdjustingSearchFilters')}
               </p>
+              {testCases.length === 0 && (
+                <Button className="mt-4" size="sm" onClick={openCreateCaseDialog}>
+                  <Plus className={`h-4 w-4 ${isRTL ? 'ml-2' : 'mr-2'}`} />
+                  {t('addNewTestCase')}
+                </Button>
+              )}
             </div>
           ) : (
             <div className="space-y-3">
@@ -1778,6 +1873,150 @@ export function TestSuiteDetail() {
                   {t('delete')}
                 </>
               )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Create test case dialog */}
+      <Dialog
+        open={isCreateCaseDialogOpen}
+        onOpenChange={(open) => {
+          if (!open) closeCreateCaseDialog();
+        }}
+      >
+        <DialogContent isRTL={isRTL} className="sm:max-w-[560px]">
+          <DialogHeader>
+            <DialogTitle>{t('createTestCase')}</DialogTitle>
+            <DialogDescription>{t('createTestCaseDescription')}</DialogDescription>
+          </DialogHeader>
+          <div className="max-h-[65vh] space-y-4 overflow-y-auto py-2 pr-1">
+            <div className="space-y-1.5">
+              <Label htmlFor="tc-title">
+                {t('testCaseTitle')} <span className="text-red-500">*</span>
+              </Label>
+              <Input
+                id="tc-title"
+                value={testCaseForm.title}
+                onChange={(e) => setTestCaseForm((p) => ({ ...p, title: e.target.value }))}
+                placeholder={t('enterTestCaseTitle')}
+                maxLength={255}
+                autoComplete="off"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="tc-description">{t('description')}</Label>
+              <Textarea
+                id="tc-description"
+                value={testCaseForm.description}
+                onChange={(e) => setTestCaseForm((p) => ({ ...p, description: e.target.value }))}
+                rows={3}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label>{t('priority')}</Label>
+                <Select
+                  value={testCaseForm.priority}
+                  onValueChange={(value) =>
+                    setTestCaseForm((p) => ({ ...p, priority: value as typeof p.priority }))
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {TEST_CASE_PRIORITIES.map((priorityValue) => (
+                      <SelectItem key={priorityValue} value={priorityValue}>
+                        {t(priorityValue)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label>{t('statusLabel')}</Label>
+                <Select
+                  value={testCaseForm.status}
+                  onValueChange={(value) =>
+                    setTestCaseForm((p) => ({ ...p, status: value as typeof p.status }))
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {TEST_CASE_STATUSES.map((statusValue) => (
+                      <SelectItem key={statusValue} value={statusValue}>
+                        {t(statusValue)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label>{t('section')}</Label>
+              <Select
+                value={testCaseForm.section_id || 'root'}
+                onValueChange={(value) =>
+                  setTestCaseForm((p) => ({ ...p, section_id: value === 'root' ? '' : value }))
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder={t('noSection')} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="root">{t('noSection')}</SelectItem>
+                  {flattenSectionTree(sections).map((opt) => (
+                    <SelectItem key={opt.id} value={String(opt.id)}>
+                      {opt.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="tc-preconditions">{t('preconditions')}</Label>
+              <Textarea
+                id="tc-preconditions"
+                value={testCaseForm.preconditions}
+                onChange={(e) => setTestCaseForm((p) => ({ ...p, preconditions: e.target.value }))}
+                rows={2}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="tc-steps">{t('fieldSteps')}</Label>
+              <Textarea
+                id="tc-steps"
+                value={testCaseForm.steps}
+                onChange={(e) => setTestCaseForm((p) => ({ ...p, steps: e.target.value }))}
+                rows={3}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="tc-expected">{t('expectedResult')}</Label>
+              <Textarea
+                id="tc-expected"
+                value={testCaseForm.expected_result}
+                onChange={(e) => setTestCaseForm((p) => ({ ...p, expected_result: e.target.value }))}
+                rows={2}
+              />
+            </div>
+            {testCaseFormError && (
+              <Alert variant="destructive">
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>{testCaseFormError}</AlertDescription>
+              </Alert>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => closeCreateCaseDialog()} disabled={isCreatingCase}>
+              {t('cancel')}
+            </Button>
+            <Button onClick={handleCreateTestCase} disabled={!testCaseForm.title.trim() || isCreatingCase}>
+              {isCreatingCase && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {isCreatingCase ? t('creating') : t('createTestCase')}
             </Button>
           </DialogFooter>
         </DialogContent>

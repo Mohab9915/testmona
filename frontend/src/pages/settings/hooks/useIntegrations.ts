@@ -109,6 +109,12 @@ export function useIntegrations(preferredProjectId?: number) {
     // sync_config entries are preserved.
     const { work_item_type, auto_sync_on_create, ...rest } = form;
     const payload: Partial<IssueTrackerIntegration> = { ...rest };
+    // The token field is intentionally blank when editing ("leave blank to keep
+    // existing"). Sending the empty string anyway made the backend overwrite the
+    // stored credential with it, silently breaking the integration on any edit.
+    if (editing && !form.api_token.trim()) {
+      delete payload.api_token;
+    }
     // Both are UI-level fields the backend keeps inside the sync_config blob.
     // auto_sync_on_create applies to every tracker; work_item_type is ADO-only.
     payload.sync_config = {

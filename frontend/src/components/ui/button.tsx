@@ -52,9 +52,19 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
         ref={ref}
         {...props}
       >
-        {props.children}
-        {(variant === 'default' || variant === 'success' || variant === 'destructive') && (
-          <div className="absolute inset-0 bg-linear-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700 ease-out" />
+        {/* Slot accepts exactly one child - React.Children.only throws even when
+            the extra one is . The decorative shimmer would always be a
+            second child, so skip it under asChild, where the caller supplies the
+            element being rendered. */}
+        {asChild ? (
+          props.children
+        ) : (
+          <>
+            {props.children}
+            {(variant === 'default' || variant === 'success' || variant === 'destructive') && (
+              <div className="absolute inset-0 bg-linear-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700 ease-out" />
+            )}
+          </>
         )}
       </Comp>
     )

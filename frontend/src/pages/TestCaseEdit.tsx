@@ -982,12 +982,14 @@ export function TestCaseEdit() {
       }
 
       navigateBack();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to save test case:', error);
+      const detail = error?.response?.data?.detail;
+      const apiMessage = typeof detail === 'string' ? detail : null;
       toast({
         variant: 'destructive',
         title: t('saveFailed'),
-        description: t('failedToSaveTestCase'),
+        description: apiMessage || t('failedToSaveTestCase'),
       });
     } finally {
       setSaving(false);

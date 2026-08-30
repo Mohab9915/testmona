@@ -587,6 +587,11 @@ def update_issue_tracker_integration(
     
     if db_integration:
         update_data = integration_update.model_dump(exclude_unset=True)
+        # A blank token means "keep the existing one", never "clear it". Clients
+        # send the field blank when editing other attributes, and honouring that
+        # literally would destroy the stored credential.
+        if not (update_data.get("api_token") or "").strip():
+            update_data.pop("api_token", None)
         for field, value in update_data.items():
             setattr(db_integration, field, value)
         
