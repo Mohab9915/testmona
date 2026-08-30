@@ -14,7 +14,6 @@ import {
   Flag,
   ChevronLeft,
   Settings2,
-  ShieldCheck,
   User,
   Sparkles,
   Database,
@@ -32,7 +31,6 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuthStore } from '@/stores/authStore';
-import { isAdminUser } from '@/utils/roles';
 import { useProjectStore } from '@/stores/projectStore';
 import { useTranslation } from '@/hooks/useTranslation';
 import { getAppInitials, useAppName } from '@/hooks/useAppName';
@@ -74,7 +72,7 @@ export function Sidebar({
   onClose
 }: SidebarProps) {
   const location = useLocation();
-  const { logout, user } = useAuthStore();
+  const { logout } = useAuthStore();
   const { selectedProject, projects } = useProjectStore();
   const { t, isRTL } = useTranslation();
   const { appName, appLogoUrl } = useAppName(false);
@@ -98,12 +96,11 @@ export function Sidebar({
           items: [
             { name: t('profile'), href: '/profile', icon: User },
             { name: t('settings'), href: '/settings', icon: Settings2 },
-            ...(isAdminUser(user) ? [{ name: t('administrator'), href: '/administrator', icon: ShieldCheck }] : []),
           ]
         }
       ];
     }
-    
+
     if (!projectId) {
       // Show global navigation when projects exist but none is selected
       return [
@@ -121,7 +118,6 @@ export function Sidebar({
           items: [
             { name: t('profile'), href: '/profile', icon: User },
             { name: t('settings'), href: '/settings', icon: Settings2 },
-            ...(isAdminUser(user) ? [{ name: t('administrator'), href: '/administrator', icon: ShieldCheck }] : []),
           ]
         }
       ];
@@ -189,10 +185,6 @@ export function Sidebar({
           { name: t('profile'), href: '/profile', icon: User },
           { name: t('apiTokens'), href: '/api-tokens', icon: KeyRound },
           { name: t('settings'), href: '/settings', icon: Settings2 },
-          // Present in the other two nav variants too. Without it here the
-          // Administrator area (integrations, users, audit config) becomes
-          // unreachable by clicking as soon as a project is selected.
-          ...(isAdminUser(user) ? [{ name: t('administrator'), href: '/administrator', icon: ShieldCheck }] : []),
         ]
       }
     ];

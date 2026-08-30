@@ -420,7 +420,7 @@ function AuditPausedBanner({ t, isAdmin }: { t: TFunc; isAdmin: boolean }) {
         </div>
         {isAdmin && (
           <Link
-            to="/administrator?tab=audit"
+            to="/settings?tab=audit"
             className={cn(buttonVariants({ variant: 'outline', size: 'sm' }), 'shrink-0 gap-2 bg-white dark:bg-transparent')}
           >
             <Settings className="h-4 w-4" />

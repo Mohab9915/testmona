@@ -130,6 +130,16 @@ export function TestPlanDetail() {
   const [selectedReqIds, setSelectedReqIds] = useState<number[]>([]);
   const [reqSaving, setReqSaving] = useState(false);
 
+  // Assign existing test runs to this plan (as opposed to always creating a
+  // new one). Mirrors the requirements-linking dialog above: the checklist
+  // reflects current membership and saving diffs the selection.
+  const [assignRunsOpen, setAssignRunsOpen] = useState(false);
+  const [runCandidates, setRunCandidates] = useState<TestRun[]>([]);
+  const [runCandidatesLoading, setRunCandidatesLoading] = useState(false);
+  const [runSearch, setRunSearch] = useState('');
+  const [selectedRunIds, setSelectedRunIds] = useState<number[]>([]);
+  const [runsSaving, setRunsSaving] = useState(false);
+
   const loadLinkedRequirements = async (planId: number) => {
     try {
       const data = await testPlansAPI.getRequirements(planId, { linked: true, limit: 500 });
@@ -264,6 +274,57 @@ export function TestPlanDetail() {
       (c) => c.title.toLowerCase().includes(q) || c.requirement_id.toLowerCase().includes(q),
     );
   }, [candidates, reqSearch]);
+
+  const openAssignRuns = async () => {
+    if (!plan || !numericProjectId) return;
+    setAssignRunsOpen(true);
+    setRunSearch('');
+    setRunCandidatesLoading(true);
+    try {
+      const data = await testRunsAPI.getAll(numericProjectId, 0, 500);
+      const items: TestRun[] = Array.isArray(data) ? data : [];
+      setRunCandidates(items);
+      setSelectedRunIds(runs.map((r) => r.id));
+    } catch {
+      setRunCandidates([]);
+      setSelectedRunIds([]);
+    } finally {
+      setRunCandidatesLoading(false);
+    }
+  };
+
+  const toggleRunSelection = (id: number) => {
+    setSelectedRunIds((current) => (current.includes(id) ? current.filter((x) => x !== id) : [...current, id]));
+  };
+
+  const filteredRunCandidates = useMemo(() => {
+    const q = runSearch.trim().toLowerCase();
+    if (!q) return runCandidates;
+    return runCandidates.filter((r) => r.name.toLowerCase().includes(q));
+  }, [runCandidates, runSearch]);
+
+  const saveAssignedRuns = async () => {
+    if (!plan || !numericProjectId) return;
+    const originallyOnPlan = new Set(runs.map((r) => r.id));
+    const selected = new Set(selectedRunIds);
+    const toLink = selectedRunIds.filter((id) => !originallyOnPlan.has(id));
+    const toUnlink = [...originallyOnPlan].filter((id) => !selected.has(id));
+    setRunsSaving(true);
+    setError(null);
+    try {
+      await Promise.all([
+        ...toLink.map((id) => testRunsAPI.update(id, { test_plan_id: plan.id })),
+        ...toUnlink.map((id) => testRunsAPI.update(id, { test_plan_id: null })),
+      ]);
+      const refreshed = await testRunsAPI.getAll(numericProjectId, 0, 500, { test_plan_id: plan.id }).catch(() => []);
+      setRuns(Array.isArray(refreshed) ? refreshed : []);
+      setAssignRunsOpen(false);
+    } catch (err) {
+      setError(getApiErrorMessage(err, t('failedToAssignRuns')));
+    } finally {
+      setRunsSaving(false);
+    }
+  };
 
   const goToRuns = (create = false) => {
     if (!plan || !numericProjectId) return;
@@ -487,17 +548,27 @@ export function TestPlanDetail() {
       </div>
 
       <Card>
-        <CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between gap-3 space-y-0">
           <CardTitle>{t('testRuns')}</CardTitle>
+          <Button variant="outline" size="sm" onClick={openAssignRuns}>
+            <Link2 className="mr-1.5 h-3.5 w-3.5" />
+            {t('assignExistingRuns')}
+          </Button>
         </CardHeader>
         <CardContent>
           {runs.length === 0 ? (
             <div className="flex min-h-32 flex-col items-center justify-center gap-3 text-center text-sm text-muted-foreground">
               <p>{t('noRunsForPlan')}</p>
-              <Button size="sm" onClick={() => goToRuns(true)}>
-                <CirclePlus className="mr-1.5 h-3.5 w-3.5" />
-                {t('startNewRun')}
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button variant="outline" size="sm" onClick={openAssignRuns}>
+                  <Link2 className="mr-1.5 h-3.5 w-3.5" />
+                  {t('assignExistingRuns')}
+                </Button>
+                <Button size="sm" onClick={() => goToRuns(true)}>
+                  <CirclePlus className="mr-1.5 h-3.5 w-3.5" />
+                  {t('startNewRun')}
+                </Button>
+              </div>
             </div>
           ) : (
             <div className="space-y-2">
@@ -577,6 +648,62 @@ export function TestPlanDetail() {
             </Button>
             <Button onClick={saveRequirements} disabled={reqSaving}>
               {reqSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {t('save')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={assignRunsOpen} onOpenChange={(open) => (open ? null : setAssignRunsOpen(false))}>
+        <DialogContent isRTL={isRTL} className="max-h-[85vh] overflow-hidden sm:max-w-[560px]">
+          <DialogHeader>
+            <DialogTitle>{t('assignExistingRuns')}</DialogTitle>
+            <DialogDescription>{t('selectRunsToAssign')}</DialogDescription>
+          </DialogHeader>
+          <div className="relative">
+            <Search className={`absolute top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground ${isRTL ? 'right-3' : 'left-3'}`} />
+            <Input
+              value={runSearch}
+              placeholder={t('searchTestRuns')}
+              className={isRTL ? 'pr-9' : 'pl-9'}
+              onChange={(e) => setRunSearch(e.target.value)}
+            />
+          </div>
+          <div className="max-h-[45vh] space-y-1.5 overflow-y-auto pr-1">
+            {runCandidatesLoading ? (
+              <div className="flex min-h-24 items-center justify-center text-muted-foreground">
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                {t('loading')}
+              </div>
+            ) : filteredRunCandidates.length === 0 ? (
+              <p className="py-6 text-center text-sm text-muted-foreground">{t('noRunsAvailableToAssign')}</p>
+            ) : (
+              filteredRunCandidates.map((run) => (
+                <label
+                  key={run.id}
+                  className="flex cursor-pointer items-center gap-3 rounded-lg border p-2.5 text-sm hover:bg-muted/60"
+                >
+                  <Checkbox
+                    checked={selectedRunIds.includes(run.id)}
+                    onCheckedChange={() => toggleRunSelection(run.id)}
+                  />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate font-medium">{run.name}</p>
+                    {run.test_plan_id && run.test_plan_id !== plan?.id && (
+                      <p className="text-xs text-muted-foreground">{t('alreadyOnAnotherPlan')}</p>
+                    )}
+                  </div>
+                  <Badge variant="outline" className="shrink-0">{run.status}</Badge>
+                </label>
+              ))
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAssignRunsOpen(false)} disabled={runsSaving}>
+              {t('cancel')}
+            </Button>
+            <Button onClick={saveAssignedRuns} disabled={runsSaving}>
+              {runsSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               {t('save')}
             </Button>
           </DialogFooter>

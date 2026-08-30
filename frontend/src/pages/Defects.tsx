@@ -11,6 +11,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { SavedFilters } from '@/components/SavedFilters';
 import { BulkEditDefectsDialog } from '@/components/BulkEditDefectsDialog';
 import { defectManagementAPI, IssueTrackerIntegration } from '@/lib/defectManagementAPI';
+import { IntegrationsTab } from '@/pages/settings/tabs/IntegrationsTab';
 import { SearchableRequirementSelect } from '@/components/Defects/SearchableRequirementSelect';
 import { SearchableTestCaseSelect } from '@/components/Defects/SearchableTestCaseSelect';
 import { DefectComments } from '@/components/Defects/DefectComments';
@@ -469,89 +470,18 @@ export function Defects() {
   const [isCreateDialogExpanded, setIsCreateDialogExpanded] = useState(false);
   const defectTitleInputRef = useRef<HTMLInputElement>(null);
   const [isIntegrationDialogOpen, setIsIntegrationDialogOpen] = useState(false);
-  const [isIntegrationFormOpen, setIsIntegrationFormOpen] = useState(false);
-  
-  // Integration states
+
+  // Read-only integration list for the "sync this defect to an external
+  // tracker" picker below; management (add/edit/delete/test) lives in the
+  // shared IntegrationsTab embedded in the dialog above.
   const [integrations, setIntegrations] = useState<IssueTrackerIntegration[]>([]);
   const [isLoadingIntegrations, setIsLoadingIntegrations] = useState(false);
-  const [editingIntegration, setEditingIntegration] = useState<IssueTrackerIntegration | null>(null);
-  const [integrationToDelete, setIntegrationToDelete] = useState<IssueTrackerIntegration | null>(null);
-  const [isTestingConnection, setIsTestingConnection] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
-  
-  // Integration form state
-  const [integrationForm, setIntegrationForm] = useState({
-    name: '',
-    tracker_type: 'jira',
-    api_url: '',
-    api_token: '',
-    username: '',
-    project_key: '',
-    sync_direction: 'bidirectional',
-    is_active: true
-  });
-  
+
   // Sync dialog state
   const [isSyncDialogOpen, setIsSyncDialogOpen] = useState(false);
   const [syncingDefectId, setSyncingDefectId] = useState<number | null>(null);
   const [selectedSyncIntegrationId, setSelectedSyncIntegrationId] = useState<number | null>(null);
-  
-  // Dynamic placeholders based on tracker type
-  const getPlaceholders = () => {
-    const placeholders: Record<string, any> = {
-      jira: {
-        name: t('trackerNameJira'),
-        apiUrl: 'https://your-domain.atlassian.net',
-        projectKey: 'TEST',
-        projectKeyLabel: t('trackerLabelProjectKey'),
-        projectKeyDesc: t('trackerDescJira')
-      },
-      github: {
-        name: t('trackerNameGithub'),
-        apiUrl: 'https://api.github.com',
-        projectKey: 'owner/repo',
-        projectKeyLabel: t('trackerLabelRepository'),
-        projectKeyDesc: t('trackerDescGithub')
-      },
-      gitlab: {
-        name: t('trackerNameGitlab'),
-        apiUrl: 'https://gitlab.com/api/v4',
-        projectKey: 'namespace/project',
-        projectKeyLabel: t('trackerLabelProjectPath'),
-        projectKeyDesc: t('trackerDescGitlab')
-      },
-      'azure-devops': {
-        name: t('trackerNameAzure'),
-        apiUrl: 'https://dev.azure.com/your-org',
-        projectKey: 'Project Name',
-        projectKeyLabel: t('trackerLabelProjectName'),
-        projectKeyDesc: t('trackerDescAzure')
-      },
-      linear: {
-        name: t('trackerNameLinear'),
-        apiUrl: 'https://api.linear.app',
-        projectKey: 'Team Key',
-        projectKeyLabel: t('trackerLabelTeamKey'),
-        projectKeyDesc: t('trackerDescLinear')
-      },
-      asana: {
-        name: t('trackerNameAsana'),
-        apiUrl: 'https://app.asana.com/api/1.0',
-        projectKey: 'Project GID',
-        projectKeyLabel: t('trackerLabelProjectGid'),
-        projectKeyDesc: t('trackerDescAsana')
-      }
-    };
-    return placeholders[integrationForm.tracker_type] || placeholders.jira;
-  };
-  
-  // Validation state
-  const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
-  const [touchedFields, setTouchedFields] = useState<Record<string, boolean>>({});
-  const nameInputRef = useRef<HTMLInputElement>(null);
-  const apiUrlInputRef = useRef<HTMLInputElement>(null);
-  const tokenInputRef = useRef<HTMLInputElement>(null);
-  const projectKeyInputRef = useRef<HTMLInputElement>(null);
   
   // Form states
   const [defectId, setDefectId] = useState('');
@@ -1419,208 +1349,6 @@ export function Defects() {
     window.open(externalUrl, '_blank');
   };
 
-  const handleAddIntegration = () => {
-    setEditingIntegration(null);
-    setIntegrationForm({
-      name: '',
-      tracker_type: 'jira',
-      api_url: '',
-      api_token: '',
-      username: '',
-      project_key: '',
-      sync_direction: 'bidirectional',
-      is_active: true
-    });
-    setValidationErrors({});
-    setTouchedFields({});
-    setIsIntegrationFormOpen(true);
-  };
-
-  const handleEditIntegration = (integration: IssueTrackerIntegration) => {
-    setEditingIntegration(integration);
-    setIntegrationForm({
-      name: integration.name,
-      tracker_type: integration.tracker_type,
-      api_url: integration.api_url,
-      api_token: '',
-      username: integration.username || '',
-      project_key: integration.project_key || '',
-      sync_direction: integration.sync_direction,
-      is_active: integration.is_active
-    });
-    setValidationErrors({});
-    setTouchedFields({});
-    setIsIntegrationFormOpen(true);
-  };
-
-  const handleSaveIntegration = async () => {
-    if (!projectId) return;
-    
-    // Mark all fields as touched
-    setTouchedFields({
-      name: true,
-      api_url: true,
-      api_token: true,
-      project_key: true,
-    });
-
-    // Validate form
-    const errors: Record<string, string> = {};
-    
-    // Name validation
-    if (!integrationForm.name.trim()) {
-      errors.name = t('integrationNameRequired');
-    } else if (integrationForm.name.length < 3) {
-      errors.name = t('integrationNameMinLength');
-    } else if (integrationForm.name.length > 100) {
-      errors.name = t('integrationNameMaxLength');
-    }
-
-    // API URL validation
-    if (!integrationForm.api_url.trim()) {
-      errors.api_url = t('apiUrlRequired');
-    } else {
-      try {
-        const url = new URL(integrationForm.api_url);
-        if (!['http:', 'https:'].includes(url.protocol)) {
-          errors.api_url = t('apiUrlProtocol');
-        }
-      } catch {
-        errors.api_url = t('apiUrlValidUrl');
-      }
-    }
-
-    // API Token validation (required for new integrations, optional for edits)
-    if (!editingIntegration && !integrationForm.api_token.trim()) {
-      errors.api_token = t('apiTokenRequired');
-    } else if (integrationForm.api_token && integrationForm.api_token.length < 8) {
-      errors.api_token = t('apiTokenMinLength');
-    }
-
-    // Project Key validation (required for Jira, GitHub, GitLab)
-    if (['jira', 'github', 'gitlab'].includes(integrationForm.tracker_type)) {
-      if (!integrationForm.project_key.trim()) {
-        errors.project_key = t('projectKeyRequired');
-      } else if (integrationForm.project_key.length < 2) {
-        errors.project_key = t('projectKeyMinLength');
-      }
-    }
-
-    if (Object.keys(errors).length > 0) {
-      setValidationErrors(errors);
-      
-      // Focus on the first field with an error
-      if (errors.name) {
-        nameInputRef.current?.focus();
-      } else if (errors.api_url) {
-        apiUrlInputRef.current?.focus();
-      } else if (errors.api_token) {
-        tokenInputRef.current?.focus();
-      } else if (errors.project_key) {
-        projectKeyInputRef.current?.focus();
-      }
-
-      toast({
-        title: t('validationError'),
-        description: t('pleaseFixErrorsBeforeSaving'),
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    try {
-      if (editingIntegration) {
-        await defectManagementAPI.updateIssueTrackerIntegration(
-          parseInt(projectId),
-          editingIntegration.id,
-          integrationForm
-        );
-        toast({
-          title: t('success'),
-          description: t('integrationUpdatedSuccessfully'),
-        });
-      } else {
-        await defectManagementAPI.createIssueTrackerIntegration(
-          parseInt(projectId),
-          integrationForm
-        );
-        toast({
-          title: t('success'),
-          description: t('integrationCreatedSuccessfully'),
-        });
-      }
-      setIsIntegrationFormOpen(false);
-      setValidationErrors({});
-      setTouchedFields({});
-      fetchIntegrations();
-    } catch (error) {
-      console.error('Failed to save integration:', error);
-      toast({
-        title: t('error'),
-        description: t('failedToSaveIntegration'),
-        variant: 'destructive',
-      });
-    }
-  };
-
-  const handleDeleteIntegration = (integration: IssueTrackerIntegration) => {
-    setIntegrationToDelete(integration);
-  };
-
-  const confirmDeleteIntegration = async () => {
-    if (!projectId) return;
-    if (!integrationToDelete) return;
-
-    try {
-      await defectManagementAPI.deleteIssueTrackerIntegration(parseInt(projectId), integrationToDelete.id);
-      toast({
-        title: t('success'),
-        description: t('integrationDeletedSuccessfully'),
-      });
-      setIntegrationToDelete(null);
-      fetchIntegrations();
-    } catch (error) {
-      console.error('Failed to delete integration:', error);
-      toast({
-        title: t('error'),
-        description: t('failedToDeleteIntegration'),
-        variant: 'destructive',
-      });
-    } finally {
-      setIntegrationToDelete(null);
-    }
-  };
-
-  const handleTestConnection = async (integrationId: number) => {
-    if (!projectId) return;
-    
-    setIsTestingConnection(true);
-    try {
-      const result = await defectManagementAPI.testIssueTrackerConnection(parseInt(projectId), integrationId);
-      if (result.success) {
-        toast({
-          title: t('success'),
-          description: t('connectionTestPassed'),
-        });
-      } else {
-        toast({
-          title: t('connectionTestFailed'),
-          description: result.message || t('connectionTestFailed'),
-          variant: 'destructive',
-        });
-      }
-    } catch (error) {
-      console.error('Connection test failed:', error);
-      toast({
-        title: t('error'),
-        description: t('connectionTestFailed'),
-        variant: 'destructive',
-      });
-    } finally {
-      setIsTestingConnection(false);
-    }
-  };
-
   return (
     <div className="space-y-6 px-4 py-6 lg:px-6" dir={isRTL ? 'rtl' : 'ltr'}>
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
@@ -1638,110 +1366,30 @@ export function Defects() {
             <GitBranch className="h-4 w-4 mr-2" />
             {t('reportsTabRootCause')}
           </Button>
-          <Dialog open={isIntegrationDialogOpen} onOpenChange={setIsIntegrationDialogOpen}>
+          <Dialog
+            open={isIntegrationDialogOpen}
+            onOpenChange={(open) => {
+              setIsIntegrationDialogOpen(open);
+              // The embedded panel manages integrations through its own state;
+              // refetch on close so the "sync to external tracker" picker below
+              // reflects anything added/edited/removed while the dialog was open.
+              if (!open) fetchIntegrations();
+            }}
+          >
             <DialogTrigger asChild>
               <Button variant="outline">
                 <Settings className="h-4 w-4 mr-2" />
                 {t('integrations')}
               </Button>
             </DialogTrigger>
-            <DialogContent isRTL={isRTL} className="sm:max-w-[600px]">
+            <DialogContent isRTL={isRTL} className="sm:max-w-[680px]">
               <DialogHeader>
                 <DialogTitle>{t('integrations')}</DialogTitle>
                 <DialogDescription>
                   {t('integrationsDesc')}
                 </DialogDescription>
               </DialogHeader>
-              <div className="space-y-4">
-                {isLoadingIntegrations ? (
-                  <div className="flex items-center justify-center py-8">
-                    <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
-                  </div>
-                ) : integrations.length === 0 ? (
-                  <div className="text-center py-8">
-                    <Settings className="mx-auto h-12 w-12 text-gray-400 dark:text-gray-500" />
-                    <h3 className="mt-2 text-sm font-semibold text-gray-900 dark:text-gray-100">{t('noIntegrationsAvailable')}</h3>
-                    <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                      {t('noIntegrationsDefectsDesc')}
-                    </p>
-                  </div>
-                ) : (
-                  integrations.map((integration) => (
-                    <Card key={integration.id}>
-                      <CardContent className="pt-4">
-                        <div className="flex items-center justify-between">
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2 mb-2">
-                              <h4 className="font-semibold">{integration.name}</h4>
-                              {!integration.is_active && (
-                                <Badge variant="outline" className="text-xs">{t('inactive')}</Badge>
-                              )}
-                            </div>
-                            <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
-                              <Badge variant="outline" className="capitalize">
-                                {integration.tracker_type}
-                              </Badge>
-                              {integration.project_key && (
-                                <Badge variant="outline">{integration.project_key}</Badge>
-                              )}
-                              <Badge className={getSyncStatusBadge(integration.sync_status)}>
-                                {getSyncStatusLabel(integration.sync_status)}
-                              </Badge>
-                            </div>
-                            {integration.last_sync && (
-                              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                                {t('lastSyncLabel')}: {formatDateTime(integration.last_sync)}
-                              </p>
-                            )}
-                            {integration.sync_error && (
-                              <p className="text-xs text-red-600 dark:text-red-400 mt-1">
-                                <AlertCircle className="h-3 w-3 inline mr-1" />
-                                {integration.sync_error}
-                              </p>
-                            )}
-                          </div>
-                          <div className="flex gap-2">
-                            <Button 
-                              size="sm" 
-                              variant="outline"
-                              onClick={() => handleTestConnection(integration.id)}
-                              disabled={isTestingConnection}
-                            >
-                              {isTestingConnection ? (
-                                <Loader2 className="h-4 w-4 animate-spin" />
-                              ) : (
-                                <CheckCircle2 className="h-4 w-4" />
-                              )}
-                            </Button>
-                            <Button 
-                              size="sm" 
-                              variant="outline"
-                              onClick={() => handleEditIntegration(integration)}
-                            >
-                              <Edit className="h-4 w-4" />
-                            </Button>
-                            <Button 
-                              size="sm" 
-                              variant="outline"
-                              onClick={() => handleDeleteIntegration(integration)}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))
-                )}
-                <Button 
-                  className="w-full" 
-                  variant="outline"
-                  onClick={handleAddIntegration}
-                >
-                  <Plus className="h-4 w-4 mr-2" />
-                  {t('addIntegration')}
-                </Button>
-              </div>
+              <IntegrationsTab projectId={projectId ? parseInt(projectId) : undefined} />
             </DialogContent>
           </Dialog>
           <Dialog open={isCreateDialogOpen} onOpenChange={handleDialogClose}>
@@ -2830,178 +2478,6 @@ export function Defects() {
         </div>
       )}
 
-      {/* Integration Form Dialog */}
-      <Dialog open={isIntegrationFormOpen} onOpenChange={setIsIntegrationFormOpen}>
-        <DialogContent isRTL={isRTL} className="sm:max-w-[700px] max-h-[80vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>
-              {editingIntegration ? t('editIntegration') : t('addIntegrationTitle')}
-            </DialogTitle>
-            <DialogDescription>
-              {editingIntegration 
-                ? t('updateIntegrationConfiguration')
-                : t('configureNewIntegration')
-              }
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="integration-name">{t('integrationNameLabel')} *</Label>
-                <Input
-                  id="integration-name"
-                  ref={nameInputRef}
-                  placeholder={getPlaceholders().name}
-                  value={integrationForm.name}
-                  onChange={(e) => setIntegrationForm({...integrationForm, name: e.target.value})}
-                  onBlur={() => setTouchedFields({...touchedFields, name: true})}
-                  className={touchedFields.name && validationErrors.name ? 'border-red-500' : ''}
-                />
-                {touchedFields.name && validationErrors.name && (
-                  <p className="text-xs text-red-600 dark:text-red-400">{validationErrors.name}</p>
-                )}
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="tracker-type">{t('trackerType')} *</Label>
-                <Select
-                  value={integrationForm.tracker_type}
-                  onValueChange={(value) => {
-                    setIntegrationForm({...integrationForm, tracker_type: value});
-                    // Clear project key error when changing tracker type
-                    if (value !== integrationForm.tracker_type) {
-                      setValidationErrors({...validationErrors, project_key: ''});
-                    }
-                  }}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="jira">Jira</SelectItem>
-                    <SelectItem value="github">GitHub</SelectItem>
-                    <SelectItem value="gitlab">GitLab</SelectItem>
-                    <SelectItem value="azure-devops">Azure DevOps</SelectItem>
-                    <SelectItem value="linear">Linear</SelectItem>
-                    <SelectItem value="asana">Asana</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="api-url">{t('apiUrlLabel')} *</Label>
-              <Input
-                id="api-url"
-                ref={apiUrlInputRef}
-                placeholder={getPlaceholders().apiUrl}
-                value={integrationForm.api_url}
-                onChange={(e) => setIntegrationForm({...integrationForm, api_url: e.target.value})}
-                onBlur={() => setTouchedFields({...touchedFields, api_url: true})}
-                className={touchedFields.api_url && validationErrors.api_url ? 'border-red-500' : ''}
-              />
-              {touchedFields.api_url && validationErrors.api_url && (
-                <p className="text-xs text-red-600 dark:text-red-400">{validationErrors.api_url}</p>
-              )}
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="username">{t('usernameEmail')}</Label>
-                <Input
-                  id="username"
-                  placeholder={t('usernameEmailPlaceholder')}
-                  value={integrationForm.username}
-                  onChange={(e) => setIntegrationForm({...integrationForm, username: e.target.value})}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="api-token">{t('apiTokenLabel')} {(!editingIntegration) ? '*' : ''}</Label>
-                <Input
-                  id="api-token"
-                  ref={tokenInputRef}
-                  type="password"
-                  placeholder={editingIntegration ? t('leaveBlankToKeepExistingToken') : t('enterApiToken')}
-                  value={integrationForm.api_token}
-                  onChange={(e) => setIntegrationForm({...integrationForm, api_token: e.target.value})}
-                  onBlur={() => setTouchedFields({...touchedFields, api_token: true})}
-                  className={touchedFields.api_token && validationErrors.api_token ? 'border-red-500' : ''}
-                />
-                {touchedFields.api_token && validationErrors.api_token && (
-                  <p className="text-xs text-red-600 dark:text-red-400">{validationErrors.api_token}</p>
-                )}
-                <p className="text-xs text-gray-500">
-                  {t('tokenEncryptedSecurely')}
-                </p>
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="project-key">{getPlaceholders().projectKeyLabel} *</Label>
-              <Input
-                id="project-key"
-                ref={projectKeyInputRef}
-                placeholder={getPlaceholders().projectKey}
-                value={integrationForm.project_key}
-                onChange={(e) => setIntegrationForm({...integrationForm, project_key: e.target.value})}
-                onBlur={() => setTouchedFields({...touchedFields, project_key: true})}
-                className={touchedFields.project_key && validationErrors.project_key ? 'border-red-500' : ''}
-              />
-              {touchedFields.project_key && validationErrors.project_key && (
-                <p className="text-xs text-red-600 dark:text-red-400">{validationErrors.project_key}</p>
-              )}
-              <p className="text-xs text-gray-500">
-                {getPlaceholders().projectKeyDesc}
-              </p>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="sync-direction">{t('syncDirection')}</Label>
-              <Select
-                value={integrationForm.sync_direction}
-                onValueChange={(value) => setIntegrationForm({...integrationForm, sync_direction: value})}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="import">{t('importOnly', { appName })}</SelectItem>
-                  <SelectItem value="export">{t('exportOnly', { appName })}</SelectItem>
-                  <SelectItem value="bidirectional">{t('bidirectional')}</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="flex items-center space-x-2">
-              <input
-                type="checkbox"
-                id="is-active"
-                checked={integrationForm.is_active}
-                onChange={(e) => setIntegrationForm({...integrationForm, is_active: e.target.checked})}
-                className="h-4 w-4"
-              />
-              <Label htmlFor="is-active">{t('enableThisIntegration')}</Label>
-            </div>
-
-            {editingIntegration && (
-              <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded p-3">
-                <p className="text-sm text-yellow-800 dark:text-yellow-200">
-                  <AlertCircle className="h-4 w-4 inline mr-2" />
-                  {t('leaveApiTokenBlank')}
-                </p>
-              </div>
-            )}
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsIntegrationFormOpen(false)}>
-              {t('cancel')}
-            </Button>
-            <Button onClick={handleSaveIntegration}>
-              {editingIntegration ? t('updateIntegration') : t('createIntegration')}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
       {/* Sync Dialog */}
       <Dialog open={isSyncDialogOpen} onOpenChange={setIsSyncDialogOpen}>
         <DialogContent isRTL={isRTL} className="sm:max-w-[500px]">
@@ -3261,23 +2737,6 @@ export function Defects() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
-      <AlertDialog open={!!integrationToDelete} onOpenChange={(open) => !open && setIntegrationToDelete(null)}>
-        <AlertDialogContent isRTL={isRTL}>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t('confirmDeleteIntegration')}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {t('confirmDeleteIntegrationDesc', { name: integrationToDelete?.name || '' })}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>{t('cancel')}</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmDeleteIntegration} className="bg-red-600 hover:bg-red-700">
-              {t('delete')}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
 
       <BulkEditDefectsDialog
         open={bulkEditOpen}

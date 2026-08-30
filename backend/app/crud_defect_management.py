@@ -557,6 +557,42 @@ def get_issue_tracker_integrations(db: Session, project_id: int):
     ).all()
 
 
+def find_conflicting_issue_tracker_integration(
+    db: Session,
+    tracker_type: str,
+    api_url: str,
+    project_key: Optional[str],
+    exclude_project_id: int,
+):
+    """Find another project's active integration already pointing at the same
+    external tracker project.
+
+    Nothing on the model enforces this (project_key has no uniqueness
+    constraint), so two different projects could silently push defects into
+    the same external tracker project. Only checked when project_key is set —
+    an empty key can't disambiguate two integrations that otherwise share a
+    tracker_type + api_url (e.g. two unrelated GitHub integrations both using
+    the default api.github.com base URL), so comparing on it would false-flag.
+    """
+    normalized_key = (project_key or "").strip().lower()
+    if not normalized_key:
+        return None
+
+    candidates = db.query(models.IssueTrackerIntegration).filter(
+        models.IssueTrackerIntegration.tracker_type == tracker_type,
+        models.IssueTrackerIntegration.project_id != exclude_project_id,
+        models.IssueTrackerIntegration.is_active.is_(True),
+    ).all()
+
+    normalized_url = (api_url or "").strip().lower().rstrip("/")
+    for candidate in candidates:
+        candidate_key = (candidate.project_key or "").strip().lower()
+        candidate_url = (candidate.api_url or "").strip().lower().rstrip("/")
+        if candidate_key == normalized_key and candidate_url == normalized_url:
+            return candidate
+    return None
+
+
 def create_issue_tracker_integration(
     db: Session,
     integration: schemas.IssueTrackerIntegrationCreate,

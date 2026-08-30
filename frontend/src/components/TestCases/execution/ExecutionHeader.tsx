@@ -18,6 +18,8 @@ export function ExecutionHeader() {
   const statusOption = getStatusOption(executionStatus);
   const testRunName = testRun?.name || t('loading');
   const testCaseTitle = testCase?.title || t('loading');
+  const suiteName = testCase?.test_suite?.name;
+  const sectionName = testCase?.section;
   const progressLabel = allTestCases.length > 0 && currentIndex >= 0
     ? t('testCaseProgress', { current: currentIndex + 1, total: allTestCases.length })
     : t('loadingTestCases');
@@ -72,6 +74,15 @@ export function ExecutionHeader() {
                 </button>
                 <span className="text-slate-300 dark:text-slate-600">·</span>
                 <span className="font-mono text-xs text-slate-500 dark:text-slate-400">TC-{testCaseId}</span>
+                {suiteName && (
+                  <>
+                    <span className="text-slate-300 dark:text-slate-600">·</span>
+                    <span className="inline-flex max-w-full items-center gap-1 font-medium text-slate-600 dark:text-slate-300" title={sectionName ? `${suiteName} / ${sectionName}` : suiteName}>
+                      <span className="truncate">{suiteName}</span>
+                      {sectionName && <span className="truncate text-slate-400 dark:text-slate-500"> / {sectionName}</span>}
+                    </span>
+                  </>
+                )}
               </div>
             </div>
 

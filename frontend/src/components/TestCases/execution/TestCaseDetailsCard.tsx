@@ -14,8 +14,12 @@ const STEP_OUTCOMES: { value: Exclude<ExecutionStatus, 'pending'>; icon: typeof 
 ];
 
 function StepRow({ step, controllable }: { step: TestStep; controllable: boolean }) {
-  const { t, resolveGlobals, stepStatuses, setStepStatus, canWrite } = useExecution();
+  const {
+    t, resolveGlobals, stepStatuses, setStepStatus, canWrite,
+    activeStepNumber, setActiveStepNumber,
+  } = useExecution();
   const current = stepStatuses[step.step_number] || 'pending';
+  const isActive = activeStepNumber === step.step_number;
 
   const accent = current === 'passed' ? 'border-emerald-300 dark:border-emerald-900/60'
     : current === 'failed' ? 'border-red-300 dark:border-red-900/60'
@@ -23,7 +27,22 @@ function StepRow({ step, controllable }: { step: TestStep; controllable: boolean
     : 'border-slate-200 dark:border-slate-800';
 
   return (
-    <div className={`rounded-lg border bg-slate-50 p-3 dark:bg-slate-900/50 ${accent}`}>
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={() => setActiveStepNumber(step.step_number)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          setActiveStepNumber(step.step_number);
+        }
+      }}
+      className={`cursor-pointer rounded-lg border bg-slate-50 p-3 transition-all duration-200 dark:bg-slate-900/50 ${accent} ${
+        isActive
+          ? 'opacity-100 shadow-md ring-2 ring-indigo-400 dark:ring-indigo-500'
+          : 'opacity-40 grayscale-[0.3] hover:opacity-75 hover:grayscale-0'
+      }`}
+    >
       <div className="mb-2 flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <span className="flex h-5 w-5 items-center justify-center rounded-full bg-indigo-100 text-xs font-bold text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300">
@@ -32,9 +51,12 @@ function StepRow({ step, controllable }: { step: TestStep; controllable: boolean
           {step.step_type && (
             <Badge variant="outline" className="px-1.5 py-0 text-[10px] capitalize">{step.step_type}</Badge>
           )}
+          {isActive && (
+            <Badge className="bg-indigo-500 px-1.5 py-0 text-[10px] text-white hover:bg-indigo-500">{t('currentStep')}</Badge>
+          )}
         </div>
         {controllable && (
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
             {STEP_OUTCOMES.map((o) => {
               const Icon = o.icon;
               const active = current === o.value;
@@ -57,14 +79,18 @@ function StepRow({ step, controllable }: { step: TestStep; controllable: boolean
           </div>
         )}
       </div>
-      <dl className="space-y-1.5 text-xs">
+      <dl className={`space-y-1.5 ${isActive ? 'text-sm' : 'text-xs'}`}>
         <div>
           <dt className="font-medium text-slate-500 dark:text-slate-400">{t('action')}</dt>
-          <dd className="mt-0.5 whitespace-pre-wrap text-slate-700 dark:text-slate-300">{resolveGlobals(step.action)}</dd>
+          <dd className={`mt-0.5 whitespace-pre-wrap text-slate-700 dark:text-slate-300 ${isActive ? 'font-semibold' : ''}`}>
+            {resolveGlobals(step.action)}
+          </dd>
         </div>
         <div>
           <dt className="font-medium text-slate-500 dark:text-slate-400">{t('expectedResult')}</dt>
-          <dd className="mt-0.5 whitespace-pre-wrap text-slate-700 dark:text-slate-300">{resolveGlobals(step.expected_result)}</dd>
+          <dd className={`mt-0.5 whitespace-pre-wrap text-slate-700 dark:text-slate-300 ${isActive ? 'font-semibold' : ''}`}>
+            {resolveGlobals(step.expected_result)}
+          </dd>
         </div>
       </dl>
     </div>

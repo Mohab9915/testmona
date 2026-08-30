@@ -6,7 +6,6 @@ import { FeatureGuard } from '@/components/FeatureGuard';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { ThemeProvider } from '@/contexts/ThemeContext';
 import { useAuthStore, initializeAuthFromLocalStorage } from '@/stores/authStore';
-import { isAdminUser } from '@/utils/roles';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useAppName } from '@/hooks/useAppName';
 import { lazy, Suspense, useEffect, useState, type ComponentType, type ReactNode } from 'react';
@@ -66,7 +65,7 @@ const SharedSteps = lazyPage(() => import('@/pages/SharedSteps'), 'SharedSteps')
 const GlobalParameters = lazyPage(() => import('@/pages/GlobalParameters'), 'GlobalParameters');
 const TestData = lazyPage(() => import('@/pages/TestData'), 'TestData');
 const ActivityManagement = lazyPage(() => import('@/pages/ActivityManagement'), 'ActivityManagement');
-const Settings = lazyPage<{ adminMode?: boolean; projectId?: number; singleTab?: string }>(() => import('@/pages/Settings'), 'Settings');
+const Settings = lazyPage<{ projectId?: number; singleTab?: string }>(() => import('@/pages/Settings'), 'Settings');
 const Profile = lazyPage(() => import('@/pages/Profile'), 'Profile');
 const WorkInbox = lazyPage(() => import('@/pages/WorkInbox'), 'WorkInbox');
 const NotificationRedirect = lazyPage(() => import('@/pages/NotificationRedirect'), 'NotificationRedirect');
@@ -98,11 +97,13 @@ function PostAuthRedirect() {
   return <Navigate to={resolveSafeRedirect(searchParams.get('next')) || '/projects'} replace />;
 }
 
-// Cross-project administration lives at /administrator and is restricted to
-// admins; everyone else is bounced to their projects.
-function AdminRoute({ children }: { children: ReactNode }) {
-  const { user } = useAuthStore();
-  return isAdminUser(user) ? <>{children}</> : <Navigate to="/projects" replace />;
+// /administrator used to be a separate admin-only surface with its own tab
+// subset; tab visibility now lives inside Settings, gated by role instead of
+// route. This keeps old bookmarks like /administrator?tab=audit working by
+// forwarding the query string along with the redirect.
+function AdministratorRedirect() {
+  const location = useLocation();
+  return <Navigate to={`/settings${location.search}`} replace />;
 }
 
 function LoginRedirect() {
@@ -588,7 +589,7 @@ function AppWithRouter() {
             old URL working by redirecting it. */}
         <Route path="/global-parameters" element={<Navigate to="/projects" replace />} />
         <Route path="/settings" element={<Settings />} />
-        <Route path="/administrator" element={<AdminRoute><Settings adminMode /></AdminRoute>} />
+        <Route path="/administrator" element={<AdministratorRedirect />} />
         <Route path="/profile" element={<Profile />} />
         <Route path="/api-tokens" element={<ApiTokens />} />
         <Route path="/projects/:projectId/webhooks" element={

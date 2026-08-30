@@ -182,6 +182,18 @@ export function useTestCaseExecution() {
   // --- Per-step outcomes (multistep cases) ---
   const [stepStatuses, setStepStatuses] = useState<Record<number, ExecutionStatus>>({});
   const savedStepSnapshotRef = useRef<string | null>(null);
+
+  // Which step is "in focus" while working through a multistep case. Starts
+  // on the first step once steps load, and auto-advances to the next pending
+  // one whenever a step is marked with a terminal outcome; a tester can also
+  // jump focus to any step by clicking it.
+  const [activeStepNumber, setActiveStepNumber] = useState<number | null>(null);
+  useEffect(() => {
+    if (activeStepNumber === null && testSteps.length > 0) {
+      setActiveStepNumber(testSteps[0].step_number);
+    }
+  }, [testSteps, activeStepNumber]);
+
   const setStepStatus = (stepNumber: number, status: ExecutionStatus) =>
     setStepStatuses((prev) => {
       // Clicking the active outcome again clears it back to pending.
@@ -190,7 +202,11 @@ export function useTestCaseExecution() {
         delete next[stepNumber];
         return next;
       }
-      return { ...prev, [stepNumber]: status };
+      const next = { ...prev, [stepNumber]: status };
+      // Auto-advance focus to the next step that's still pending.
+      const nextPending = testSteps.find((s) => s.step_number > stepNumber && !next[s.step_number]);
+      setActiveStepNumber(nextPending ? nextPending.step_number : stepNumber);
+      return next;
     });
 
 
@@ -1286,7 +1302,7 @@ export function useTestCaseExecution() {
     iterationStatuses, setIterationStatuses, globalParams,
     resolveGlobals, substitute,
     // per-step outcomes
-    stepStatuses, setStepStatus,
+    stepStatuses, setStepStatus, activeStepNumber, setActiveStepNumber,
     // navigation
     currentIndex, hasNext, hasPrevious,
     handleNextTestCase, handlePreviousTestCase, handleSaveAndNext, handleSaveAndPrevious,

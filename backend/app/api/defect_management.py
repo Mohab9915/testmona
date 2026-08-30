@@ -600,7 +600,25 @@ def create_issue_tracker_integration(
     
     if not has_permission(current_user, "manage_projects", project_id, db):
         raise HTTPException(status_code=403, detail="Manage projects permission required")
-    
+
+    conflict = crud_defect_management.find_conflicting_issue_tracker_integration(
+        db,
+        tracker_type=integration.tracker_type,
+        api_url=integration.api_url,
+        project_key=integration.project_key,
+        exclude_project_id=project_id,
+    )
+    if conflict:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"'{integration.project_key}' on this {integration.tracker_type} instance is already "
+                f"linked to project '{conflict.project.name}' (integration '{conflict.name}'). "
+                "Two projects syncing to the same external tracker project would mix up each "
+                "other's defects."
+            ),
+        )
+
     return crud_defect_management.create_issue_tracker_integration(
         db=db,
         integration=integration,
@@ -625,7 +643,30 @@ def update_issue_tracker_integration(
         raise HTTPException(status_code=403, detail="Manage projects permission required")
 
     # Ensure the integration belongs to this project
-    _get_project_integration_or_404(db, project_id, integration_id)
+    existing = _get_project_integration_or_404(db, project_id, integration_id)
+
+    update_fields = integration_update.model_dump(exclude_unset=True)
+    effective_tracker_type = update_fields.get("tracker_type", existing.tracker_type)
+    effective_api_url = update_fields.get("api_url", existing.api_url)
+    effective_project_key = update_fields.get("project_key", existing.project_key)
+
+    conflict = crud_defect_management.find_conflicting_issue_tracker_integration(
+        db,
+        tracker_type=effective_tracker_type,
+        api_url=effective_api_url,
+        project_key=effective_project_key,
+        exclude_project_id=project_id,
+    )
+    if conflict:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"'{effective_project_key}' on this {effective_tracker_type} instance is already "
+                f"linked to project '{conflict.project.name}' (integration '{conflict.name}'). "
+                "Two projects syncing to the same external tracker project would mix up each "
+                "other's defects."
+            ),
+        )
 
     return crud_defect_management.update_issue_tracker_integration(
         db=db,
