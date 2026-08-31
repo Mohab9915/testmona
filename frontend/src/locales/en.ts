@@ -496,6 +496,9 @@ export const en = {
   invalidUrlDescription: 'Enter a valid http(s) URL for the defect or custom link.',
   defectRequired: 'Defect required',
   defectRequiredDescription: 'Link or report a defect before saving a failed or blocked result.',
+  describeWhatHappenedRequired: 'Describe what actually happened before saving a failed or blocked result.',
+  createDefectForThisFailure: 'Create a new defect for this failure',
+  createDefectForThisFailureHint: "You'll get a chance to review the pre-filled defect before it's created.",
   defectRequiredHint: 'This project requires a linked defect for failed or blocked results.',
   retestNeededTitle: 'Retest needed',
   retestNeededDescription: 'A defect linked to this test changed status. Re-run the test to verify.',
@@ -639,7 +642,7 @@ export const en = {
   viewFullDetails: 'View Full Details',
   showingTestCases: 'Showing {shown} of {total} test cases. Use search to find specific cases.',
   largeDatasetWarning: '⚠️ Large dataset ({count} test cases). Use search to filter results.',
-  hoverToSeeDescriptions: '💡 Hover to see full descriptions',
+  hoverToSeeDescriptions: '💡 Hover for more details',
   tapToSelect: '💡 Tap to select',
 
   // Move Test Case Dialog

@@ -443,11 +443,15 @@ def update_test_run(db: Session, test_run_id: int, test_run: TestRunUpdate):
             _milestone_id_for_plan(db, prior_test_plan_id),
         }
         _refresh_milestones_by_ids(db, affected)
-        # Emit ``test_run.completed`` exactly once per transition into the
-        # completed state. Failures are swallowed inside emit_event so we
-        # never block the update path on webhook delivery.
+        # Emit ``test_run.completed`` exactly once per transition into a
+        # terminal state (a run with a fail/blocked result inside it now
+        # lands on "failed" rather than "completed" - both still mean the
+        # run is finished, so both still fire this event). Failures are
+        # swallowed inside emit_event so we never block the update path on
+        # webhook delivery.
         new_status = _normalize_run_status(db_test_run.status)
-        if new_status == "completed" and prior_status != "completed":
+        _terminal_statuses = {"completed", "failed"}
+        if new_status in _terminal_statuses and prior_status not in _terminal_statuses:
             try:
                 from ..services.webhook_service import emit_event
                 emit_event(

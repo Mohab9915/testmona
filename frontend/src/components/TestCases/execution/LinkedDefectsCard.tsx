@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -25,11 +26,15 @@ const DEFECT_STATUSES: { value: string; labelKey: string }[] = [
 export function LinkedDefectsCard() {
   const {
     t, projectId, resultDefectLinks, availableDefects, selectedDefectId, setSelectedDefectId,
-    linkType, setLinkType, isLinkingDefect, canWrite,
+    linkType, setLinkType, isLinkingDefect, canWrite, isFailedOrBlockedStatus,
+    createDefectOnSave, setCreateDefectOnSave,
     openDefectDialog, handleLinkExistingDefect, linkTypeLabel,
     handleUnlinkDefect, handleCorrectLinkSnapshot,
     updatingDefectStatusId, handleUpdateLinkedDefectStatus,
   } = useExecution();
+  // Reporting/linking a defect only makes sense against a failed or blocked
+  // result - a passing result has nothing to file a bug about.
+  const canReportDefect = canWrite && isFailedOrBlockedStatus;
   const { formatDateTime } = useDateFormat();
   const formatSnapshotDate = (value?: string | null) => (value ? formatDateTime(value) || '-' : '-');
 
@@ -41,7 +46,7 @@ export function LinkedDefectsCard() {
             <Bug className="h-4 w-4 text-slate-400" />
             {t('linkedDefects')} ({resultDefectLinks.length})
           </CardTitle>
-          {canWrite && (
+          {canReportDefect && (
             <Button variant="outline" size="sm" onClick={openDefectDialog} className="h-8 text-xs">
               <Plus className="mr-1 h-3.5 w-3.5" />
               {t('reportDefect')}
@@ -50,32 +55,48 @@ export function LinkedDefectsCard() {
         </div>
       </CardHeader>
       <CardContent className="space-y-3 pt-4">
-        {canWrite && (
-        <div className="space-y-2 rounded-lg border border-dashed border-slate-300 p-3 dark:border-slate-700">
-          <Label className="text-[11px] font-medium uppercase tracking-wide text-slate-400">
-            {t('linkExistingDefect')}
-          </Label>
-          <div className="flex flex-col gap-2 sm:flex-row">
-            <SearchableDefectSelect
-              id="defectLinkSelect"
-              value={selectedDefectId}
-              onChange={setSelectedDefectId}
-              defects={availableDefects}
-              className="flex-1"
-            />
-            <Select value={linkType} onValueChange={(v) => setLinkType(v as DefectLinkType)}>
-              <SelectTrigger className="h-9 sm:w-44"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="found">{t('linkTypeFound')}</SelectItem>
-                <SelectItem value="blocked_by">{t('linkTypeBlockedBy')}</SelectItem>
-                <SelectItem value="related">{t('linkTypeRelated')}</SelectItem>
-              </SelectContent>
-            </Select>
-            <Button size="sm" onClick={handleLinkExistingDefect} disabled={!selectedDefectId || isLinkingDefect} className="h-9">
-              <Link2 className="mr-1 h-3.5 w-3.5" />
-              {isLinkingDefect ? t('linking') : t('link')}
-            </Button>
+        {canReportDefect && (
+        <div className="space-y-3 rounded-lg border border-dashed border-slate-300 p-3 dark:border-slate-700">
+          <div className="space-y-2">
+            <Label className="text-[11px] font-medium uppercase tracking-wide text-slate-400">
+              {t('linkExistingDefect')}
+            </Label>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <SearchableDefectSelect
+                id="defectLinkSelect"
+                value={selectedDefectId}
+                onChange={setSelectedDefectId}
+                defects={availableDefects}
+                className="flex-1"
+              />
+              <Select value={linkType} onValueChange={(v) => setLinkType(v as DefectLinkType)}>
+                <SelectTrigger className="h-9 sm:w-44"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="found">{t('linkTypeFound')}</SelectItem>
+                  <SelectItem value="blocked_by">{t('linkTypeBlockedBy')}</SelectItem>
+                  <SelectItem value="related">{t('linkTypeRelated')}</SelectItem>
+                </SelectContent>
+              </Select>
+              <Button size="sm" onClick={handleLinkExistingDefect} disabled={!selectedDefectId || isLinkingDefect} className="h-9">
+                <Link2 className="mr-1 h-3.5 w-3.5" />
+                {isLinkingDefect ? t('linking') : t('link')}
+              </Button>
+            </div>
           </div>
+
+          {resultDefectLinks.length === 0 && (
+            <label className="flex cursor-pointer items-start gap-2 border-t border-dashed border-slate-200 pt-3 text-xs dark:border-slate-700">
+              <Checkbox
+                checked={createDefectOnSave}
+                onCheckedChange={(checked) => setCreateDefectOnSave(checked === true)}
+                className="mt-0.5"
+              />
+              <span>
+                <span className="font-medium text-slate-700 dark:text-slate-200">{t('createDefectForThisFailure')}</span>
+                <span className="mt-0.5 block text-slate-400">{t('createDefectForThisFailureHint')}</span>
+              </span>
+            </label>
+          )}
         </div>
         )}
 

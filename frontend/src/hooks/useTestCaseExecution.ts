@@ -101,6 +101,10 @@ export function useTestCaseExecution() {
   const [blockerReason, setBlockerReason] = useState('');
   const [selectedFailureStepNumber, setSelectedFailureStepNumber] = useState('');
   const [failureStepActual, setFailureStepActual] = useState('');
+  // "File a new defect for this failure" - an alternative to linking an
+  // existing one. Checking it satisfies the defect-required-on-failure policy;
+  // the actual defect is opened for confirmation right after the save succeeds.
+  const [createDefectOnSave, setCreateDefectOnSave] = useState(false);
   const [testResultId, setTestResultId] = useState<number | null>(null);
   const [retestNeeded, setRetestNeeded] = useState(false);
   const [requireDefectOnFailure, setRequireDefectOnFailure] = useState(false);
@@ -655,6 +659,7 @@ export function useTestCaseExecution() {
     } else {
       setSelectedFailureStepNumber('');
       setFailureStepActual('');
+      setCreateDefectOnSave(false);
     }
   }, [executionStatus]);
 
@@ -794,7 +799,17 @@ export function useTestCaseExecution() {
       return false;
     }
     if (isFailedOrBlocked && requireDefectOnFailure) {
-      const hasDefectEvidence = resultDefectLinks.length > 0 || defectLink.trim() !== '';
+      // A failure worth requiring a defect for is also worth requiring the
+      // basics that make that defect useful: which step broke, and what
+      // actually happened - otherwise "failed" + "create a defect" produces
+      // an empty report.
+      if (!requireFailureStepSelection()) return false;
+      const hasActualResultText = executionNotes.trim() !== '' || failureStepActual.trim() !== '';
+      if (!hasActualResultText) {
+        toast({ title: t('validationError'), description: t('describeWhatHappenedRequired'), variant: 'destructive' });
+        return false;
+      }
+      const hasDefectEvidence = resultDefectLinks.length > 0 || defectLink.trim() !== '' || createDefectOnSave;
       if (!hasDefectEvidence) {
         toast({ title: t('defectRequired'), description: t('defectRequiredDescription'), variant: 'destructive' });
         return false;
@@ -879,6 +894,17 @@ export function useTestCaseExecution() {
       await refreshHistory();
 
       toast({ title: t('executionSaved'), description: t('executionSavedDescription'), variant: 'success' });
+
+      // "Create a new defect" was checked and nothing already covers this
+      // failure (no existing link, no pasted URL) - open the pre-filled
+      // defect dialog for a final confirm rather than silently filing one.
+      if (
+        isFailedOrBlocked && createDefectOnSave
+        && resultDefectLinks.length === 0 && defectLink.trim() === ''
+      ) {
+        openDefectDialog();
+      }
+
       return true;
     } catch (error) {
       console.error('Failed to save execution:', error);
@@ -897,7 +923,8 @@ export function useTestCaseExecution() {
     resultDefectLinks.length, computeElapsed, manualTimeAdjustment, totalPausedTime,
     hasIterations, dataset, iterationStatuses, testSteps, stepStatuses,
     executionNotes, assignee, executionLogs, t, toast, loadResultDefectLinks, refreshHistory,
-    rebaseTimer, setExecutionStart,
+    rebaseTimer, setExecutionStart, testStepsLoadError, selectedFailureStep, failureStepActual,
+    createDefectOnSave,
   ]);
 
   // --- Defect helpers ---
@@ -1291,6 +1318,7 @@ export function useTestCaseExecution() {
     blockerReason, setBlockerReason,
     selectedFailureStepNumber, setSelectedFailureStepNumber,
     failureStepActual, setFailureStepActual,
+    createDefectOnSave, setCreateDefectOnSave,
     requireDefectOnFailure, retestNeeded,
     isFailedOrBlockedStatus, selectedFailureStep,
     canWrite,

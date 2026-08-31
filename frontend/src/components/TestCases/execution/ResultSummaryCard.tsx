@@ -10,7 +10,7 @@ export function ResultSummaryCard() {
   const {
     t, executionStatus, assignee, users, currentUser,
     elapsedSeconds, executionStartedAt, resultDefectLinks, retestNeeded,
-    openDefectDialog, canWrite,
+    openDefectDialog, canWrite, isFailedOrBlockedStatus,
   } = useExecution();
   const { formatDateTime } = useDateFormat();
 
@@ -66,7 +66,7 @@ export function ResultSummaryCard() {
           </div>
         </dl>
 
-        {canWrite && (
+        {canWrite && isFailedOrBlockedStatus && (
           <Button variant="outline" className="h-8 w-full justify-center text-xs" onClick={openDefectDialog}>
             <Bug className="mr-2 h-3.5 w-3.5 text-orange-600" />
             {t('reportDefect')}

@@ -449,6 +449,9 @@ export const fa = {
     invalidUrlDescription: 'یک نشانی معتبر http(s) برای پیوند نقص یا پیوند سفارشی وارد کنید.',
     defectRequired: 'نقص الزامی است',
     defectRequiredDescription: 'پیش از ذخیره نتیجه ناموفق یا مسدود، یک نقص پیوند یا ثبت کنید.',
+    describeWhatHappenedRequired: 'پیش از ذخیره نتیجه ناموفق یا مسدود، توضیح دهید واقعاً چه اتفاقی افتاد.',
+    createDefectForThisFailure: 'ایجاد نقص جدید برای این شکست',
+    createDefectForThisFailureHint: 'پیش از ایجاد، فرصت بررسی نقص از پیش تکمیل‌شده را خواهید داشت.',
     defectRequiredHint: 'این پروژه برای نتایج ناموفق یا مسدود، پیوند نقص را الزامی می‌کند.',
     retestNeededTitle: 'نیاز به آزمون مجدد',
     retestNeededDescription: 'وضعیت نقصی که به این تست پیوند شده تغییر کرد. برای تأیید، تست را دوباره اجرا کنید.',
@@ -592,7 +595,7 @@ export const fa = {
     viewFullDetails: 'مشاهده جزئیات کامل',
     showingTestCases: 'نمایش {shown} از {total} حالت تست. از جستجو برای یافتن موارد خاص استفاده کنید.',
     largeDatasetWarning: '⚠️ مجموعه داده بزرگ ({count} حالت تست). از جستجو برای فیلتر کردن نتایج استفاده کنید.',
-    hoverToSeeDescriptions: '💡 برای دیدن توضیحات کامل موس را نگه دارید',
+    hoverToSeeDescriptions: '💡 برای جزئیات بیشتر موس را نگه دارید',
     tapToSelect: '💡 برای انتخاب ضربه بزنید',
 
     // Move Test Case Dialog

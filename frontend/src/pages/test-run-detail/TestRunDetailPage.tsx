@@ -357,6 +357,15 @@ export function TestRunDetail() {
     return Boolean(normalizedStatus) && normalizedStatus !== 'not_started' && normalizedStatus !== 'pending';
   };
 
+  // A run that reaches "completed" with a fail/blocked result inside it reads
+  // as a pass (green checkmark) even though it isn't one - this is what
+  // distinguishes a genuinely clean run from one that just finished.
+  const isFailingResultStatus = (status?: string | null) => {
+    const normalizedStatus = normalizeRunStatus(status);
+    return normalizedStatus === 'fail' || normalizedStatus === 'failed'
+      || normalizedStatus === 'block' || normalizedStatus === 'blocked';
+  };
+
   const getResultExecutorName = (result: any) => {
     const executor = result.executor;
     if (executor?.full_name || executor?.username || executor?.email) {
@@ -397,9 +406,14 @@ export function TestRunDetail() {
     const currentStatus = normalizeRunStatus(runData.status);
     const hasResults = resultsData.length > 0;
     const allCompleted = hasResults && resultsData.every((result: any) => isResultComplete(result.status));
-    const targetStatus = !hasResults ? 'pending' : allCompleted ? 'completed' : 'running';
+    const hasFailure = resultsData.some((result: any) => isFailingResultStatus(result.status));
+    const targetStatus = !hasResults ? 'pending' : !allCompleted ? 'running' : hasFailure ? 'failed' : 'completed';
 
-    const completedAtIsConsistent = targetStatus === 'completed' ? Boolean(runData.completed_at) : !runData.completed_at;
+    // "failed" is terminal exactly like "completed" - both stamp completed_at
+    // and stop being "running". Only "completed" (a genuinely clean run) may
+    // be reached again once every result is non-pending and none failed.
+    const isTerminal = targetStatus === 'completed' || targetStatus === 'failed';
+    const completedAtIsConsistent = isTerminal ? Boolean(runData.completed_at) : !runData.completed_at;
     const startedAtIsConsistent = targetStatus === 'pending' || Boolean(runData.started_at);
     if (currentStatus === targetStatus && completedAtIsConsistent && startedAtIsConsistent) {
       return null;
@@ -408,7 +422,7 @@ export function TestRunDetail() {
     return {
       status: targetStatus,
       started_at: targetStatus === 'pending' ? null : (runData.started_at || new Date().toISOString()),
-      completed_at: targetStatus === 'completed' ? (runData.completed_at || new Date().toISOString()) : null,
+      completed_at: isTerminal ? (runData.completed_at || new Date().toISOString()) : null,
     };
   };
 

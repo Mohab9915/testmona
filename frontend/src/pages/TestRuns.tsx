@@ -95,6 +95,13 @@ interface PriorityOption {
   isDefault?: boolean;
 }
 
+// The "hover to see full descriptions" hint promises detail on hover, but a
+// test case with no description filled in has nothing to show there -
+// falling back to preconditions/expected result means hovering is useful
+// even for cases that never got a dedicated description.
+const getHoverSummary = (testCase: TestCase): string | undefined =>
+  testCase.description || testCase.preconditions || testCase.expected_result || undefined;
+
 export function TestRuns() {
   const navigate = useNavigate();
   const { projectId } = useParams<{ projectId?: string }>();
@@ -753,9 +760,9 @@ export function TestRuns() {
                   <FileText className="h-4 w-4 shrink-0 text-slate-400" />
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-sm font-medium text-slate-900 dark:text-white" title={testCase.title}>{testCase.title}</div>
-                    {testCase.description && (
-                      <div className="truncate text-xs text-slate-500 dark:text-slate-400" title={testCase.description}>
-                        {testCase.description.length > 80 ? `${testCase.description.substring(0, 80)}...` : testCase.description}
+                    {getHoverSummary(testCase) && (
+                      <div className="truncate text-xs text-slate-500 dark:text-slate-400" title={getHoverSummary(testCase)}>
+                        {(() => { const s = getHoverSummary(testCase)!; return s.length > 80 ? `${s.substring(0, 80)}...` : s; })()}
                       </div>
                     )}
                   </div>
@@ -1146,9 +1153,9 @@ export function TestRuns() {
                                       <FileText className="h-4 w-4 shrink-0 text-slate-400" />
                                       <div className="flex-1 min-w-0">
                                         <span className="block truncate text-sm font-medium text-slate-900 dark:text-white" title={testCase.title}>{testCase.title}</span>
-                                        {testCase.description && (
-                                          <p className="truncate text-xs text-slate-500 dark:text-slate-400" title={testCase.description}>
-                                            {testCase.description.length > 60 ? `${testCase.description.substring(0, 60)}...` : testCase.description}
+                                        {getHoverSummary(testCase) && (
+                                          <p className="truncate text-xs text-slate-500 dark:text-slate-400" title={getHoverSummary(testCase)}>
+                                            {(() => { const s = getHoverSummary(testCase)!; return s.length > 60 ? `${s.substring(0, 60)}...` : s; })()}
                                           </p>
                                         )}
                                       </div>
@@ -1190,9 +1197,9 @@ export function TestRuns() {
                                 <FileText className="h-4 w-4 shrink-0 text-slate-400" />
                                 <div className="flex-1 min-w-0">
                                   <span className="block truncate text-sm font-medium text-slate-900 dark:text-white" title={testCase.title}>{testCase.title}</span>
-                                  {testCase.description && (
-                                    <p className="truncate text-xs text-slate-500 dark:text-slate-400" title={testCase.description}>
-                                      {testCase.description.length > 60 ? `${testCase.description.substring(0, 60)}...` : testCase.description}
+                                  {getHoverSummary(testCase) && (
+                                    <p className="truncate text-xs text-slate-500 dark:text-slate-400" title={getHoverSummary(testCase)}>
+                                      {(() => { const s = getHoverSummary(testCase)!; return s.length > 60 ? `${s.substring(0, 60)}...` : s; })()}
                                     </p>
                                   )}
                                 </div>

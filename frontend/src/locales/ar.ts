@@ -449,6 +449,9 @@ export const ar = {
     invalidUrlDescription: 'أدخل رابط http(s) صالحًا لرابط العيب أو الرابط المخصص.',
     defectRequired: 'العيب مطلوب',
     defectRequiredDescription: 'اربط أو أبلغ عن عيب قبل حفظ نتيجة فاشلة أو محظورة.',
+    describeWhatHappenedRequired: 'صف ما حدث فعلياً قبل حفظ نتيجة فاشلة أو محظورة.',
+    createDefectForThisFailure: 'إنشاء عيب جديد لهذا الفشل',
+    createDefectForThisFailureHint: 'ستتاح لك فرصة مراجعة العيب المعبأ مسبقاً قبل إنشائه.',
     defectRequiredHint: 'يتطلب هذا المشروع ربط عيب للنتائج الفاشلة أو المحظورة.',
     retestNeededTitle: 'يلزم إعادة الاختبار',
     retestNeededDescription: 'تغيّرت حالة عيب مرتبط بهذا الاختبار. أعد تشغيل الاختبار للتحقق.',
@@ -592,7 +595,7 @@ export const ar = {
     viewFullDetails: 'عرض التفاصيل الكاملة',
     showingTestCases: 'عرض {shown} من {total} حالة اختبار. استخدم البحث للعثور على حالات محددة.',
     largeDatasetWarning: '⚠️ مجموعة بيانات كبيرة ({count} حالة اختبار). استخدم البحث لتصفية النتائج.',
-    hoverToSeeDescriptions: '💡 مرر الماوس لرؤية الأوصاف الكاملة',
+    hoverToSeeDescriptions: '💡 مرر الماوس لرؤية المزيد من التفاصيل',
     tapToSelect: '💡 اضغط للاختيار',
 
     // Move Test Case Dialog
