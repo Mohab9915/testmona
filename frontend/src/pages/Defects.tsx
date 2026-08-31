@@ -14,6 +14,7 @@ import { defectManagementAPI, IssueTrackerIntegration } from '@/lib/defectManage
 import { IntegrationsTab } from '@/pages/settings/tabs/IntegrationsTab';
 import { SearchableRequirementSelect } from '@/components/Defects/SearchableRequirementSelect';
 import { SearchableTestCaseSelect } from '@/components/Defects/SearchableTestCaseSelect';
+import { SearchableAdoParentSelect } from '@/components/Defects/SearchableAdoParentSelect';
 import { DefectComments } from '@/components/Defects/DefectComments';
 import { useToast } from '@/hooks/use-toast';
 import { useTranslation } from '@/hooks/useTranslation';
@@ -496,6 +497,8 @@ export function Defects() {
   const [defectJiraLink, setDefectJiraLink] = useState('');
   const [defectTestCaseId, setDefectTestCaseId] = useState('none');
   const [defectRequirementId, setDefectRequirementId] = useState('none');
+  const [defectAdoParentId, setDefectAdoParentId] = useState<string | null>(null);
+  const [defectAdoParentTitle, setDefectAdoParentTitle] = useState<string | null>(null);
   const [defectTouchedFields, setDefectTouchedFields] = useState<Record<string, boolean>>({});
 
   // Draft state
@@ -568,6 +571,8 @@ export function Defects() {
     setDefectJiraLink('');
     setDefectTestCaseId('none');
     setDefectRequirementId('none');
+    setDefectAdoParentId(null);
+    setDefectAdoParentTitle(null);
     setDefectTouchedFields({});
   };
 
@@ -1055,6 +1060,8 @@ export function Defects() {
         external_issue_url: externalIssueValue || null,
         test_case_id: selectedTestCaseId,
         requirement_id: selectedRequirementId,
+        ado_parent_work_item_id: defectAdoParentId,
+        ado_parent_title: defectAdoParentTitle,
         project_id: parseInt(projectId),
       };
 
@@ -1096,6 +1103,8 @@ export function Defects() {
     setDefectJiraLink(defect.external_issue_url || defect.jira_link || '');
     setDefectTestCaseId(defect.test_case_id?.toString() || 'none');
     setDefectRequirementId(defect.requirement_id?.toString() || 'none');
+    setDefectAdoParentId(defect.ado_parent_work_item_id || null);
+    setDefectAdoParentTitle(defect.ado_parent_title || null);
     setIsEditDialogOpen(true);
   };
 
@@ -1148,6 +1157,8 @@ export function Defects() {
         external_issue_url: defectJiraLink.trim() || null,
         test_case_id: selectedTestCaseId,
         requirement_id: selectedRequirementId,
+        ado_parent_work_item_id: defectAdoParentId,
+        ado_parent_title: defectAdoParentTitle,
       };
 
       const updatedDefect = await defectsAPI.update(editingDefect.id, defectData);
@@ -1649,6 +1660,16 @@ export function Defects() {
                             {selectedDefectRequirement.requirement_id}
                           </p>
                         )}
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="defectAdoParent" className="text-xs font-semibold">{t('parentWorkItemLabel')}</Label>
+                        <SearchableAdoParentSelect
+                          id="defectAdoParent"
+                          projectId={parseInt(projectId)}
+                          value={defectAdoParentId}
+                          valueTitle={defectAdoParentTitle}
+                          onChange={(id, title) => { setDefectAdoParentId(id); setDefectAdoParentTitle(title); }}
+                        />
                       </div>
                       <div className="space-y-2">
                         <Label htmlFor="defectJiraLink" className="text-xs font-semibold">{t('externalIssue')}</Label>
@@ -2711,6 +2732,21 @@ export function Defects() {
                 requirements={requirements}
                 className="col-span-3"
               />
+            </div>
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="editDefectAdoParent" className="text-right">
+                {t('parentWorkItemLabel')}
+              </Label>
+              {projectId && (
+                <SearchableAdoParentSelect
+                  id="editDefectAdoParent"
+                  projectId={parseInt(projectId)}
+                  value={defectAdoParentId}
+                  valueTitle={defectAdoParentTitle}
+                  onChange={(id, title) => { setDefectAdoParentId(id); setDefectAdoParentTitle(title); }}
+                  className="col-span-3"
+                />
+              )}
             </div>
           </div>
           {editingDefect?.id && projectId && (

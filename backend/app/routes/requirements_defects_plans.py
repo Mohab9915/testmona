@@ -1965,8 +1965,11 @@ def register_requirements_defects_plans_routes(app):
         # never raises: the defect is already committed, and a tracker outage must
         # not turn a successful creation into a 500.
         try:
-            from ..services.defect_autosync import auto_sync_new_defect
+            from ..services.defect_autosync import auto_sync_new_defect, sync_ado_parent_link
             auto_sync_new_defect(db, db_defect)
+            # Only relevant once external_issue_id exists, which the call above
+            # may have just set - a parent supplied at creation is a "changed" parent.
+            sync_ado_parent_link(db, db_defect, parent_changed=bool(db_defect.ado_parent_work_item_id))
         except Exception:
             logger.exception("Auto-sync failed for defect %s", getattr(db_defect, "defect_id", None))
 
@@ -2156,7 +2159,16 @@ def register_requirements_defects_plans_routes(app):
             db.rollback()
             logger.warning("IntegrityError updating defect %s: %s", defect_id, e)
             raise HTTPException(status_code=400, detail=_explain_defect_integrity_error(e))
-        
+
+        # "In update_data" (not "truthy") is what distinguishes "this request
+        # explicitly cleared the parent" from "this request never mentioned it" -
+        # exclude_unset means the key is only present when the client sent it.
+        try:
+            from ..services.defect_autosync import sync_ado_parent_link
+            sync_ado_parent_link(db, db_defect, parent_changed="ado_parent_work_item_id" in update_data)
+        except Exception:
+            logger.exception("ADO parent-link sync failed for defect %s", defect_id)
+
         # Create audit trail
         try:
             from ..services.audit_service import get_audit_service
@@ -2596,8 +2608,9 @@ def register_requirements_defects_plans_routes(app):
         # actually created the defect - linking an existing one must not re-push it.
         if payload.new_defect is not None:
             try:
-                from ..services.defect_autosync import auto_sync_new_defect
+                from ..services.defect_autosync import auto_sync_new_defect, sync_ado_parent_link
                 auto_sync_new_defect(db, defect)
+                sync_ado_parent_link(db, defect, parent_changed=bool(defect.ado_parent_work_item_id))
             except Exception:
                 logger.exception(
                     "Auto-sync failed for defect %s", getattr(defect, "defect_id", None)

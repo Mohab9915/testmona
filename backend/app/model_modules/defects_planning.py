@@ -37,6 +37,8 @@ class Defect(Base):
     external_issue_url = Column(String(500))  # Link to external issue
     external_sync_status = Column(String(50), default="not_synced")  # not_synced, synced, error
     external_last_sync = Column(DateTime(timezone=True))
+    ado_parent_work_item_id = Column(String(50))  # Azure DevOps parent Story/Feature/Epic id
+    ado_parent_title = Column(String(255))  # Cached title, set at selection time to avoid a lookup on render
     resolution = Column(Text)  # Resolution details
     root_cause = Column(Text)  # Root cause analysis
     fix_version = Column(String(50))  # Version where fix is applied

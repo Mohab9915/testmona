@@ -5,6 +5,7 @@ Maps application defects to GitHub/GitLab/Jira/Azure DevOps/Linear/Asana issues 
 from typing import Dict, Any, Optional, List
 from datetime import datetime
 import html
+import re
 from .github_client import GitHubClient
 from .gitlab_client import GitLabClient
 from .jira_service import JiraService
@@ -332,50 +333,62 @@ class SyncService:
     def map_defect_to_azure_devops(defect: Dict[str, Any]) -> Dict[str, Any]:
         """
         Map an application defect to an Azure DevOps work item format.
-        
+
         Args:
             defect: application defect data
-            
+
         Returns:
             Dict with Azure DevOps work item data
         """
         # Sanitize all text fields
         title = SyncService.sanitize_text(defect.get('title', ''))
-        
+
+        # Unlike every other tracker mapped in this file, Azure DevOps renders
+        # System.Description as HTML, not Markdown. Markdown syntax (**bold**,
+        # bare newlines) shows up as literal asterisks with no line breaks in
+        # the ADO UI, so this builds HTML instead of reusing the Markdown-style
+        # formatting the other map_defect_to_* methods use.
+        def html_block(text: str) -> str:
+            # sanitize_text HTML-escapes the untrusted content first; the <br>
+            # substitution afterwards only ever inserts tags we control.
+            return SyncService.sanitize_text(text).replace('\r\n', '\n').replace('\n', '<br>')
+
         # Build description
         description_parts = []
-        
+
         if defect.get('description'):
-            description_parts.append(SyncService.sanitize_text(defect['description']))
-        
+            description_parts.append(html_block(defect['description']))
+
         if defect.get('severity'):
-            description_parts.append(f"**Severity:** {SyncService.sanitize_text(defect['severity'])}")
-        
+            description_parts.append(f"<b>Severity:</b> {html_block(defect['severity'])}")
+
         if defect.get('priority'):
-            description_parts.append(f"**Priority:** {SyncService.sanitize_text(defect['priority'])}")
-        
+            description_parts.append(f"<b>Priority:</b> {html_block(defect['priority'])}")
+
         if defect.get('status'):
-            description_parts.append(f"**Status:** {SyncService.sanitize_text(defect['status'])}")
-        
+            description_parts.append(f"<b>Status:</b> {html_block(defect['status'])}")
+
         if defect.get('steps_to_reproduce'):
-            description_parts.append(f"**Steps to Reproduce:**\n{SyncService.sanitize_text(defect['steps_to_reproduce'])}")
-        
+            description_parts.append(f"<b>Steps to Reproduce:</b><br>{html_block(defect['steps_to_reproduce'])}")
+
         if defect.get('environment'):
-            description_parts.append(f"**Environment:** {SyncService.sanitize_text(defect['environment'])}")
-        
+            description_parts.append(f"<b>Environment:</b> {html_block(defect['environment'])}")
+
         if defect.get('expected_result'):
-            description_parts.append(f"**Expected Result:** {SyncService.sanitize_text(defect['expected_result'])}")
-        
+            description_parts.append(f"<b>Expected Result:</b> {html_block(defect['expected_result'])}")
+
         if defect.get('actual_result'):
-            description_parts.append(f"**Actual Result:** {SyncService.sanitize_text(defect['actual_result'])}")
-        
+            description_parts.append(f"<b>Actual Result:</b> {html_block(defect['actual_result'])}")
+
         if defect.get('root_cause'):
-            description_parts.append(f"**Root Cause:**\n{SyncService.sanitize_text(defect['root_cause'])}")
-        
-        description_parts.append(SyncService.build_sync_reference(defect))
-        
-        description = '\n'.join(description_parts)
-        
+            description_parts.append(f"<b>Root Cause:</b><br>{html_block(defect['root_cause'])}")
+
+        app_name = SyncService.get_app_name(defect)
+        defect_id = SyncService.sanitize_text(defect.get('defect_id', 'N/A'))
+        description_parts.append(f"<hr><i>Synced from {app_name} - Defect ID: {defect_id}</i>")
+
+        description = '<br>'.join(description_parts)
+
         # Map priority (Azure DevOps uses 1-3, where 1 is highest)
         priority_map = {
             'critical': '1',
@@ -392,6 +405,69 @@ class SyncService:
             'work_item_type': 'Bug'
         }
     
+    _HTML_TAG_RE = re.compile(r'<[^>]+>')
+
+    # Azure DevOps state names vary by process template (Agile/Scrum/CMMI/Basic),
+    # so this maps the common ones across templates rather than assuming one.
+    # Unmapped/unrecognized states fall back to 'open' - safer than silently
+    # dropping a bug the import job doesn't otherwise misplace.
+    _ADO_STATE_TO_DEFECT_STATUS = {
+        'new': 'open', 'to do': 'open', 'proposed': 'open', 'approved': 'open',
+        'active': 'in_progress', 'committed': 'in_progress', 'in progress': 'in_progress', 'doing': 'in_progress',
+        'resolved': 'fixed',
+        'closed': 'closed', 'done': 'closed',
+        'removed': 'rejected',
+    }
+
+    @staticmethod
+    def _html_to_text(value: Optional[str]) -> str:
+        """Azure DevOps returns System.Description as HTML; defects store plain text."""
+        if not value:
+            return ''
+        text = SyncService._HTML_TAG_RE.sub(' ', value)
+        text = html.unescape(text)
+        return re.sub(r'\s+', ' ', text).strip()
+
+    @staticmethod
+    def map_azure_devops_work_item_to_defect(work_item: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Map an Azure DevOps Bug work item to an application defect format
+        (the reverse of map_defect_to_azure_devops), for the periodic bug-import job.
+
+        Args:
+            work_item: dict as returned by AzureDevOpsClient.list_active_bugs / get_work_item
+
+        Returns:
+            Dict with defect data
+        """
+        state = (work_item.get('state') or '').strip().lower()
+        status = SyncService._ADO_STATE_TO_DEFECT_STATUS.get(state, 'open')
+
+        severity_text = (work_item.get('severity') or '').strip()
+        digit_match = re.match(r'(\d)', severity_text)
+        severity_by_digit = {'1': 'critical', '2': 'high', '3': 'medium', '4': 'low'}
+        if digit_match:
+            severity = severity_by_digit.get(digit_match.group(1), 'medium')
+        elif 'critical' in severity_text.lower():
+            severity = 'critical'
+        elif 'high' in severity_text.lower():
+            severity = 'high'
+        elif 'low' in severity_text.lower():
+            severity = 'low'
+        else:
+            severity = 'medium'
+
+        work_item_id = work_item.get('id')
+        return {
+            'title': work_item.get('title') or f'Azure DevOps Bug #{work_item_id}',
+            'description': SyncService._html_to_text(work_item.get('description')),
+            'severity': severity,
+            'status': status,
+            'external_issue_id': str(work_item_id) if work_item_id is not None else None,
+            'external_issue_url': work_item.get('url'),
+            'external_sync_status': 'synced',
+        }
+
     @staticmethod
     def map_defect_to_linear(defect: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -718,6 +794,27 @@ class SyncService:
             return {"success": False, "message": "Not an Azure DevOps integration", "work_item_types": []}
         client = SyncService.create_azure_devops_client(integration, timeout=timeout)
         return client.list_work_item_types()
+
+    @staticmethod
+    def search_azure_devops_work_items(
+        integration: Dict[str, Any],
+        query_text: str,
+        work_item_types: Optional[List[str]] = None,
+        timeout: int = 30,
+    ) -> Dict[str, Any]:
+        """Work items matching a title search, for the parent-work-item picker."""
+        if (integration.get("tracker_type") or "").lower() != "azure-devops":
+            return {"success": False, "message": "Not an Azure DevOps integration", "work_items": []}
+        client = SyncService.create_azure_devops_client(integration, timeout=timeout)
+        return client.search_work_items(query_text, work_item_types=work_item_types)
+
+    @staticmethod
+    def list_azure_devops_active_bugs(integration: Dict[str, Any], timeout: int = 30) -> Dict[str, Any]:
+        """Not-closed Bug work items for an Azure DevOps integration, for the periodic import job."""
+        if (integration.get("tracker_type") or "").lower() != "azure-devops":
+            return {"success": False, "message": "Not an Azure DevOps integration", "work_items": []}
+        client = SyncService.create_azure_devops_client(integration, timeout=timeout)
+        return client.list_active_bugs()
 
     @staticmethod
     def create_linear_client(integration: Dict[str, Any], timeout: int = 30) -> LinearClient:

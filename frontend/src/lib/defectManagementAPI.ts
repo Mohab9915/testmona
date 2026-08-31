@@ -246,6 +246,24 @@ export const defectManagementAPI = {
     );
     return response.data;
   },
+  // Work items matching a title search, for the "parent work item" picker.
+  searchIntegrationWorkItems: async (
+    projectId: number,
+    integrationId: number,
+    query: string,
+    workItemTypes?: string[],
+  ): Promise<{
+    success: boolean;
+    message?: string;
+    work_items: Array<{ id: string; title: string; work_item_type: string; state: string }>;
+  }> => {
+    const params = new URLSearchParams({ q: query });
+    if (workItemTypes?.length) params.set('types', workItemTypes.join(','));
+    const response = await api.get(
+      `/projects/${projectId}/issue-tracker-integrations/${integrationId}/work-items/search?${params}`,
+    );
+    return response.data;
+  },
   syncDefectWithExternal: async (projectId: number, defectId: number, syncData: {
     integration_id: number;
     sync_type?: string;

@@ -152,6 +152,45 @@ def auto_sync_new_defect(db: Session, defect: models.Defect) -> Optional[Dict[st
     return result
 
 
+def sync_ado_parent_link(db: Session, defect: models.Defect, parent_changed: bool) -> None:
+    """Best-effort: push defect.ado_parent_work_item_id to Azure DevOps as the
+    work item's hierarchical parent, once the defect itself has been synced.
+
+    ``parent_changed`` distinguishes "this request touched the field" from
+    "the field happens to have a value" - an update that doesn't mention the
+    parent at all must not re-push it on every unrelated edit. Same
+    never-raise philosophy as auto_sync_new_defect: a bad parent id or an
+    unreachable tracker must not fail the defect save it's attached to.
+    """
+    if not parent_changed or defect is None or not defect.external_issue_id:
+        return
+
+    integration = (
+        db.query(models.IssueTrackerIntegration)
+        .filter(
+            models.IssueTrackerIntegration.project_id == defect.project_id,
+            models.IssueTrackerIntegration.tracker_type == "azure-devops",
+            models.IssueTrackerIntegration.is_active.is_(True),
+        )
+        .first()
+    )
+    if not integration:
+        return
+
+    try:
+        from ..sync_service import SyncService
+
+        client = SyncService.create_azure_devops_client(_integration_payload(integration))
+        result = client.link_parent_work_item(defect.external_issue_id, defect.ado_parent_work_item_id)
+        if not result.get("success"):
+            logger.warning(
+                "ado-parent-link: defect %s -> parent %s failed: %s",
+                defect.defect_id, defect.ado_parent_work_item_id, result.get("message"),
+            )
+    except Exception:
+        logger.exception("ado-parent-link: unexpected error for defect %s", defect.defect_id)
+
+
 def _record_failure(db: Session, defect: models.Defect, message: str) -> None:
     # Defect has no sync_error column; external_sync_status is the only signal,
     # so the detail goes to the log rather than a phantom attribute.

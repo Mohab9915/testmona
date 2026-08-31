@@ -755,6 +755,43 @@ def get_integration_work_item_types(
     })
 
 
+@router.get("/projects/{project_id}/issue-tracker-integrations/{integration_id}/work-items/search")
+def search_integration_work_items(
+    project_id: int,
+    integration_id: int,
+    q: str = "",
+    types: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    """Work items matching a title search, for the "parent work item" picker.
+
+    ``types`` is a comma-separated list (e.g. "Story,Feature,Epic"); omit to
+    search every work item type.
+    """
+    if not has_permission(current_user, "view", project_id, db):
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    integration = _get_project_integration_or_404(db, project_id, integration_id)
+
+    if not q.strip():
+        return {"success": True, "work_items": []}
+
+    work_item_types = [t.strip() for t in types.split(",") if t.strip()] if types else None
+
+    from app.sync_service import SyncService
+    return SyncService.search_azure_devops_work_items(
+        {
+            'tracker_type': integration.tracker_type,
+            'api_url': integration.api_url,
+            'api_token': integration.api_token,
+            'project_key': integration.project_key,
+        },
+        query_text=q,
+        work_item_types=work_item_types,
+    )
+
+
 @router.post("/projects/{project_id}/defects-management/{defect_id}/sync-with-external")
 def sync_defect_with_external(
     project_id: int,

@@ -33,6 +33,8 @@ async def lifespan(app: FastAPI):
         db.close()
     from .token_cleanup import start_token_cleanup
     start_token_cleanup()
+    from .services.ado_bug_import import start_ado_bug_import
+    start_ado_bug_import()
     yield
 
 

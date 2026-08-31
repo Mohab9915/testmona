@@ -51,6 +51,7 @@ import {
 } from '@/hooks/queries/defectDetail';
 import { useResolvedEntityId } from '@/hooks/useResolvedEntityId';
 import { SearchableRequirementSelect } from '@/components/Defects/SearchableRequirementSelect';
+import { SearchableAdoParentSelect } from '@/components/Defects/SearchableAdoParentSelect';
 
 type DefectDetailResponse = {
   defect: any;
@@ -77,6 +78,8 @@ type DefectEditForm = {
   tags: string;
   external_issue_url: string;
   requirement_id: string;
+  ado_parent_work_item_id: string | null;
+  ado_parent_title: string | null;
 };
 
 const splitTags = (value?: string | null): string[] =>
@@ -102,6 +105,8 @@ const buildEditForm = (defect: any): DefectEditForm => ({
   tags: defect?.tags || '',
   external_issue_url: defect?.external_issue_url || '',
   requirement_id: defect?.requirement_id ? String(defect.requirement_id) : 'none',
+  ado_parent_work_item_id: defect?.ado_parent_work_item_id || null,
+  ado_parent_title: defect?.ado_parent_title || null,
 });
 
 const statusClass = (status?: string | null): string => {
@@ -203,6 +208,10 @@ export function DefectDetail() {
     setEditForm((prev) => ({ ...prev, [field]: value }));
   };
 
+  const updateAdoParent = (workItemId: string | null, title: string | null) => {
+    setEditForm((prev) => ({ ...prev, ado_parent_work_item_id: workItemId, ado_parent_title: title }));
+  };
+
   const saveDefect = async () => {
     const trimmedId = editForm.defect_id.trim();
     const trimmedTitle = editForm.title.trim();
@@ -254,6 +263,8 @@ export function DefectDetail() {
         tags: editForm.tags.trim(),
         external_issue_url: externalUrl || null,
         requirement_id: selectedRequirementId,
+        ado_parent_work_item_id: editForm.ado_parent_work_item_id,
+        ado_parent_title: editForm.ado_parent_title,
       });
       setEditForm(buildEditForm(updatedDefect));
       setIsEditing(false);
@@ -456,6 +467,18 @@ export function DefectDetail() {
               />
             </Field>
 
+            {projectIdValid && (
+              <Field label={t('parentWorkItemLabel')}>
+                <SearchableAdoParentSelect
+                  id="defectDetailAdoParent"
+                  projectId={numericProjectId}
+                  value={editForm.ado_parent_work_item_id}
+                  valueTitle={editForm.ado_parent_title}
+                  onChange={updateAdoParent}
+                />
+              </Field>
+            )}
+
             <Field label={t('description')}>
               <Textarea
                 value={editForm.description}
@@ -634,6 +657,11 @@ export function DefectDetail() {
                 value={detail.requirement?.title}
                 code={detail.requirement?.key}
                 to={detail.requirement ? `/projects/${projectId}/requirements/${detail.requirement.id}` : undefined}
+              />
+              <Relationship
+                label={t('parentWorkItemLabel')}
+                value={defect?.ado_parent_title}
+                code={defect?.ado_parent_work_item_id ? `#${defect.ado_parent_work_item_id}` : undefined}
               />
               <Relationship
                 label={t('testCase')}

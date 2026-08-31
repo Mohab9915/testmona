@@ -32,6 +32,7 @@ _DEFECT_SANITIZE_SKIP = {
     "external_issue_id",
     "external_issue_url",
     "external_sync_status",
+    "ado_parent_work_item_id",
 }
 
 def _sanitize_defect_strings(data):
@@ -85,6 +86,11 @@ class DefectBase(BaseModel):
     external_issue_id: Optional[str] = Field(default=None, max_length=100)
     external_issue_url: Optional[str] = Field(default=None, max_length=500)
     external_sync_status: Optional[str] = Field(default=None, max_length=50)
+    # Azure DevOps parent Story/Feature/Epic. Both are optional and independent
+    # of external_issue_id/url, which track the tracker this defect itself
+    # became when synced - the parent is a different, existing work item.
+    ado_parent_work_item_id: Optional[str] = Field(default=None, max_length=50)
+    ado_parent_title: Optional[str] = Field(default=None, max_length=255)
 
     @model_validator(mode='before')
     @classmethod
@@ -131,6 +137,8 @@ class DefectUpdate(BaseModel):
     external_issue_id: Optional[str] = Field(default=None, max_length=100)
     external_issue_url: Optional[str] = Field(default=None, max_length=500)
     external_sync_status: Optional[str] = Field(default=None, max_length=50)
+    ado_parent_work_item_id: Optional[str] = Field(default=None, max_length=50)
+    ado_parent_title: Optional[str] = Field(default=None, max_length=255)
 
     @model_validator(mode='before')
     @classmethod
