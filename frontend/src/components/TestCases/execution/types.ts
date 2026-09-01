@@ -18,6 +18,8 @@ export interface NewDefectDraft {
   description: string;
   severity: string;
   priority: string;
+  ado_parent_work_item_id: string | null;
+  ado_parent_title: string | null;
 }
 
 export type IterationStatusMap = Record<number, ExecutionStatus>;

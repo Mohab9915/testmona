@@ -1148,7 +1148,7 @@ export function RequirementDetail() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 px-4 py-6 dark:bg-slate-950" dir={isRTL ? 'rtl' : 'ltr'}>
+    <div className="min-h-full bg-slate-50 px-4 py-6 dark:bg-slate-950" dir={isRTL ? 'rtl' : 'ltr'}>
       <div className="mx-auto max-w-6xl space-y-6">
         <Button variant="ghost" size="sm" className="-mx-2 text-slate-600 dark:text-slate-300" onClick={() => navigate(backPath)}>
           <BackIcon className={`${isRTL ? 'ml-2' : 'mr-2'} h-4 w-4`} />

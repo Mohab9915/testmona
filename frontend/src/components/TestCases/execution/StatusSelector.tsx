@@ -23,7 +23,7 @@ const SHORTCUT: Record<string, string> = { passed: 'P', failed: 'F', blocked: 'B
 
 /** Large segmented outcome control — the primary way to record a result. */
 export function StatusSelector({ compact = false }: { compact?: boolean }) {
-  const { t, executionStatus, setExecutionStatus, hasIterations, canWrite } = useExecution();
+  const { t, executionStatus, setExecutionStatus, hasIterations, canWrite, hasFailedOrBlockedStep, stepsIncomplete } = useExecution();
 
   if (hasIterations) {
     return (
@@ -38,14 +38,27 @@ export function StatusSelector({ compact = false }: { compact?: boolean }) {
       {CHOICES.map((choice) => {
         const isActive = executionStatus === choice.value;
         const Icon = choice.icon;
+        // A failed/blocked step makes "the case passed" or "skip it" a
+        // contradiction - only failed/blocked stay pickable until that
+        // step's outcome changes. "Passed" additionally claims every step
+        // was actually run, so it also waits on stepsIncomplete - Skipped
+        // doesn't, since skipping is legitimate without running anything.
+        const blockedByStep = hasFailedOrBlockedStep && (choice.value === 'passed' || choice.value === 'skipped');
+        const blockedByIncompleteSteps = choice.value === 'passed' && stepsIncomplete;
+        const disabled = !canWrite || blockedByStep || blockedByIncompleteSteps;
+        const disabledReason = blockedByStep
+          ? t('resultContradictsFailedStep')
+          : blockedByIncompleteSteps
+            ? t('resultRequiresAllStepsRun')
+            : null;
         return (
           <button
             key={choice.value}
             type="button"
-            disabled={!canWrite}
+            disabled={disabled}
             onClick={() => setExecutionStatus(choice.value)}
             aria-pressed={isActive}
-            title={`${t(choice.labelKey)} (${SHORTCUT[choice.value]})`}
+            title={disabledReason || `${t(choice.labelKey)} (${SHORTCUT[choice.value]})`}
             className={`group flex items-center justify-center gap-2 rounded-lg border font-semibold transition-all disabled:cursor-not-allowed disabled:opacity-50 ${
               compact ? 'h-9 px-2 text-xs' : 'h-14 text-sm'
             } ${

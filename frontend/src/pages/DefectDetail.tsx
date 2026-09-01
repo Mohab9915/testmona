@@ -30,6 +30,7 @@ import { DefectRootCauseCard } from '@/components/Defects/DefectRootCauseCard';
 import { CreatePromptDialog } from '@/components/Defects/CreatePromptDialog';
 import { WatchButton } from '@/components/WatchButton';
 import { useProjectPermissions } from '@/hooks/useProjectPermissions';
+import { useIsFeatureEnabled } from '@/hooks/useProjectFeatures';
 import {
   Select,
   SelectContent,
@@ -152,7 +153,8 @@ export function DefectDetail() {
   const isSaving = updateDefect.isPending;
 
   const { canWrite } = useProjectPermissions(projectIdValid ? numericProjectId : null);
-  const requirementsQuery = useDefectEditRequirements(numericProjectId, projectIdValid);
+  const requirementsEnabled = useIsFeatureEnabled(projectIdValid ? numericProjectId : null, 'requirements');
+  const requirementsQuery = useDefectEditRequirements(numericProjectId, projectIdValid && requirementsEnabled);
   const membersQuery = useDefectProjectMembers(numericProjectId, projectIdValid);
   const requirements: any[] = requirementsQuery.data ?? [];
   const members: { id: number; name: string }[] = membersQuery.data ?? [];
@@ -458,14 +460,16 @@ export function DefectDetail() {
               </Field>
             </div>
 
-            <Field label={t('requirement')}>
-              <SearchableRequirementSelect
-                id="defectDetailRequirement"
-                value={editForm.requirement_id}
-                onChange={(value) => updateEditField('requirement_id', value)}
-                requirements={requirements}
-              />
-            </Field>
+            {requirementsEnabled && (
+              <Field label={t('requirement')}>
+                <SearchableRequirementSelect
+                  id="defectDetailRequirement"
+                  value={editForm.requirement_id}
+                  onChange={(value) => updateEditField('requirement_id', value)}
+                  requirements={requirements}
+                />
+              </Field>
+            )}
 
             {projectIdValid && (
               <Field label={t('parentWorkItemLabel')}>

@@ -117,11 +117,21 @@ export function useIntegrations(preferredProjectId?: number) {
     }
     // Both are UI-level fields the backend keeps inside the sync_config blob.
     // auto_sync_on_create applies to every tracker; work_item_type is ADO-only.
-    payload.sync_config = {
+    const nextSyncConfig: Record<string, unknown> = {
       ...(editing?.sync_config ?? {}),
       auto_sync_on_create,
-      ...(form.tracker_type === 'azure-devops' && work_item_type ? { work_item_type } : {}),
     };
+    if (form.tracker_type === 'azure-devops' && work_item_type) {
+      nextSyncConfig.work_item_type = work_item_type;
+    } else {
+      // Picking "Default" clears work_item_type back to unset. Merging onto
+      // the old sync_config (above) means simply omitting the key here isn't
+      // enough - the old value would just survive untouched, making
+      // "Default" a permanent no-op once any specific type had ever been
+      // saved. Deleting the key is what actually clears it.
+      delete nextSyncConfig.work_item_type;
+    }
+    payload.sync_config = nextSyncConfig;
     try {
       if (editing) {
         await defectManagementAPI.updateIssueTrackerIntegration(selectedProjectId, editing.id, payload);

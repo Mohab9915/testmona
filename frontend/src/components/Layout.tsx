@@ -35,6 +35,20 @@ export function Layout({ children }: LayoutProps) {
     document.documentElement.lang = language;
   }, [isRTL, language]);
 
+  // The app shell manages its own scroll region (<main> below); lock the
+  // native document to that same bound only while the shell is mounted, so a
+  // tall page can't scroll-chain past main's own limit into the document
+  // itself (see the body.app-shell rule in index.css). Public pages rendered
+  // without this Layout keep normal document scrolling.
+  React.useEffect(() => {
+    document.documentElement.classList.add('app-shell');
+    document.body.classList.add('app-shell');
+    return () => {
+      document.documentElement.classList.remove('app-shell');
+      document.body.classList.remove('app-shell');
+    };
+  }, []);
+
   // Global listener for password change required event
   React.useEffect(() => {
     const handlePasswordChangeRequired = () => {
@@ -124,7 +138,7 @@ export function Layout({ children }: LayoutProps) {
         {/* Page content — `min-h-0` lets this flex child shrink so its own
             overflow scrolls (instead of growing the page), which is what makes
             `position: sticky` work for descendants. */}
-        <main className="flex-1 min-h-0 p-6 overflow-auto print:p-0 print:overflow-visible">
+        <main className="flex-1 min-h-0 p-6 overflow-auto overscroll-contain print:p-0 print:overflow-visible">
           {children}
         </main>
       </div>

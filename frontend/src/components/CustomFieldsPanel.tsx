@@ -19,6 +19,7 @@ import {
 
 import { useToast } from '@/hooks/use-toast';
 import { useTranslation } from '@/hooks/useTranslation';
+import { useIsFeatureEnabled } from '@/hooks/useProjectFeatures';
 import { customFieldsAPI, getApiErrorMessage, type CustomFieldEntityType } from '@/lib/api';
 import { CustomFieldDefinition } from '@/types';
 
@@ -60,6 +61,7 @@ const splitMultiselect = (value: string | null | undefined): string[] => {
 export function CustomFieldsPanel({ projectId, entityType, entityId, readOnly = false, hideWhenEmpty = false, className }: Props) {
   const { t } = useTranslation();
   const { toast } = useToast();
+  const customFieldsEnabled = useIsFeatureEnabled(projectId, 'custom_fields');
 
   const [definitions, setDefinitions] = useState<CustomFieldDefinition[]>([]);
   const [values, setValues] = useState<ValueRow[]>([]);
@@ -69,6 +71,10 @@ export function CustomFieldsPanel({ projectId, entityType, entityId, readOnly = 
   const [savingFieldId, setSavingFieldId] = useState<number | null>(null);
 
   useEffect(() => {
+    if (!customFieldsEnabled) {
+      setIsLoading(false);
+      return;
+    }
     let cancelled = false;
     (async () => {
       setIsLoading(true);
@@ -97,7 +103,7 @@ export function CustomFieldsPanel({ projectId, entityType, entityId, readOnly = 
     return () => {
       cancelled = true;
     };
-  }, [projectId, entityType, entityId, t]);
+  }, [projectId, entityType, entityId, t, customFieldsEnabled]);
 
   const valuesByFieldId = useMemo(() => {
     const map = new Map<number, ValueRow>();
@@ -248,6 +254,10 @@ export function CustomFieldsPanel({ projectId, entityType, entityId, readOnly = 
       />
     );
   };
+
+  if (!customFieldsEnabled) {
+    return null;
+  }
 
   if (!isLoading && !error && hideWhenEmpty && definitions.length === 0) {
     return null;

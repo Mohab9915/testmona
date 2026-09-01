@@ -1073,10 +1073,20 @@ export function Defects() {
       setIsCreateDialogOpen(false);
       setIsCreateDialogExpanded(false);
 
-      toast({
-        title: t('success'),
-        description: t('defectCreatedSuccessfully'),
-      });
+      // A tracker push is attempted server-side whenever an integration has
+      // auto-sync-on-create enabled; a failed push must not read as success.
+      if (createdDefect?.external_sync_status === 'error') {
+        toast({
+          title: t('defectSyncFailedTitle'),
+          description: t('defectSyncFailedDescription'),
+          variant: 'destructive',
+        });
+      } else {
+        toast({
+          title: t('success'),
+          description: t('defectCreatedSuccessfully'),
+        });
+      }
     } catch (error) {
       console.error('Failed to create defect:', error);
       toast({

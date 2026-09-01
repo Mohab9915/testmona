@@ -93,7 +93,13 @@ def auto_sync_new_defect(db: Session, defect: models.Defect) -> Optional[Dict[st
     Returns the sync result, or None when nothing was configured. Never raises:
     a tracker being down must not turn a successful defect creation into a 500.
     """
-    if defect is None or defect.external_issue_id:
+    if defect is None:
+        return None
+    if defect.external_issue_id:
+        logger.info(
+            "auto-sync: defect %s already has an external issue (%s); skipping",
+            defect.defect_id, defect.external_issue_id,
+        )
         return None
 
     try:
@@ -103,6 +109,30 @@ def auto_sync_new_defect(db: Session, defect: models.Defect) -> Optional[Dict[st
         return None
 
     if not integrations:
+        # This is the exact branch that left a real defect silently
+        # unsynced with no trace anywhere: the only way to tell "sync was
+        # never attempted" from "sync succeeded" was to notice the missing
+        # external_issue_url yourself. Logging which of the two possible
+        # causes it was (no active integration at all vs. one that exists
+        # but isn't opted into auto-sync-on-create) makes that diagnosable
+        # without reconstructing it from request logs after the fact.
+        try:
+            any_active = (
+                db.query(models.IssueTrackerIntegration.id)
+                .filter(
+                    models.IssueTrackerIntegration.project_id == defect.project_id,
+                    models.IssueTrackerIntegration.is_active.is_(True),
+                )
+                .first()
+                is not None
+            )
+        except Exception:
+            any_active = None
+        logger.warning(
+            "auto-sync: defect %s not pushed - no active integration with auto_sync_on_create "
+            "for project %s (an active integration exists: %s)",
+            defect.defect_id, defect.project_id, any_active,
+        )
         return None
 
     # One tracker is the sensible target: a defect has a single external_issue_id,

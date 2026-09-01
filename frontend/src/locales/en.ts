@@ -497,6 +497,8 @@ export const en = {
   defectRequired: 'Defect required',
   defectRequiredDescription: 'Link or report a defect before saving a failed or blocked result.',
   describeWhatHappenedRequired: 'Describe what actually happened before saving a failed or blocked result.',
+  resultContradictsFailedStep: 'A step is marked failed or blocked, so the overall result cannot be saved as passed or skipped.',
+  resultRequiresAllStepsRun: 'Run every step before marking this result passed.',
   createDefectForThisFailure: 'Create a new defect for this failure',
   createDefectForThisFailureHint: "You'll get a chance to review the pre-filled defect before it's created.",
   defectRequiredHint: 'This project requires a linked defect for failed or blocked results.',
@@ -1061,7 +1063,7 @@ export const en = {
   // Sidebar Navigation
   overview: 'Overview',
   environments: 'Environments',
-  activity: 'Activity',
+  activity: 'Audit Log',
   sharedSteps: 'Shared Steps',
   globalParameters: 'Global Parameters',
   expandSidebar: 'Expand sidebar',
@@ -2004,6 +2006,8 @@ export const en = {
   duplicateDefect: 'Duplicate Defect',
   defectWithThisTitleAlreadyExists: 'A defect with this title already exists. Please use a different title.',
   defectReportedSuccessfully: 'Defect reported successfully',
+  defectSyncFailedTitle: 'Defect saved, but not synced',
+  defectSyncFailedDescription: 'The defect was created in TestMona, but pushing it to the linked tracker (e.g. Azure DevOps) failed. Check the integration under Settings → Integrations.',
   failedToCreateDefect: 'Failed to create defect. Please try again.',
 
   // Test Suite helper texts
@@ -2085,7 +2089,7 @@ export const en = {
   accountInactive: 'Account Inactive',
 
   // Activity Management / Audit Trails
-  activityManagement: 'Activity Management',
+  activityManagement: 'Audit Log',
   activityManagementDescription: 'Monitor and manage system activities and audit trails',
   auditFilters: 'Filters',
   searchActivities: 'Search activities...',
@@ -4327,6 +4331,7 @@ export const en = {
   manualTimeHelper: 'Enter a value between 0 and 24 hours.',
   selectStatusBeforeSaving: 'Please set a status (Passed, Failed, or Blocked) before saving.',
   failedToSaveExecution: 'Failed to save execution.',
+  failedToSaveStepResults: 'The overall result saved, but the individual step outcomes did not. Save again to retry.',
   executionResumed: 'Execution Resumed',
   executionResumedDescription: 'Test execution has been resumed.',
   executionPaused: 'Execution Paused',

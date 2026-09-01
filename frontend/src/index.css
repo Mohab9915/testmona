@@ -149,6 +149,19 @@ layer(base);
   * {
     @apply border-border;
   }
+  /* The authenticated app shell (Layout.tsx) is a fixed h-screen box that
+     scrolls internally via its own <main>; while it's mounted, the native
+     document must not also become scrollable, or a long page can scroll-chain
+     past main's own limit into the page itself, showing a second scrollbar and
+     blank space beneath the content. Scoped to body.app-shell (toggled by
+     Layout.tsx) rather than applied globally, since public pages rendered
+     without the shell (login, signup, shared reports) rely on normal document
+     scroll. */
+  html.app-shell,
+  body.app-shell {
+    height: 100%;
+    overflow: hidden;
+  }
   body {
     @apply bg-background text-foreground;
     font-family: 'Inter', system-ui, -apple-system, sans-serif;

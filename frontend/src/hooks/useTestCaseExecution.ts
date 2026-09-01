@@ -42,6 +42,11 @@ const COMPLETED_STATUSES = new Set(['pass', 'passed', 'fail', 'failed', 'block',
 const isCompletedResultStatus = (status?: string | null) =>
   COMPLETED_STATUSES.has(String(status || '').toLowerCase().replace('-', '_'));
 
+const emptyNewDefectDraft = (): NewDefectDraft => ({
+  title: '', description: '', severity: 'medium', priority: 'high',
+  ado_parent_work_item_id: null, ado_parent_title: null,
+});
+
 interface FormSnapshot {
   status: string;
   notes: string;
@@ -122,9 +127,7 @@ export function useTestCaseExecution() {
   const [showUnsavedDialog, setShowUnsavedDialog] = useState(false);
   const [defectTouchedFields, setDefectTouchedFields] = useState<Record<string, boolean>>({});
   const defectTitleInputRef = useRef<HTMLInputElement>(null);
-  const [newDefect, setNewDefect] = useState<NewDefectDraft>({
-    title: '', description: '', severity: 'medium', priority: 'high',
-  });
+  const [newDefect, setNewDefect] = useState<NewDefectDraft>(emptyNewDefectDraft());
   const hasUnsavedChanges = newDefect.title.trim() !== '' || newDefect.description.trim() !== '';
 
   // --- Timer ---
@@ -186,6 +189,37 @@ export function useTestCaseExecution() {
   // --- Per-step outcomes (multistep cases) ---
   const [stepStatuses, setStepStatuses] = useState<Record<number, ExecutionStatus>>({});
   const savedStepSnapshotRef = useRef<string | null>(null);
+
+  // A step marked failed/blocked makes "the overall result passed" a
+  // contradiction - the result can only be failed or blocked while that's
+  // true. blocked "wins" only when nothing is outright failed, since a
+  // failure is the stronger claim about the case's outcome.
+  const hasBlockedStep = useMemo(() => Object.values(stepStatuses).includes('blocked'), [stepStatuses]);
+  const hasFailedStep = useMemo(() => Object.values(stepStatuses).includes('failed'), [stepStatuses]);
+  const hasFailedOrBlockedStep = hasBlockedStep || hasFailedStep;
+
+  // "Passed" claims every step was run and came back clean - it can't be a
+  // shortcut for skipping the steps entirely. Failed/Blocked stay allowed
+  // mid-run (a case can legitimately stop the moment something breaks), and
+  // Skipped doesn't require having run anything.
+  const allStepsRun = useMemo(
+    () => testSteps.length === 0 || testSteps.every((s) => stepStatuses[s.step_number] != null),
+    [testSteps, stepStatuses],
+  );
+  const stepsIncomplete = testSteps.length > 0 && !allStepsRun;
+
+  // Auto-correct the moment a step turns bad, so the tester sees the flip
+  // immediately rather than discovering it only when save is blocked. Does
+  // not fight a tester who has already picked failed vs. blocked themselves
+  // (executionStatus is deliberately not a dependency here) - only the
+  // Passed/Skipped buttons are disabled to prevent that combination outright.
+  useEffect(() => {
+    if (!hasFailedOrBlockedStep) return;
+    setExecutionStatus((prev) => (prev === 'passed' || prev === 'skipped' || prev === 'pending')
+      ? (hasFailedStep ? 'failed' : 'blocked')
+      : prev);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasFailedOrBlockedStep, hasFailedStep]);
 
   // Which step is "in focus" while working through a multistep case. Starts
   // on the first step once steps load, and auto-advances to the next pending
@@ -794,6 +828,19 @@ export function useTestCaseExecution() {
     }
 
     const isFailedOrBlocked = executionStatus === 'failed' || executionStatus === 'blocked';
+    if (!isFailedOrBlocked && hasFailedOrBlockedStep) {
+      // Belt-and-suspenders: the auto-correct effect and the disabled
+      // Passed/Skipped buttons should already prevent this, but a save must
+      // never persist "passed" over a step the tester just marked failed.
+      toast({ title: t('validationError'), description: t('resultContradictsFailedStep'), variant: 'destructive' });
+      return false;
+    }
+    if (executionStatus === 'passed' && stepsIncomplete) {
+      // Same belt-and-suspenders as above, for the disabled-until-complete
+      // Passed button: "passed" can't be recorded before every step has run.
+      toast({ title: t('validationError'), description: t('resultRequiresAllStepsRun'), variant: 'destructive' });
+      return false;
+    }
     if (!isValidHttpUrl(defectLink) || !isValidHttpUrl(customLink)) {
       toast({ title: t('invalidUrl'), description: t('invalidUrlDescription'), variant: 'destructive' });
       return false;
@@ -859,6 +906,7 @@ export function useTestCaseExecution() {
         ? await testResultsAPI.update(existing[0].id, executionData)
         : await testResultsAPI.create(executionData);
 
+      let stepSaveError: unknown = null;
       if (savedResult?.id) {
         setTestResultId(savedResult.id);
         setRetestNeeded(Boolean(savedResult.retest_needed));
@@ -879,6 +927,7 @@ export function useTestCaseExecution() {
             savedStepSnapshotRef.current = serializeStepMap(testSteps, stepStatuses);
           } catch (stepError) {
             console.error('Failed to save step results:', stepError);
+            stepSaveError = stepError;
           }
         }
       }
@@ -893,7 +942,21 @@ export function useTestCaseExecution() {
       });
       await refreshHistory();
 
-      toast({ title: t('executionSaved'), description: t('executionSavedDescription'), variant: 'success' });
+      // The overall result saved either way - but a caller must never read
+      // "saved" as "everything you entered is on the server" when the step
+      // outcomes specifically didn't make it. Surfacing this (instead of the
+      // console.error-only swallow this used to be) is what would have
+      // caught the stale-frontend/new-backend mismatch that silently dropped
+      // a real tester's step results while the overall result kept "passed".
+      if (stepSaveError) {
+        toast({
+          title: t('error'),
+          description: getApiErrorMessage(stepSaveError, t('failedToSaveStepResults')),
+          variant: 'destructive',
+        });
+      } else {
+        toast({ title: t('executionSaved'), description: t('executionSavedDescription'), variant: 'success' });
+      }
 
       // "Create a new defect" was checked and nothing already covers this
       // failure (no existing link, no pasted URL) - open the pre-filled
@@ -982,6 +1045,7 @@ export function useTestCaseExecution() {
     const severity = ['low', 'medium', 'high', 'critical'].includes(tcPriority) ? tcPriority : 'medium';
     const statusLabel = executionStatus === 'blocked' ? t('blocked') : t('failed');
     setNewDefect({
+      ...emptyNewDefectDraft(),
       title: testCase?.title ? `[${statusLabel}] ${testCase.title}` : '',
       description: selectedFailureStep
         ? `${t('failingStep')} ${selectedFailureStep.step_number}: ${selectedFailureStep.action}\n\n${failureStepActual.trim() || executionNotes.trim()}`
@@ -1098,6 +1162,8 @@ export function useTestCaseExecution() {
         priority: newDefect.priority,
         project_id: currentProjectId,
         reported_by: currentUser?.id,
+        ado_parent_work_item_id: newDefect.ado_parent_work_item_id,
+        ado_parent_title: newDefect.ado_parent_title,
         ...buildDefectContext(),
       };
       const link = await testResultsAPI.linkDefect(testResultId, {
@@ -1111,9 +1177,22 @@ export function useTestCaseExecution() {
         setDefects((prev) => [createdDefect, ...prev]);
         setAvailableDefects((prev) => [createdDefect, ...prev]);
       }
-      setNewDefect({ title: '', description: '', severity: 'medium', priority: 'high' });
+      setNewDefect(emptyNewDefectDraft());
       setIsDefectDialogOpen(false);
-      toast({ title: t('success'), description: t('defectReportedSuccessfully') });
+      // A tracker push is attempted server-side whenever an integration has
+      // auto-sync-on-create enabled; external_sync_status reflects the
+      // outcome on the defect itself. Surfacing a failure here (instead of
+      // only the generic success toast) is what would have caught a defect
+      // that saved locally but never made it to Azure DevOps.
+      if (createdDefect?.external_sync_status === 'error') {
+        toast({
+          title: t('defectSyncFailedTitle'),
+          description: t('defectSyncFailedDescription'),
+          variant: 'destructive',
+        });
+      } else {
+        toast({ title: t('success'), description: t('defectReportedSuccessfully') });
+      }
     } catch (error) {
       console.error('Failed to create defect:', error);
       toast({ title: t('error'), description: getApiErrorMessage(error, t('failedToCreateDefect')), variant: 'destructive' });
@@ -1128,7 +1207,7 @@ export function useTestCaseExecution() {
     } else {
       setIsDefectDialogOpen(open);
       if (!open) {
-        setNewDefect({ title: '', description: '', severity: 'medium', priority: 'high' });
+        setNewDefect(emptyNewDefectDraft());
         setDefectTouchedFields({});
       }
     }
@@ -1137,7 +1216,7 @@ export function useTestCaseExecution() {
   const handleUnsavedConfirm = (discard: boolean) => {
     setShowUnsavedDialog(false);
     if (discard) {
-      setNewDefect({ title: '', description: '', severity: 'medium', priority: 'high' });
+      setNewDefect(emptyNewDefectDraft());
       setDefectTouchedFields({});
       setIsDefectDialogOpen(false);
     }
@@ -1296,6 +1375,8 @@ export function useTestCaseExecution() {
       if (!hasIterations) {
         const k = e.key.toLowerCase();
         if (k === 'p' || k === 'f' || k === 'b' || k === 's') {
+          if (hasFailedOrBlockedStep && (k === 'p' || k === 's')) return;
+          if (stepsIncomplete && k === 'p') return;
           e.preventDefault();
           setExecutionStatus(k === 'p' ? 'passed' : k === 'f' ? 'failed' : k === 'b' ? 'blocked' : 'skipped');
         }
@@ -1303,7 +1384,7 @@ export function useTestCaseExecution() {
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [anyDialogOpen, hasIterations, handleSaveExecution, handleNextTestCase, handlePreviousTestCase]);
+  }, [anyDialogOpen, hasIterations, hasFailedOrBlockedStep, stepsIncomplete, handleSaveExecution, handleNextTestCase, handlePreviousTestCase]);
 
   return {
     // routing / i18n
@@ -1330,7 +1411,7 @@ export function useTestCaseExecution() {
     iterationStatuses, setIterationStatuses, globalParams,
     resolveGlobals, substitute,
     // per-step outcomes
-    stepStatuses, setStepStatus, activeStepNumber, setActiveStepNumber,
+    stepStatuses, setStepStatus, activeStepNumber, setActiveStepNumber, hasFailedOrBlockedStep, stepsIncomplete,
     // navigation
     currentIndex, hasNext, hasPrevious,
     handleNextTestCase, handlePreviousTestCase, handleSaveAndNext, handleSaveAndPrevious,

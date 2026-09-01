@@ -450,6 +450,8 @@ export const fa = {
     defectRequired: 'نقص الزامی است',
     defectRequiredDescription: 'پیش از ذخیره نتیجه ناموفق یا مسدود، یک نقص پیوند یا ثبت کنید.',
     describeWhatHappenedRequired: 'پیش از ذخیره نتیجه ناموفق یا مسدود، توضیح دهید واقعاً چه اتفاقی افتاد.',
+    resultContradictsFailedStep: 'یکی از مراحل ناموفق یا مسدود علامت‌گذاری شده، بنابراین نتیجه کلی را نمی‌توان موفق یا نادیده‌گرفته‌شده ذخیره کرد.',
+    resultRequiresAllStepsRun: 'پیش از علامت‌گذاری این نتیجه به‌عنوان موفق، همه مراحل را اجرا کنید.',
     createDefectForThisFailure: 'ایجاد نقص جدید برای این شکست',
     createDefectForThisFailureHint: 'پیش از ایجاد، فرصت بررسی نقص از پیش تکمیل‌شده را خواهید داشت.',
     defectRequiredHint: 'این پروژه برای نتایج ناموفق یا مسدود، پیوند نقص را الزامی می‌کند.',
@@ -1261,7 +1263,7 @@ export const fa = {
     // Sidebar Navigation
     overview: 'نمای کلی',
     environments: 'محیط‌ها',
-    activity: 'فعالیت',
+    activity: 'گزارش ممیزی',
     sharedSteps: 'مراحل مشترک',
     globalParameters: 'پارامترهای سراسری',
     expandSidebar: 'باز کردن نوار کناری',
@@ -2241,6 +2243,8 @@ export const fa = {
     duplicateDefect: 'نقص تکراری',
     defectWithThisTitleAlreadyExists: 'نقصی با این عنوان وجود دارد. لطفاً از عنوان دیگری استفاده کنید.',
     defectReportedSuccessfully: 'نقص با موفقیت گزارش شد',
+    defectSyncFailedTitle: 'نقص ذخیره شد، اما همگام‌سازی نشد',
+    defectSyncFailedDescription: 'نقص در TestMona ایجاد شد، اما ارسال آن به ردیاب متصل (مانند Azure DevOps) ناموفق بود. یکپارچه‌سازی را در تنظیمات ← یکپارچه‌سازی‌ها بررسی کنید.',
     failedToCreateDefect: 'ایجاد نقص شکست خورد. لطفاً دوباره تلاش کنید.',
     defectIdAndTitleRequired: 'عنوان نقص الزامی است',
     defectTitleRequired: 'عنوان نقص الزامی است',
@@ -2563,7 +2567,7 @@ export const fa = {
     changedAt: 'تغییر یافته در',
 
     // Activity Management / Audit Trails
-    activityManagement: 'مدیریت فعالیت‌ها',
+    activityManagement: 'گزارش ممیزی',
     activityManagementDescription: 'نظارت و مدیریت فعالیت‌ها و بازرسی سیستم',
     auditFilters: 'فیلترها',
     searchActivities: 'جستجوی فعالیت‌ها...',
@@ -4117,6 +4121,7 @@ export const fa = {
   selectStatusBeforeSaving: 'لطفاً پیش از ذخیره وضعیتی (موفق، ناموفق یا مسدود) تعیین کنید.',
   completeIterationsBeforeSaving: 'پیش از ذخیره، برای هر تکرار یک نتیجه ثبت کنید.',
   failedToSaveExecution: 'ذخیره اجرا ناموفق بود.',
+  failedToSaveStepResults: 'نتیجه کلی ذخیره شد، اما نتایج تک‌تک مراحل ذخیره نشد. برای تلاش دوباره، دوباره ذخیره کنید.',
   executionPaused: 'اجرا متوقف شد',
   executionPausedDescription: 'اجرای آزمون متوقف شد.',
   executionResumed: 'اجرا از سر گرفته شد',

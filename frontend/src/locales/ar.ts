@@ -450,6 +450,8 @@ export const ar = {
     defectRequired: 'العيب مطلوب',
     defectRequiredDescription: 'اربط أو أبلغ عن عيب قبل حفظ نتيجة فاشلة أو محظورة.',
     describeWhatHappenedRequired: 'صف ما حدث فعلياً قبل حفظ نتيجة فاشلة أو محظورة.',
+    resultContradictsFailedStep: 'إحدى الخطوات محددة كفاشلة أو محظورة، لذا لا يمكن حفظ النتيجة الإجمالية كناجحة أو متخطاة.',
+    resultRequiresAllStepsRun: 'نفّذ جميع الخطوات قبل تحديد هذه النتيجة كناجحة.',
     createDefectForThisFailure: 'إنشاء عيب جديد لهذا الفشل',
     createDefectForThisFailureHint: 'ستتاح لك فرصة مراجعة العيب المعبأ مسبقاً قبل إنشائه.',
     defectRequiredHint: 'يتطلب هذا المشروع ربط عيب للنتائج الفاشلة أو المحظورة.',
@@ -1230,7 +1232,7 @@ export const ar = {
     // Sidebar Navigation
     overview: 'نظرة عامة',
     environments: 'البيئات',
-    activity: 'النشاط',
+    activity: 'سجل التدقيق',
     sharedSteps: 'الخطوات المشتركة',
     globalParameters: 'المعاملات العامة',
     expandSidebar: 'توسيع الشريط الجانبي',
@@ -2211,6 +2213,8 @@ export const ar = {
     duplicateDefect: 'عيب مكرر',
     defectWithThisTitleAlreadyExists: 'عيب بهذا العنوان موجود بالفعل. الرجاء استخدام عنوان مختلف.',
     defectReportedSuccessfully: 'تم الإبلاغ عن العيب بنجاح',
+    defectSyncFailedTitle: 'تم حفظ العيب، لكن لم تتم مزامنته',
+    defectSyncFailedDescription: 'تم إنشاء العيب في TestMona، لكن دفعه إلى نظام التتبع المرتبط (مثل Azure DevOps) فشل. تحقق من التكامل ضمن الإعدادات ← التكاملات.',
     failedToCreateDefect: 'فشل إنشاء العيب. الرجاء المحاولة مرة أخرى.',
     defectTitleRequired: 'عنوان العيب مطلوب',
     externalIssue: 'مشكلة خارجية',
@@ -2532,7 +2536,7 @@ export const ar = {
     changedAt: 'تم التغيير في',
 
     // Activity Management / Audit Trails
-    activityManagement: 'إدارة النشاط',
+    activityManagement: 'سجل التدقيق',
     activityManagementDescription: 'مراقبة وإدارة أنشطة النظام وسجلات التدقيق',
     auditFilters: 'الفلاتر',
     searchActivities: 'البحث في الأنشطة...',
@@ -4147,6 +4151,7 @@ export const ar = {
   selectStatusBeforeSaving: 'يرجى تعيين حالة (ناجح أو فاشل أو محظور) قبل الحفظ.',
   completeIterationsBeforeSaving: 'سجّل نتيجة لكل تكرار قبل الحفظ.',
   failedToSaveExecution: 'فشل حفظ التنفيذ.',
+  failedToSaveStepResults: 'تم حفظ النتيجة الإجمالية، لكن نتائج الخطوات الفردية لم تُحفظ. احفظ مرة أخرى لإعادة المحاولة.',
   executionPaused: 'تم إيقاف التنفيذ مؤقتًا',
   executionPausedDescription: 'تم إيقاف تنفيذ الاختبار مؤقتًا.',
   executionResumed: 'تم استئناف التنفيذ',

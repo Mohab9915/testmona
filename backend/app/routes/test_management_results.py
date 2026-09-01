@@ -396,6 +396,21 @@ def register_result_routes(app):
             raise HTTPException(status_code=404, detail="Test run not found")
         if not rbac.has_permission(current_user, "write", test_run.project_id, db):
             raise HTTPException(status_code=403, detail="Not authorized to modify this test result")
+
+        # A step marked failed/blocked makes an overall passed/skipped result a
+        # contradiction. The UI already prevents this; this is the backstop for
+        # any other caller of this endpoint.
+        overall_status = canonical_result_status(db_test_result.status)
+        if overall_status in ("pass", "skip"):
+            bad_step = any(
+                canonical_result_status(sr.step_status) in ("fail", "block")
+                for sr in step_results
+            )
+            if bad_step:
+                raise HTTPException(
+                    status_code=400,
+                    detail="A step is marked failed or blocked, so the overall result cannot be passed or skipped.",
+                )
         return crud.replace_test_step_results(db, test_result_id, step_results)
 
     @app.get("/test-cases/{test_case_id}/execution-history", response_model=List[schemas.ExecutionHistoryItem])

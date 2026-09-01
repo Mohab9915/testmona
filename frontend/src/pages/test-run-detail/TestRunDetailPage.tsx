@@ -67,6 +67,7 @@ import { TestResult, TestRun, User as UserRecord } from '@/types/index';
 import { formatDurationSeconds } from '@/utils/timeFormat';
 import { useAuthStore } from '@/stores/authStore';
 import { isViewerRole } from '@/utils/roles';
+import { useIsFeatureEnabled } from '@/hooks/useProjectFeatures';
 
 export function TestRunDetail() {
   const { id, projectId } = useParams<{ id: string; projectId: string }>();
@@ -78,6 +79,7 @@ export function TestRunDetail() {
   const currentUser = useAuthStore((state) => state.user);
   const shouldLoadUsers = Boolean(currentUser?.is_superuser) || !isViewerRole(currentUser?.role);
   const { toast } = useToast();
+  const environmentsEnabled = useIsFeatureEnabled(projectId ? Number(projectId) : null, 'environments');
   const [testRun, setTestRun] = useState<TestRun | null>(null);
   const [testResults, setTestResults] = useState<TestResult[]>([]);
   const [defectCoverage, setDefectCoverage] = useState<any>(null);
@@ -565,7 +567,7 @@ export function TestRunDetail() {
 
   // Load the project's execution environments so a run can be pointed at one
   useEffect(() => {
-    if (!projectId) return;
+    if (!projectId || !environmentsEnabled) return;
     let cancelled = false;
     environmentsAPI.getAll(parseInt(projectId))
       .then((data) => { if (!cancelled) setEnvironments(Array.isArray(data) ? data : []); })
@@ -574,7 +576,7 @@ export function TestRunDetail() {
         if (!cancelled) toast({ title: t('error'), description: getApiErrorMessage(err, t('failedToSetEnvironment')), variant: 'destructive' });
       });
     return () => { cancelled = true; };
-  }, [projectId]);
+  }, [projectId, environmentsEnabled]);
 
   // Load available test cases when dialog opens
   useEffect(() => {
@@ -1480,36 +1482,38 @@ export function TestRunDetail() {
                     {isAssigningRun && <Loader2 className="h-3.5 w-3.5 animate-spin text-cyan-600 dark:text-cyan-200" />}
                   </span>
                 </div>
-                <div className="inline-flex items-center gap-2 rounded-full bg-white/75 px-3 h-9 shadow-xs ring-1 ring-slate-200/80 backdrop-blur-sm dark:bg-white/10 dark:ring-white/10">
-                  <Server className="h-4 w-4 text-cyan-600 dark:text-cyan-200" />
-                  <span className="shrink-0">{t('environmentLabel')}:</span>
-                  <Select
-                    value={testRun.environment_id ? String(testRun.environment_id) : 'none'}
-                    onValueChange={handleSetEnvironment}
-                    disabled={isSettingEnvironment}
-                  >
-                    <SelectTrigger className="h-7 w-[170px] border-0 bg-transparent px-1 py-0 text-xs font-semibold shadow-none focus:ring-0 sm:text-sm">
-                      <SelectValue placeholder={t('selectTestEnvironment')} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">{t('noEnvironment')}</SelectItem>
-                      {environments.length === 0 ? (
-                        <SelectItem value="__no_envs__" disabled>{t('noEnvironmentsAvailable')}</SelectItem>
-                      ) : (
-                        environments.map((environment) => (
-                          <SelectItem key={environment.id} value={String(environment.id)}>
-                            {environment.name}
-                          </SelectItem>
-                        ))
-                      )}
-                    </SelectContent>
-                  </Select>
-                  {/* Fixed slot keeps the pill width stable so the row doesn't
-                      reflow when the spinner toggles while saving. */}
-                  <span className="flex h-3.5 w-3.5 shrink-0 items-center justify-center">
-                    {isSettingEnvironment && <Loader2 className="h-3.5 w-3.5 animate-spin text-cyan-600 dark:text-cyan-200" />}
-                  </span>
-                </div>
+                {environmentsEnabled && (
+                  <div className="inline-flex items-center gap-2 rounded-full bg-white/75 px-3 h-9 shadow-xs ring-1 ring-slate-200/80 backdrop-blur-sm dark:bg-white/10 dark:ring-white/10">
+                    <Server className="h-4 w-4 text-cyan-600 dark:text-cyan-200" />
+                    <span className="shrink-0">{t('environmentLabel')}:</span>
+                    <Select
+                      value={testRun.environment_id ? String(testRun.environment_id) : 'none'}
+                      onValueChange={handleSetEnvironment}
+                      disabled={isSettingEnvironment}
+                    >
+                      <SelectTrigger className="h-7 w-[170px] border-0 bg-transparent px-1 py-0 text-xs font-semibold shadow-none focus:ring-0 sm:text-sm">
+                        <SelectValue placeholder={t('selectTestEnvironment')} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">{t('noEnvironment')}</SelectItem>
+                        {environments.length === 0 ? (
+                          <SelectItem value="__no_envs__" disabled>{t('noEnvironmentsAvailable')}</SelectItem>
+                        ) : (
+                          environments.map((environment) => (
+                            <SelectItem key={environment.id} value={String(environment.id)}>
+                              {environment.name}
+                            </SelectItem>
+                          ))
+                        )}
+                      </SelectContent>
+                    </Select>
+                    {/* Fixed slot keeps the pill width stable so the row doesn't
+                        reflow when the spinner toggles while saving. */}
+                    <span className="flex h-3.5 w-3.5 shrink-0 items-center justify-center">
+                      {isSettingEnvironment && <Loader2 className="h-3.5 w-3.5 animate-spin text-cyan-600 dark:text-cyan-200" />}
+                    </span>
+                  </div>
+                )}
               </div>
             </div>
           </div>

@@ -8,13 +8,14 @@ import { Textarea } from '@/components/ui/textarea';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
+import { SearchableAdoParentSelect } from '@/components/Defects/SearchableAdoParentSelect';
 import { useExecution } from './ExecutionContext';
 
 function DefectDialog() {
   const {
     t, isRTL, isDefectDialogOpen, handleDialogClose, handleDefectDialogKeyDown,
     newDefect, setNewDefect, defectTouchedFields, setDefectTouchedFields,
-    defectTitleInputRef, isCreating, handleCreateDefect,
+    defectTitleInputRef, isCreating, handleCreateDefect, projectId,
   } = useExecution();
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -95,6 +96,20 @@ function DefectDialog() {
               </SelectContent>
             </Select>
           </div>
+          {Number.isInteger(Number(projectId)) && Number(projectId) > 0 && (
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="defectAdoParent" className="text-right">{t('parentWorkItemLabel')}</Label>
+              <div className="col-span-3">
+                <SearchableAdoParentSelect
+                  id="defectAdoParent"
+                  projectId={Number(projectId)}
+                  value={newDefect.ado_parent_work_item_id}
+                  valueTitle={newDefect.ado_parent_title}
+                  onChange={(id, title) => setNewDefect({ ...newDefect, ado_parent_work_item_id: id, ado_parent_title: title })}
+                />
+              </div>
+            </div>
+          )}
         </div>
         <DialogFooter className="flex-col gap-2 sm:flex-row">
           <div className="mb-2 text-xs text-slate-400 sm:mb-0 sm:mr-auto">{t('ctrlEnterToSubmit')}</div>

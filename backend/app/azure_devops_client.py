@@ -420,7 +420,20 @@ class AzureDevOpsClient(BaseClient):
                     "value": int(priority)
                 }
             ]
-            
+
+            # The Bug type's default form (Agile/Scrum/CMMI templates) doesn't
+            # surface System.Description at all - it shows Repro Steps instead.
+            # Writing only System.Description on a Bug silently produces a work
+            # item that looks blank in the UI even though the field technically
+            # has a value. Mirror the same content into Repro Steps so a Bug
+            # actually displays what was sent, the same way every other type does.
+            if work_item_type.strip().lower() == 'bug':
+                payload.append({
+                    "op": "add",
+                    "path": "/fields/Microsoft.VSTS.TCM.ReproSteps",
+                    "value": description,
+                })
+
             if assignee:
                 payload.append({
                     "op": "add",
@@ -461,37 +474,50 @@ class AzureDevOpsClient(BaseClient):
                 'message': f'Error creating work item: {str(e)}'
             }
     
-    def update_work_item(self, work_item_id: str, title: Optional[str] = None, 
-                        description: Optional[str] = None, priority: Optional[str] = None) -> Dict[str, Any]:
+    def update_work_item(self, work_item_id: str, title: Optional[str] = None,
+                        description: Optional[str] = None, priority: Optional[str] = None,
+                        work_item_type: Optional[str] = None) -> Dict[str, Any]:
         """
         Update an existing work item in Azure DevOps.
-        
+
         Args:
             work_item_id: Work item ID
             title: New title (optional)
             description: New description (optional)
             priority: New priority (optional)
-            
+            work_item_type: The item's type, so a Bug's Repro Steps field can be
+                kept in sync with the description alongside it (optional - the
+                caller may not always know the type, e.g. legacy call sites)
+
         Returns:
             Dict with work item data or error
         """
         try:
             payload = []
-            
+
             if title:
                 payload.append({
                     "op": "add",
                     "path": "/fields/System.Title",
                     "value": title
                 })
-            
+
             if description:
                 payload.append({
                     "op": "add",
                     "path": "/fields/System.Description",
                     "value": description
                 })
-            
+                # Same reasoning as create_work_item: Bug's default form shows
+                # Repro Steps, not Description, so an update needs both kept
+                # current or the visible content silently goes stale.
+                if (work_item_type or '').strip().lower() == 'bug':
+                    payload.append({
+                        "op": "add",
+                        "path": "/fields/Microsoft.VSTS.TCM.ReproSteps",
+                        "value": description,
+                    })
+
             if priority:
                 payload.append({
                     "op": "add",

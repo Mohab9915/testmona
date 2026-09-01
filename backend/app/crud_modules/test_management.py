@@ -7,7 +7,6 @@ from datetime import datetime, timedelta, timezone
 import logging
 import re
 from .. import schemas
-from ..retry_utils import seq_conflict_retry
 from ..services.execution_timing import apply_test_result_execution_timing
 from ..services.user_lifecycle import (
     create_user_invitation,
@@ -572,96 +571,6 @@ def _milestone_id_for_plan(db: Session, test_plan_id):
     return row[0] if row else None
 
 
-def _auto_create_defect_for_failed_result(db: Session, test_result: TestResult, result_data: dict):
-    """Auto-create a defect if test result is marked as failed and no defect exists."""
-    new_status = result_data.get('status')
-    if not new_status:
-        return
-
-    # Normalize status to lowercase
-    normalized_status = str(new_status).lower().strip()
-    is_failed = normalized_status in ('fail', 'failed')
-
-    if not is_failed:
-        return
-
-    # Check if a defect already exists for this test result
-    existing_defect_link = db.query(TestResultDefectLink).filter(
-        TestResultDefectLink.test_result_id == test_result.id
-    ).first()
-
-    if existing_defect_link:
-        return  # Defect already exists for this result
-
-    try:
-        # Get test case and test run info for context
-        test_case = db.query(TestCase).filter(TestCase.id == test_result.test_case_id).first()
-        test_run = db.query(TestRun).filter(TestRun.id == test_result.test_run_id).first()
-
-        if not test_case or not test_run:
-            return
-
-        # Generate defect title and description
-        case_name = test_case.title or f"Test Case {test_case.id}"
-        defect_title = f"Failed: {case_name}"
-        defect_description = f"Test case '{case_name}' failed in test run '{test_run.name}'.\n\nActual Result:\n{test_result.actual_result or 'No details provided'}"
-
-        # Get project_id from test run
-        project_id = test_run.project_id
-
-        # Numbering is owned centrally by the project_seq before_insert listener
-        # (services/sequence_service.py), which derives defect_id as
-        # P{project_id}-DEF-{seq:03d}. Don't recompute it here: a second, manual
-        # max-scan (the old full-table SELECT-all) is a divergent source of truth
-        # that can disagree with the URL/badge number. We leave defect_id unset
-        # and let the listener allocate it.
-        #
-        # MAX(project_seq)+1 can still race two concurrent failed-result inserts
-        # into a unique-index (project_id, project_seq) collision — surfaced as an
-        # IntegrityError on commit. Retry the whole build+commit so a fresh
-        # instance re-runs allocation and picks the next free number.
-        @seq_conflict_retry()
-        def _insert_defect() -> Defect:
-            new_defect = Defect(
-                title=defect_title,
-                description=defect_description,
-                status=DefectStatus.OPEN,
-                severity=DefectSeverity.MEDIUM,
-                priority=DefectPriority.MEDIUM,
-                project_id=project_id,
-                test_case_id=test_case.id,
-                test_run_id=test_run.id,
-                reported_by=test_result.executed_by or 1,  # executor or fallback to user 1
-                actual_result=test_result.actual_result,
-            )
-            db.add(new_defect)
-            safe_commit(db)
-            db.refresh(new_defect)
-            return new_defect
-
-        new_defect = _insert_defect()
-
-        # Create a link between the test result and the new defect
-        defect_link = TestResultDefectLink(
-            test_result_id=test_result.id,
-            defect_id=new_defect.id,
-            link_type=DefectLinkType.FOUND.value,
-            result_snapshot={
-                "status": test_result.status,
-                "executed_by": test_result.executed_by,
-                "executed_at": test_result.executed_at.isoformat() if test_result.executed_at else None,
-            },
-            created_by=test_result.executed_by or 1,
-        )
-
-        db.add(defect_link)
-        safe_commit(db)
-
-    except Exception as e:
-        # Log the error but don't fail the test result update
-        logger.error(f"Failed to auto-create defect for failed test result {test_result.id}: {e}")
-
-
 def create_test_result(db: Session, test_result: TestResultCreate):
     test_result_data = test_result.model_dump()
     db_test_result = TestResult(**test_result_data)
@@ -690,8 +599,15 @@ def update_test_result(db: Session, test_result_id: int, test_result: TestResult
         # timing/state-only updates (pause, resume, add-time) sharing this path.
         if 'status' in test_result_data:
             _refresh_milestone_progress_for_run(db, db_test_result.test_run_id)
-            # Auto-create defect if test result changed to failed
-            _auto_create_defect_for_failed_result(db, db_test_result, test_result_data)
+            # A defect is deliberately NOT auto-created here on every failed
+            # save. The execution UI already owns that decision end to end:
+            # the "create a new defect for this failure" checkbox opens a
+            # pre-filled dialog the tester reviews before anything is
+            # created, with a chance to pick the failing step, describe what
+            # happened, and link an ADO parent work item. A silent creation
+            # here on every failed save, regardless of that choice, had none
+            # of that review and no way to set a parent - it duplicated and
+            # undermined the deliberate flow instead of complementing it.
     return db_test_result
 
 

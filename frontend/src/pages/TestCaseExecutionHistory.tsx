@@ -155,7 +155,7 @@ export function TestCaseExecutionHistory() {
   }
 
   return (
-    <div className="min-h-screen bg-linear-to-b from-slate-50 via-white to-white px-4 py-6 dark:from-slate-950 dark:via-slate-950 dark:to-slate-900" dir={isRTL ? 'rtl' : 'ltr'}>
+    <div className="min-h-full bg-linear-to-b from-slate-50 via-white to-white px-4 py-6 dark:from-slate-950 dark:via-slate-950 dark:to-slate-900" dir={isRTL ? 'rtl' : 'ltr'}>
       <div className="mx-auto max-w-7xl space-y-6">
         <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-xs dark:border-slate-800 dark:bg-slate-900">
           <Button variant="ghost" onClick={backToTestCase} className="-mx-3 mb-4 h-9 text-slate-600 dark:text-slate-300">

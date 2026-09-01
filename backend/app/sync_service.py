@@ -1033,7 +1033,8 @@ class SyncService:
                             work_item_id=defect['external_issue_id'],
                             title=issue_data['title'],
                             description=issue_data['description'],
-                            priority=issue_data['priority']
+                            priority=issue_data['priority'],
+                            work_item_type=issue_data['work_item_type'],
                         )
                         return SyncService._normalize_azure_result(result)
                     else:
