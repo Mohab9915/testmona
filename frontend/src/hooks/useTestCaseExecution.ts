@@ -218,7 +218,6 @@ export function useTestCaseExecution() {
     setExecutionStatus((prev) => (prev === 'passed' || prev === 'skipped' || prev === 'pending')
       ? (hasFailedStep ? 'failed' : 'blocked')
       : prev);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hasFailedOrBlockedStep, hasFailedStep]);
 
   // Which step is "in focus" while working through a multistep case. Starts
