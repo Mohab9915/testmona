@@ -1,7 +1,8 @@
 import { Button } from '@/components/ui/button';
-import { Save, ChevronRight, Clock, RefreshCw, Loader2, Eye } from 'lucide-react';
+import { ChevronRight, Clock, RefreshCw, Eye } from 'lucide-react';
 import { formatDurationSeconds } from '@/utils/timeFormat';
 import { useExecution } from './ExecutionContext';
+import { AutoSaveIndicator } from '@/components/ui/AutoSaveIndicator';
 
 const PHASE_DOT: Record<string, string> = {
   running: 'animate-pulse bg-emerald-500',
@@ -13,11 +14,10 @@ const PHASE_DOT: Record<string, string> = {
 /** Sticky bar pinned to the bottom of the viewport with the core record actions. */
 export function ExecutionActionBar() {
   const {
-    t, isRTL, executionStatus, executionState, elapsedSeconds, retestNeeded,
-    isDirty, isSaving, canWrite, hasNext, handleSaveExecution, handleSaveAndNext,
+    t, isRTL, executionState, elapsedSeconds, retestNeeded,
+    canWrite, hasNext, handleNextTestCase,
+    autoSaveStatus, autoSaveError, autoSaveFlushNow,
   } = useExecution();
-
-  const canSave = executionStatus !== 'pending' && !isSaving;
 
   return (
     <div className="sticky bottom-4 z-30 mt-2 flex justify-center">
@@ -37,36 +37,19 @@ export function ExecutionActionBar() {
           </span>
         )}
 
-        {isDirty && canWrite && (
-          <span className="flex items-center gap-1.5 text-xs font-medium text-amber-600 dark:text-amber-400" title={t('unsavedChangesTitle')}>
-            <span className="h-2 w-2 rounded-full bg-amber-500" />
-            <span className="hidden sm:inline">{t('unsavedChanges')}</span>
-          </span>
+        {canWrite && (
+          <AutoSaveIndicator status={autoSaveStatus} error={autoSaveError} onRetry={autoSaveFlushNow} />
         )}
 
         {canWrite ? (
-          <>
-            <Button
-              variant="outline"
-              onClick={() => handleSaveExecution()}
-              disabled={!canSave}
-              className="h-9 rounded-full"
-              title="Ctrl/⌘ + S"
-            >
-              {isSaving
-                ? <Loader2 className={`h-4 w-4 animate-spin ${isRTL ? 'ml-2' : 'mr-2'}`} />
-                : <Save className={`h-4 w-4 ${isRTL ? 'ml-2' : 'mr-2'}`} />}
-              {t('save')}
-            </Button>
-            <Button
-              onClick={handleSaveAndNext}
-              disabled={!canSave || !hasNext}
-              className="h-9 rounded-full bg-emerald-600 text-white hover:bg-emerald-700 disabled:bg-slate-300 dark:disabled:bg-slate-700"
-            >
-              {t('saveAndNext')}
-              <ChevronRight className={`h-4 w-4 ${isRTL ? 'mr-2 rotate-180' : 'ml-2'}`} />
-            </Button>
-          </>
+          <Button
+            onClick={handleNextTestCase}
+            disabled={!hasNext}
+            className="h-9 rounded-full bg-emerald-600 text-white hover:bg-emerald-700 disabled:bg-slate-300 dark:disabled:bg-slate-700"
+          >
+            {t('next')}
+            <ChevronRight className={`h-4 w-4 ${isRTL ? 'mr-2 rotate-180' : 'ml-2'}`} />
+          </Button>
         ) : (
           <span className="flex items-center gap-1.5 rounded-full px-3 text-xs font-medium text-slate-500 dark:text-slate-400">
             <Eye className="h-3.5 w-3.5" />

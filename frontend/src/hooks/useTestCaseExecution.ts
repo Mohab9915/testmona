@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useResolvedEntityId } from '@/hooks/useResolvedEntityId';
 import { useToast } from '@/hooks/use-toast';
+import { useAutoSave } from '@/hooks/useAutoSave';
 import { useAuthStore } from '@/stores/authStore';
 import {
   datasetsAPI,
@@ -47,28 +48,12 @@ const emptyNewDefectDraft = (): NewDefectDraft => ({
   ado_parent_work_item_id: null, ado_parent_title: null,
 });
 
-interface FormSnapshot {
-  status: string;
-  notes: string;
-  logs: string;
-  defectLink: string;
-  customLink: string;
-  blockerReason: string;
-  assignee: string;
-}
-// Serialized fingerprint of the editable result fields, used to detect unsaved
-// changes. Timer state is intentionally excluded — it persists on its own.
-const snapshotOf = (s: FormSnapshot): string => JSON.stringify(s);
-
 const BACKEND_STEP_TO_STATUS: Record<string, ExecutionStatus> = {
   passed: 'passed', pass: 'passed',
   failed: 'failed', fail: 'failed',
   blocked: 'blocked', block: 'blocked',
   skipped: 'pending', skip: 'pending', pending: 'pending',
 };
-// Stable, order-independent fingerprint of per-step outcomes for dirty detection.
-const serializeStepMap = (steps: TestStep[], map: Record<number, ExecutionStatus>): string =>
-  JSON.stringify(steps.map((s) => map[s.step_number] || 'pending'));
 
 const STATUS_TO_BACKEND: Record<string, string> = { passed: 'pass', failed: 'fail', blocked: 'block', skipped: 'skip' };
 const BACKEND_TO_STATUS: Record<string, ExecutionStatus> = {
@@ -106,10 +91,6 @@ export function useTestCaseExecution() {
   const [blockerReason, setBlockerReason] = useState('');
   const [selectedFailureStepNumber, setSelectedFailureStepNumber] = useState('');
   const [failureStepActual, setFailureStepActual] = useState('');
-  // "File a new defect for this failure" - an alternative to linking an
-  // existing one. Checking it satisfies the defect-required-on-failure policy;
-  // the actual defect is opened for confirmation right after the save succeeds.
-  const [createDefectOnSave, setCreateDefectOnSave] = useState(false);
   const [testResultId, setTestResultId] = useState<number | null>(null);
   const [retestNeeded, setRetestNeeded] = useState(false);
   const [requireDefectOnFailure, setRequireDefectOnFailure] = useState(false);
@@ -138,8 +119,6 @@ export function useTestCaseExecution() {
     executionStartedAtRef.current = startedAt;
     setExecutionStartedAt(startedAt);
   }, []);
-  // Fingerprint of the last loaded/saved form state for unsaved-change detection.
-  const savedSnapshotRef = useRef<string | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   // Wall-clock baseline so the timer stays accurate even when background tabs
   // throttle setInterval. Every external change goes through rebaseTimer.
@@ -188,7 +167,6 @@ export function useTestCaseExecution() {
 
   // --- Per-step outcomes (multistep cases) ---
   const [stepStatuses, setStepStatuses] = useState<Record<number, ExecutionStatus>>({});
-  const savedStepSnapshotRef = useRef<string | null>(null);
 
   // A step marked failed/blocked makes "the overall result passed" a
   // contradiction - the result can only be failed or blocked while that's
@@ -476,15 +454,6 @@ export function useTestCaseExecution() {
             || currentUser?.id?.toString()
             || '';
           setAssignee(loadedAssignee);
-          savedSnapshotRef.current = snapshotOf({
-            status: BACKEND_TO_STATUS[result.status] || 'pending',
-            notes: result.actual_result || result.comments || '',
-            logs: result.logs || '',
-            defectLink: result.defect_link || '',
-            customLink: result.custom_link || '',
-            blockerReason: result.blocker_reason || '',
-            assignee: loadedAssignee,
-          });
           restoreTimingFromResult(result);
 
           const backendState = result.execution_state as ExecutionPhase | undefined;
@@ -510,9 +479,6 @@ export function useTestCaseExecution() {
           setBlockerReason('');
           const defaultAssignee = testRun?.assigned_to?.toString() || currentUser?.id?.toString() || '';
           setAssignee(defaultAssignee);
-          savedSnapshotRef.current = snapshotOf({
-            status: 'pending', notes: '', logs: '', defectLink: '', customLink: '', blockerReason: '', assignee: defaultAssignee,
-          });
           setExecutionState('idle');
           setIsPaused(false);
           setPausedAt(null);
@@ -535,7 +501,6 @@ export function useTestCaseExecution() {
   useEffect(() => {
     if (!testResultId || testSteps.length === 0) {
       setStepStatuses({});
-      savedStepSnapshotRef.current = serializeStepMap(testSteps, {});
       return;
     }
     let cancelled = false;
@@ -547,12 +512,10 @@ export function useTestCaseExecution() {
           if (typeof r?.step_number === 'number') next[r.step_number] = BACKEND_STEP_TO_STATUS[r.step_status] || 'pending';
         }
         setStepStatuses(next);
-        savedStepSnapshotRef.current = serializeStepMap(testSteps, next);
       })
       .catch(() => {
         if (cancelled) return;
         setStepStatuses({});
-        savedStepSnapshotRef.current = serializeStepMap(testSteps, {});
       });
     return () => { cancelled = true; };
   }, [testResultId, testSteps]);
@@ -692,7 +655,6 @@ export function useTestCaseExecution() {
     } else {
       setSelectedFailureStepNumber('');
       setFailureStepActual('');
-      setCreateDefectOnSave(false);
     }
   }, [executionStatus]);
 
@@ -707,48 +669,18 @@ export function useTestCaseExecution() {
   // Whether the current user may record results (viewers are read-only).
   const canWrite = canWriteResults(currentUser);
 
-  // --- Unsaved-change detection ---
-  const formDirty = savedSnapshotRef.current !== null
-    && snapshotOf({
-      status: executionStatus, notes: executionNotes, logs: executionLogs,
-      defectLink, customLink, blockerReason, assignee,
-    }) !== savedSnapshotRef.current;
-  const stepsDirty = testSteps.length > 0
-    && savedStepSnapshotRef.current !== null
-    && serializeStepMap(testSteps, stepStatuses) !== savedStepSnapshotRef.current;
-  // A timer started before the first save lives only in memory.
-  const timerUnsaved = !testResultId && (executionState === 'running' || elapsedSeconds > 0);
-  const isDirty = !isLoading && (formDirty || stepsDirty);
-
-  // Warn before a full page unload (refresh / tab close) if there are edits or a
-  // running timer that haven't been recorded. In-app navigation is guarded
-  // separately via the discard dialog below.
-  useEffect(() => {
-    if (!isDirty && !timerUnsaved) return;
-    const handler = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = ''; };
-    window.addEventListener('beforeunload', handler);
-    return () => window.removeEventListener('beforeunload', handler);
-  }, [isDirty, timerUnsaved]);
-
-  // In-app navigation guard. A React dialog can't return synchronously, so we
-  // defer the pending navigation and run it once the user confirms.
-  const [showDiscardDialog, setShowDiscardDialog] = useState(false);
-  const pendingNavRef = useRef<(() => void) | null>(null);
-  const guardedNavigate = useCallback((action: () => void) => {
-    if (!isDirty && !timerUnsaved) { action(); return; }
-    pendingNavRef.current = action;
-    setShowDiscardDialog(true);
-  }, [isDirty, timerUnsaved]);
-  const confirmDiscardLeave = useCallback(() => {
-    const action = pendingNavRef.current;
-    pendingNavRef.current = null;
-    setShowDiscardDialog(false);
-    action?.();
-  }, []);
-  const cancelDiscard = useCallback(() => {
-    pendingNavRef.current = null;
-    setShowDiscardDialog(false);
-  }, []);
+  // --- Non-blocking save hints ---
+  // Everything here used to be a toast that blocked the Save button. With
+  // auto-save there's no button to block: the result saves regardless, and
+  // these surface as inline reminders next to the relevant field instead -
+  // real for a failure that's missing evidence, but never a reason to hold a
+  // tester's work hostage.
+  const needsFailingStepSelection = isFailedOrBlockedStatus && !testStepsLoadError && testSteps.length > 0 && !selectedFailureStep;
+  const needsFailureDescription = isFailedOrBlockedStatus && requireDefectOnFailure
+    && executionNotes.trim() === '' && failureStepActual.trim() === '';
+  const needsDefectEvidence = isFailedOrBlockedStatus && requireDefectOnFailure
+    && resultDefectLinks.length === 0;
+  const hasInvalidLink = !isValidHttpUrl(defectLink) || !isValidHttpUrl(customLink);
 
   // --- History grouping ---
   const historyByRun = useMemo(() => {
@@ -812,55 +744,26 @@ export function useTestCaseExecution() {
   }, [testCaseId, tcGlobalId]);
 
   // --- Save execution ---
+  // Auto-save is silent by design: nothing here blocks with a toast anymore.
+  // A save that genuinely can't/shouldn't happen yet (nothing chosen, a step
+  // contradicts the overall result, a malformed link) just skips this cycle -
+  // the *disabled buttons* upstream (StatusSelector) are what actually stop a
+  // tester from reaching an invalid combination in the first place. What used
+  // to be blocking checks for "describe what happened" / "link or create a
+  // defect" are now non-blocking hints (see needsFailureDescription /
+  // needsDefectEvidence below) so a failure still saves immediately and the
+  // reminder shows inline instead of holding the save hostage.
   const handleSaveExecution = useCallback(async (): Promise<boolean> => {
-    if (!testRunId || !testCaseId) {
-      toast({ title: t('error'), description: t('failedToLoadTestCaseOrTestRun'), variant: 'destructive' });
-      return false;
-    }
-    if (executionStatus === 'pending') {
-      toast({
-        title: t('validationError'),
-        description: hasIterations ? t('completeIterationsBeforeSaving') : t('selectStatusBeforeSaving'),
-        variant: 'destructive',
-      });
-      return false;
-    }
+    if (!testRunId || !testCaseId) return false;
+    if (executionStatus === 'pending') return false;
 
     const isFailedOrBlocked = executionStatus === 'failed' || executionStatus === 'blocked';
-    if (!isFailedOrBlocked && hasFailedOrBlockedStep) {
-      // Belt-and-suspenders: the auto-correct effect and the disabled
-      // Passed/Skipped buttons should already prevent this, but a save must
-      // never persist "passed" over a step the tester just marked failed.
-      toast({ title: t('validationError'), description: t('resultContradictsFailedStep'), variant: 'destructive' });
-      return false;
-    }
-    if (executionStatus === 'passed' && stepsIncomplete) {
-      // Same belt-and-suspenders as above, for the disabled-until-complete
-      // Passed button: "passed" can't be recorded before every step has run.
-      toast({ title: t('validationError'), description: t('resultRequiresAllStepsRun'), variant: 'destructive' });
-      return false;
-    }
-    if (!isValidHttpUrl(defectLink) || !isValidHttpUrl(customLink)) {
-      toast({ title: t('invalidUrl'), description: t('invalidUrlDescription'), variant: 'destructive' });
-      return false;
-    }
-    if (isFailedOrBlocked && requireDefectOnFailure) {
-      // A failure worth requiring a defect for is also worth requiring the
-      // basics that make that defect useful: which step broke, and what
-      // actually happened - otherwise "failed" + "create a defect" produces
-      // an empty report.
-      if (!requireFailureStepSelection()) return false;
-      const hasActualResultText = executionNotes.trim() !== '' || failureStepActual.trim() !== '';
-      if (!hasActualResultText) {
-        toast({ title: t('validationError'), description: t('describeWhatHappenedRequired'), variant: 'destructive' });
-        return false;
-      }
-      const hasDefectEvidence = resultDefectLinks.length > 0 || defectLink.trim() !== '' || createDefectOnSave;
-      if (!hasDefectEvidence) {
-        toast({ title: t('defectRequired'), description: t('defectRequiredDescription'), variant: 'destructive' });
-        return false;
-      }
-    }
+    // Belt-and-suspenders: the auto-correct effect and the disabled
+    // Passed/Skipped buttons should already prevent both of these, but a save
+    // must never persist "passed" over a step that contradicts it.
+    if (!isFailedOrBlocked && hasFailedOrBlockedStep) return false;
+    if (executionStatus === 'passed' && stepsIncomplete) return false;
+    if (!isValidHttpUrl(defectLink) || !isValidHttpUrl(customLink)) return false;
 
     const startedAt = executionStartedAtRef.current || new Date().toISOString();
     const executionTimeSeconds = Math.max(0, computeElapsed());
@@ -923,7 +826,6 @@ export function useTestCaseExecution() {
             }));
           try {
             await testResultsAPI.saveStepResults(savedResult.id, stepPayload);
-            savedStepSnapshotRef.current = serializeStepMap(testSteps, stepStatuses);
           } catch (stepError) {
             console.error('Failed to save step results:', stepError);
             stepSaveError = stepError;
@@ -935,46 +837,27 @@ export function useTestCaseExecution() {
       setExecutionState('completed');
       setIsPaused(true);
       setPausedAt(null);
-      savedSnapshotRef.current = snapshotOf({
-        status: executionStatus, notes: executionNotes, logs: executionLogs,
-        defectLink, customLink, blockerReason, assignee,
-      });
       await refreshHistory();
 
       // The overall result saved either way - but a caller must never read
       // "saved" as "everything you entered is on the server" when the step
-      // outcomes specifically didn't make it. Surfacing this (instead of the
-      // console.error-only swallow this used to be) is what would have
-      // caught the stale-frontend/new-backend mismatch that silently dropped
-      // a real tester's step results while the overall result kept "passed".
+      // outcomes specifically didn't make it. This is loud (a toast, not just
+      // the ambient AutoSaveIndicator) and rethrown so the indicator also
+      // shows its error state - together, that's what would have caught the
+      // stale-frontend/new-backend mismatch that silently dropped a real
+      // tester's step results while the overall result kept "passed".
       if (stepSaveError) {
         toast({
           title: t('error'),
           description: getApiErrorMessage(stepSaveError, t('failedToSaveStepResults')),
           variant: 'destructive',
         });
-      } else {
-        toast({ title: t('executionSaved'), description: t('executionSavedDescription'), variant: 'success' });
-      }
-
-      // "Create a new defect" was checked and nothing already covers this
-      // failure (no existing link, no pasted URL) - open the pre-filled
-      // defect dialog for a final confirm rather than silently filing one.
-      if (
-        isFailedOrBlocked && createDefectOnSave
-        && resultDefectLinks.length === 0 && defectLink.trim() === ''
-      ) {
-        openDefectDialog();
+        return false;
       }
 
       return true;
     } catch (error) {
       console.error('Failed to save execution:', error);
-      toast({
-        title: t('error'),
-        description: getApiErrorMessage(error, t('failedToSaveExecution')),
-        variant: 'destructive',
-      });
       return false;
     } finally {
       savingRef.current = false;
@@ -986,8 +869,53 @@ export function useTestCaseExecution() {
     hasIterations, dataset, iterationStatuses, testSteps, stepStatuses,
     executionNotes, assignee, executionLogs, t, toast, loadResultDefectLinks, refreshHistory,
     rebaseTimer, setExecutionStart, testStepsLoadError, selectedFailureStep, failureStepActual,
-    createDefectOnSave,
   ]);
+
+  // --- Auto-save ---
+  // One debounced save call covers the whole editable snapshot - status,
+  // notes, links, and per-step outcomes all land together, the same shape
+  // handleSaveExecution already persists in one request pair. useAutoSave
+  // only calls onSave when this actually changed, so idle time costs nothing.
+  const autoSaveDisabled = !isLoading && (
+    hasInvalidLink
+    || (!isFailedOrBlockedStatus && hasFailedOrBlockedStep)
+    || (executionStatus === 'passed' && stepsIncomplete)
+  );
+  const autoSave = useAutoSave({
+    value: {
+      status: executionStatus, notes: executionNotes, logs: executionLogs,
+      defectLink, customLink, blockerReason, assignee, stepStatuses, iterationStatuses,
+    },
+    onSave: async () => {
+      const ok = await handleSaveExecution();
+      if (!ok) throw new Error('Execution did not save');
+    },
+    enabled: !isLoading && executionStatus !== 'pending' && !autoSaveDisabled,
+    delay: 900,
+  });
+
+  // A timer started before the first save lives only in memory until the
+  // status picks up and the first auto-save fires.
+  const timerUnsaved = !testResultId && (executionState === 'running' || elapsedSeconds > 0);
+
+  // Warn before a full page unload (refresh / tab close) if a save hasn't
+  // landed yet, or a running timer has never been persisted at all.
+  useEffect(() => {
+    const unsettled = autoSave.status === 'pending' || autoSave.status === 'saving' || timerUnsaved;
+    if (!unsettled) return;
+    const handler = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = ''; };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [autoSave.status, timerUnsaved]);
+
+  // In-app navigation no longer needs a "you have unsaved changes" dialog -
+  // it just flushes whatever's pending (bypassing the debounce) and goes.
+  // Fire-and-forget: the request completes in the background even after the
+  // page has navigated away.
+  const guardedNavigate = useCallback((action: () => void) => {
+    autoSave.flushNow();
+    action();
+  }, [autoSave]);
 
   // --- Defect helpers ---
   const requireFailureStepSelection = () => {
@@ -1015,25 +943,36 @@ export function useTestCaseExecution() {
   };
 
   const buildDefectContext = () => {
+    // Just locates the failure within the case - the step's own expected/actual
+    // values live in the dedicated expected_result/actual_result fields below,
+    // not duplicated here too.
     const failingStepText = selectedFailureStep
-      ? [
-          `${t('failingStep')}: ${selectedFailureStep.step_number}`,
-          `${t('action')}: ${selectedFailureStep.action}`,
-          `${t('expectedResult')}: ${selectedFailureStep.expected_result}`,
-          failureStepActual.trim() ? `${t('actualResultLabel')}: ${failureStepActual.trim()}` : '',
-        ].filter(Boolean).join('\n')
+      ? [`${t('failingStep')}: ${selectedFailureStep.step_number}`, `${t('action')}: ${selectedFailureStep.action}`].join('\n')
       : '';
     const stepsText = testSteps.length > 0
       ? testSteps.map((step) => `${step.step_number}. ${step.action}`).join('\n')
       : (testCase?.steps || testCase?.test_steps || testCase?.preconditions || '');
-    const expectedText = testSteps.length > 0
-      ? testSteps.filter((step) => step.expected_result).map((step) => `${step.step_number}. ${step.expected_result}`).join('\n')
-      : (testCase?.expected_result || testCase?.expected_results || '');
+    // Prefer the failing step's own expected result over every step's, once one
+    // is actually known - the whole-case list is only a fallback for context.
+    const expectedText = selectedFailureStep?.expected_result
+      ? String(selectedFailureStep.expected_result)
+      : testSteps.length > 0
+        ? testSteps.filter((step) => step.expected_result).map((step) => `${step.step_number}. ${step.expected_result}`).join('\n')
+        : (testCase?.expected_result || testCase?.expected_results || '');
     const environment = testRun?.environment?.name || testRun?.environment_name || testRun?.environment || '';
+    // Everything the tester actually recorded about what happened - the
+    // step-level note, the run-level notes, and the raw logs - lands here as
+    // the one "what happened" field, instead of some of it silently dropping
+    // whenever more than one of these was filled in.
+    const actualParts = [
+      failureStepActual.trim(),
+      executionNotes.trim(),
+      executionLogs.trim() ? `${t('executionLogsLabel')}:\n${executionLogs.trim()}` : '',
+    ].filter(Boolean);
     const context: Record<string, string> = {};
     if (stepsText || failingStepText) context.steps_to_reproduce = [failingStepText, stepsText].filter(Boolean).join('\n\n');
     if (expectedText) context.expected_result = String(expectedText);
-    if (failureStepActual.trim() || executionNotes.trim()) context.actual_result = failureStepActual.trim() || executionNotes.trim();
+    if (actualParts.length) context.actual_result = actualParts.join('\n\n');
     if (environment) context.environment = String(environment);
     return context;
   };
@@ -1046,8 +985,11 @@ export function useTestCaseExecution() {
     setNewDefect({
       ...emptyNewDefectDraft(),
       title: testCase?.title ? `[${statusLabel}] ${testCase.title}` : '',
+      // A short pointer to where this happened - the full narrative (step
+      // note, run notes, logs) lives in the dedicated actual_result field
+      // via buildDefectContext(), not repeated here too.
       description: selectedFailureStep
-        ? `${t('failingStep')} ${selectedFailureStep.step_number}: ${selectedFailureStep.action}\n\n${failureStepActual.trim() || executionNotes.trim()}`
+        ? `${t('failingStep')} ${selectedFailureStep.step_number}: ${selectedFailureStep.action}`
         : executionNotes.trim(),
       severity,
       priority: 'high',
@@ -1236,20 +1178,14 @@ export function useTestCaseExecution() {
   const navigateToCase = (caseId: number) =>
     navigate(`/projects/${projectId}/test-runs/${testRunId}/test-cases/${caseId}`);
 
+  // Navigating away always flushes any pending auto-save first (see
+  // guardedNavigate) - there's no separate "Save & Next" anymore, since
+  // "Next" already guarantees the current result isn't left half-saved.
   const handleNextTestCase = () => {
     if (nextCaseId != null) guardedNavigate(() => navigateToCase(nextCaseId));
   };
   const handlePreviousTestCase = () => {
     if (prevCaseId != null) guardedNavigate(() => navigateToCase(prevCaseId));
-  };
-  // Save & Next/Previous already persisted the result, so navigate directly —
-  // routing through the guard would trip the (now stale) dirty check and pop the
-  // discard dialog even though there's nothing left to discard.
-  const handleSaveAndNext = async () => {
-    if (await handleSaveExecution() && nextCaseId != null) navigateToCase(nextCaseId);
-  };
-  const handleSaveAndPrevious = async () => {
-    if (await handleSaveExecution() && prevCaseId != null) navigateToCase(prevCaseId);
   };
 
   // --- Timer handlers ---
@@ -1359,10 +1295,13 @@ export function useTestCaseExecution() {
       const tag = target?.tagName;
       const isTyping = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || !!target?.isContentEditable;
 
-      // Save works even while typing in the notes/logs fields.
+      // Everything auto-saves, but Ctrl/Cmd+S is still muscle memory worth
+      // honoring - it just flushes the pending debounce immediately instead
+      // of triggering a distinct save path. Works even while typing in the
+      // notes/logs fields.
       if ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S')) {
         e.preventDefault();
-        handleSaveExecution();
+        autoSave.flushNow();
         return;
       }
       if (isTyping || e.ctrlKey || e.metaKey) return;
@@ -1383,7 +1322,7 @@ export function useTestCaseExecution() {
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [anyDialogOpen, hasIterations, hasFailedOrBlockedStep, stepsIncomplete, handleSaveExecution, handleNextTestCase, handlePreviousTestCase]);
+  }, [anyDialogOpen, hasIterations, hasFailedOrBlockedStep, stepsIncomplete, autoSave, handleNextTestCase, handlePreviousTestCase]);
 
   return {
     // routing / i18n
@@ -1393,17 +1332,15 @@ export function useTestCaseExecution() {
     executionNotes, setExecutionNotes,
     executionLogs, setExecutionLogs,
     assignee, setAssignee,
-    defectLink, setDefectLink,
     customLink, setCustomLink,
     blockerReason, setBlockerReason,
     selectedFailureStepNumber, setSelectedFailureStepNumber,
     failureStepActual, setFailureStepActual,
-    createDefectOnSave, setCreateDefectOnSave,
     requireDefectOnFailure, retestNeeded,
     isFailedOrBlockedStatus, selectedFailureStep,
     canWrite,
     // page data
-    isLoading, isSaving, isDirty, loadError, users, allTestCases, testCase, testSteps, testStepsLoadError,
+    isLoading, isSaving, loadError, users, allTestCases, testCase, testSteps, testStepsLoadError,
     testRun, executionHistory, historyLoadError,
     // iterations
     dataset, hasIterations, activeRow, activeIteration, setActiveIteration,
@@ -1411,9 +1348,11 @@ export function useTestCaseExecution() {
     resolveGlobals, substitute,
     // per-step outcomes
     stepStatuses, setStepStatus, activeStepNumber, setActiveStepNumber, hasFailedOrBlockedStep, stepsIncomplete,
+    // non-blocking save hints
+    needsFailingStepSelection, needsFailureDescription, needsDefectEvidence, hasInvalidLink,
     // navigation
     currentIndex, hasNext, hasPrevious,
-    handleNextTestCase, handlePreviousTestCase, handleSaveAndNext, handleSaveAndPrevious,
+    handleNextTestCase, handlePreviousTestCase,
     handleEditTestCase, openTestCase, backToTestRun, backToTestRuns, openRunExecution,
     // history
     historyByRun, historySummary,
@@ -1425,13 +1364,12 @@ export function useTestCaseExecution() {
     handleStartTimer, handlePauseExecution, handleManualTimeEntry, handleResetTimer, handleConfirmResetTimer,
     // save
     handleSaveExecution,
+    autoSaveStatus: autoSave.status, autoSaveError: autoSave.error, autoSaveFlushNow: autoSave.flushNow,
     // defects
     defects, availableDefects, resultDefectLinks, selectedDefectId, setSelectedDefectId,
     linkType, setLinkType, isLinkingDefect, isCreating,
     isDefectDialogOpen, setIsDefectDialogOpen,
     showUnsavedDialog, setShowUnsavedDialog,
-    // discard-changes navigation dialog
-    showDiscardDialog, confirmDiscardLeave, cancelDiscard,
     defectTouchedFields, setDefectTouchedFields,
     defectTitleInputRef, newDefect, setNewDefect, hasUnsavedChanges,
     openDefectDialog, handleLinkExistingDefect, linkTypeLabel,

@@ -294,25 +294,31 @@ class AzureDevOpsClient(BaseClient):
                     'title': fields.get('System.Title'),
                     'work_item_type': fields.get('System.WorkItemType'),
                     'state': fields.get('System.State'),
+                    'url': f"{self.api_url}/{self.organization}/{self.project}/_workitems/edit/{item.get('id')}",
                 })
             return {'success': True, 'work_items': work_items}
         except Exception as e:
             return {'success': False, 'message': str(e), 'work_items': []}
 
-    def list_active_bugs(self, limit: int = 500) -> Dict[str, Any]:
-        """List Bug work items that are not Closed/Removed, for the periodic import job.
+    def list_active_bugs(self, work_item_type: str = 'Bug', limit: int = 500) -> Dict[str, Any]:
+        """List work items of ``work_item_type`` that are not Closed/Removed, for the periodic import job.
 
         Re-run in full on every poll cycle rather than incrementally: it doubles
         as both the initial backfill (every not-closed bug already in the
         project shows up on the first run) and the ongoing sync (a bug that
         moves out of this set has changed state since the last cycle).
+
+        ``work_item_type`` defaults to 'Bug' but should normally be the
+        integration's configured defect type - some process templates (e.g.
+        Basic) call it 'Issue' instead, and a hardcoded 'Bug' filter would
+        silently import nothing for those projects.
         """
         try:
             wiql = {
                 "query": (
                     "SELECT [System.Id] FROM WorkItems "
                     "WHERE [System.TeamProject] = @project "
-                    "AND [System.WorkItemType] = 'Bug' "
+                    f"AND [System.WorkItemType] = '{work_item_type}' "
                     "AND [System.State] <> 'Closed' AND [System.State] <> 'Removed' "
                     "ORDER BY [System.ChangedDate] DESC"
                 )

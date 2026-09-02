@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -27,7 +26,6 @@ export function LinkedDefectsCard() {
   const {
     t, projectId, resultDefectLinks, availableDefects, selectedDefectId, setSelectedDefectId,
     linkType, setLinkType, isLinkingDefect, canWrite, isFailedOrBlockedStatus,
-    createDefectOnSave, setCreateDefectOnSave,
     openDefectDialog, handleLinkExistingDefect, linkTypeLabel,
     handleUnlinkDefect, handleCorrectLinkSnapshot,
     updatingDefectStatusId, handleUpdateLinkedDefectStatus,
@@ -35,6 +33,10 @@ export function LinkedDefectsCard() {
   // Reporting/linking a defect only makes sense against a failed or blocked
   // result - a passing result has nothing to file a bug about.
   const canReportDefect = canWrite && isFailedOrBlockedStatus;
+  // A defect is already linked below - reporting a brand new one on top of
+  // that would just duplicate it. Unlink first if this failure is genuinely
+  // a different issue.
+  const hasLinkedDefect = resultDefectLinks.length > 0;
   const { formatDateTime } = useDateFormat();
   const formatSnapshotDate = (value?: string | null) => (value ? formatDateTime(value) || '-' : '-');
 
@@ -47,7 +49,14 @@ export function LinkedDefectsCard() {
             {t('linkedDefects')} ({resultDefectLinks.length})
           </CardTitle>
           {canReportDefect && (
-            <Button variant="outline" size="sm" onClick={openDefectDialog} className="h-8 text-xs">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={openDefectDialog}
+              disabled={hasLinkedDefect}
+              title={hasLinkedDefect ? t('reportDefectDisabledLinkedWorkItem') : undefined}
+              className="h-8 text-xs"
+            >
               <Plus className="mr-1 h-3.5 w-3.5" />
               {t('reportDefect')}
             </Button>
@@ -83,20 +92,6 @@ export function LinkedDefectsCard() {
               </Button>
             </div>
           </div>
-
-          {resultDefectLinks.length === 0 && (
-            <label className="flex cursor-pointer items-start gap-2 border-t border-dashed border-slate-200 pt-3 text-xs dark:border-slate-700">
-              <Checkbox
-                checked={createDefectOnSave}
-                onCheckedChange={(checked) => setCreateDefectOnSave(checked === true)}
-                className="mt-0.5"
-              />
-              <span>
-                <span className="font-medium text-slate-700 dark:text-slate-200">{t('createDefectForThisFailure')}</span>
-                <span className="mt-0.5 block text-slate-400">{t('createDefectForThisFailureHint')}</span>
-              </span>
-            </label>
-          )}
         </div>
         )}
 

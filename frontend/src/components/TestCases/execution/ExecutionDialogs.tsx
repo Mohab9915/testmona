@@ -205,24 +205,6 @@ function ResetTimerDialog() {
   );
 }
 
-function DiscardChangesDialog() {
-  const { t, isRTL, showDiscardDialog, confirmDiscardLeave, cancelDiscard } = useExecution();
-  return (
-    <Dialog open={showDiscardDialog} onOpenChange={(open) => { if (!open) cancelDiscard(); }}>
-      <DialogContent isRTL={isRTL} className="sm:max-w-[420px]">
-        <DialogHeader>
-          <DialogTitle>{t('unsavedChangesTitle')}</DialogTitle>
-          <DialogDescription>{t('discardChangesPrompt')}</DialogDescription>
-        </DialogHeader>
-        <DialogFooter>
-          <Button variant="outline" onClick={cancelDiscard}>{t('keepEditingModal')}</Button>
-          <Button onClick={confirmDiscardLeave} className="bg-red-600 hover:bg-red-700">{t('discardChangesModal')}</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
 export function ExecutionDialogs() {
   return (
     <>
@@ -230,7 +212,6 @@ export function ExecutionDialogs() {
       <UnsavedChangesDialog />
       <ManualTimeDialog />
       <ResetTimerDialog />
-      <DiscardChangesDialog />
     </>
   );
 }

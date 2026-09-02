@@ -23,7 +23,7 @@ from .. import models
 
 logger = logging.getLogger(__name__)
 
-POLL_INTERVAL_SECONDS = 90
+POLL_INTERVAL_SECONDS = 10
 _LEASE_KEY = "ado_bug_import_last_run"
 
 
@@ -36,6 +36,14 @@ def _integration_payload(integration: models.IssueTrackerIntegration):
         "project_key": integration.project_key,
         "name": integration.name,
     }
+
+
+def _defect_work_item_type(integration: models.IssueTrackerIntegration) -> str:
+    """The work item type this project's integration treats as a defect
+    (``sync_config.work_item_type``, same setting used to create defects on
+    push) - not hardcoded to 'Bug', since projects on the Basic process
+    template use 'Issue' instead and would otherwise never get imported."""
+    return (integration.sync_config or {}).get("work_item_type") or "Bug"
 
 
 def _active_ado_integrations(db: Session):
@@ -66,7 +74,7 @@ def _import_bugs_for_integration(db: Session, integration: models.IssueTrackerIn
     from ..sync_service import SyncService
 
     payload = _integration_payload(integration)
-    result = SyncService.list_azure_devops_active_bugs(payload)
+    result = SyncService.list_azure_devops_active_bugs(payload, work_item_type=_defect_work_item_type(integration))
     if not result.get("success"):
         logger.warning(
             "ado-bug-import: listing bugs failed for integration %s (project %s): %s",

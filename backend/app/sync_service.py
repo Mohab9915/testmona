@@ -809,12 +809,16 @@ class SyncService:
         return client.search_work_items(query_text, work_item_types=work_item_types)
 
     @staticmethod
-    def list_azure_devops_active_bugs(integration: Dict[str, Any], timeout: int = 30) -> Dict[str, Any]:
-        """Not-closed Bug work items for an Azure DevOps integration, for the periodic import job."""
+    def list_azure_devops_active_bugs(
+        integration: Dict[str, Any],
+        work_item_type: str = "Bug",
+        timeout: int = 30,
+    ) -> Dict[str, Any]:
+        """Not-closed work items of ``work_item_type`` for an Azure DevOps integration, for the periodic import job."""
         if (integration.get("tracker_type") or "").lower() != "azure-devops":
             return {"success": False, "message": "Not an Azure DevOps integration", "work_items": []}
         client = SyncService.create_azure_devops_client(integration, timeout=timeout)
-        return client.list_active_bugs()
+        return client.list_active_bugs(work_item_type=work_item_type)
 
     @staticmethod
     def create_linear_client(integration: Dict[str, Any], timeout: int = 30) -> LinearClient:

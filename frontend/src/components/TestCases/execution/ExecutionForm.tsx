@@ -17,6 +17,7 @@ export function ExecutionForm() {
     isFailedOrBlockedStatus, executionStatus,
     executionNotes, setExecutionNotes,
     executionLogs, setExecutionLogs,
+    needsFailureDescription,
   } = useExecution();
 
   // When blocked, the blocker panel owns the description (bound to the same
@@ -98,6 +99,9 @@ export function ExecutionForm() {
                 readOnly={!canWrite}
                 className="h-32 min-h-32 resize-none text-sm"
               />
+              {needsFailureDescription && (
+                <p className="text-[11px] text-red-600 dark:text-red-400">{t('describeWhatHappenedRequired')}</p>
+              )}
             </div>
           )}
           <div className="space-y-1.5">

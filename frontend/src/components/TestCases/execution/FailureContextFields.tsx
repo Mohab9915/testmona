@@ -6,17 +6,8 @@ import {
 } from '@/components/ui/select';
 import { AlertTriangle, ShieldAlert, Ban, Link2 } from 'lucide-react';
 import { useExecution } from './ExecutionContext';
-
-const urlInputProps = {
-  type: 'url' as const,
-  inputMode: 'url' as const,
-  autoComplete: 'off',
-  autoCorrect: 'off',
-  autoCapitalize: 'none',
-  spellCheck: false,
-  'data-lpignore': 'true',
-  'data-1p-ignore': 'true',
-};
+import { SearchableAdoWorkItemLinkSelect } from '@/components/Defects/SearchableAdoWorkItemLinkSelect';
+import { useAdoWorkItemTypeSplit } from '@/hooks/useAdoWorkItemTypeSplit';
 
 // Stable machine values persisted on the result (test_results.blocker_reason),
 // paired with their display label key. Keep the values in sync with the backend
@@ -38,12 +29,24 @@ const BLOCKER_REASONS: { value: string; labelKey: string }[] = [
  */
 function BlockerContext() {
   const {
-    t, testSteps,
+    t, projectId, testSteps, stepStatuses,
     selectedFailureStepNumber, setSelectedFailureStepNumber,
-    defectLink, setDefectLink, customLink, setCustomLink,
+    customLink, setCustomLink,
     executionNotes, setExecutionNotes,
     blockerReason, setBlockerReason, canWrite,
+    needsFailingStepSelection, needsFailureDescription,
   } = useExecution();
+
+  // Only a step actually marked "blocked" can be the one this result is
+  // reported against - picking from every step (including ones that passed
+  // fine) would misattribute the blocker.
+  const blockedSteps = testSteps.filter((step) => stepStatuses[step.step_number] === 'blocked');
+  // Which ADO work item is actually blocking this test (if any) belongs to
+  // the "Link Existing Defect" section below - it's the same defect-link
+  // relationship, already backed by whatever the 10s import poller mirrors
+  // in from Azure DevOps. A second freestanding picker up here would just
+  // be the same choice twice.
+  const { otherTypes } = useAdoWorkItemTypeSplit(Number(projectId));
 
   const fieldClass = 'mt-1 h-9 border-amber-200 bg-white text-sm dark:border-amber-900/60 dark:bg-slate-950/40';
 
@@ -93,50 +96,50 @@ function BlockerContext() {
           readOnly={!canWrite}
           className="mt-1 resize-none border-amber-200 text-sm dark:border-amber-900/60 dark:bg-slate-950/40"
         />
+        {needsFailureDescription && (
+          <p className="mt-1 text-[11px] text-amber-700 dark:text-amber-300">{t('describeWhatHappenedRequired')}</p>
+        )}
       </div>
 
       {testSteps.length > 0 && (
         <div className="mb-3">
           <Label htmlFor="blockedStep" className="text-xs font-medium text-amber-800 dark:text-amber-300">{t('blockedAtStep')}</Label>
-          <Select value={selectedFailureStepNumber} onValueChange={setSelectedFailureStepNumber}>
+          <Select value={selectedFailureStepNumber} onValueChange={setSelectedFailureStepNumber} disabled={blockedSteps.length === 0}>
             <SelectTrigger id="blockedStep" className={fieldClass}>
               <SelectValue placeholder={t('selectBlockedStep')} />
             </SelectTrigger>
             <SelectContent>
-              {testSteps.map((step) => (
+              {blockedSteps.map((step) => (
                 <SelectItem key={step.id || step.step_number} value={String(step.step_number)}>
                   {t('stepNumberLabel', { number: step.step_number })}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
+          {blockedSteps.length === 0 ? (
+            <p className="mt-1 text-[11px] text-amber-700 dark:text-amber-300">{t('markStepBlockedFirst')}</p>
+          ) : needsFailingStepSelection && (
+            <p className="mt-1 text-[11px] text-amber-700 dark:text-amber-300">{t('selectFailingStepRequired')}</p>
+          )}
         </div>
       )}
 
-      <div className="grid gap-3 md:grid-cols-2">
-        <div>
-          <Label htmlFor="blockingIssue" className="flex items-center gap-1.5 text-xs font-medium text-amber-800 dark:text-amber-300">
-            <Link2 className="h-3.5 w-3.5" />
-            {t('blockingIssueLabel')}
-          </Label>
-          <Input
-            id="blockingIssue" name="blocking-url" {...urlInputProps}
-            value={defectLink}
-            onChange={(e) => setDefectLink(e.target.value)}
-            placeholder={t('blockingIssuePlaceholder')}
-            className={fieldClass}
-          />
-        </div>
-        <div>
-          <Label htmlFor="blockerReference" className="text-xs font-medium text-amber-800 dark:text-amber-300">{t('blockerReferenceLabel')}</Label>
-          <Input
-            id="blockerReference" name="blocker-reference-url" {...urlInputProps}
-            value={customLink}
-            onChange={(e) => setCustomLink(e.target.value)}
-            placeholder={t('blockerReferencePlaceholder')}
-            className={fieldClass}
-          />
-        </div>
+      <div>
+        <Label htmlFor="blockerReference" className="flex items-center gap-1.5 text-xs font-medium text-amber-800 dark:text-amber-300">
+          <Link2 className="h-3.5 w-3.5" />
+          {t('blockerReferenceLabel')}
+        </Label>
+        <SearchableAdoWorkItemLinkSelect
+          id="blockerReference"
+          projectId={Number(projectId)}
+          value={customLink}
+          onChange={setCustomLink}
+          workItemTypes={otherTypes}
+          searchPlaceholder={t('searchAdoOtherWorkItemsPlaceholder')}
+          emptyLabel={t('noCustomWorkItemSelected')}
+          disabled={!canWrite}
+          className="mt-1"
+        />
       </div>
     </div>
   );
@@ -144,11 +147,21 @@ function BlockerContext() {
 
 function FailureContext() {
   const {
-    t, testCase, testSteps, testStepsLoadError, requireDefectOnFailure,
+    t, projectId, testCase, testSteps, stepStatuses, testStepsLoadError, requireDefectOnFailure,
     selectedFailureStepNumber, setSelectedFailureStepNumber,
     failureStepActual, setFailureStepActual,
-    defectLink, setDefectLink, customLink, setCustomLink,
+    customLink, setCustomLink, canWrite,
+    needsFailingStepSelection, needsFailureDescription, needsDefectEvidence,
   } = useExecution();
+
+  // Only a step actually marked "failed" can be the one this result is
+  // reported against - picking from every step (including ones that passed
+  // fine) would misattribute the failure.
+  const failedSteps = testSteps.filter((step) => stepStatuses[step.step_number] === 'failed');
+  // The defect itself is linked via "Link Existing Defect"/"Report Defect"
+  // below, not picked here too - a second ADO bug/issue picker up here would
+  // just be the same relationship expressed twice.
+  const { otherTypes } = useAdoWorkItemTypeSplit(Number(projectId));
 
   const fieldClass = 'mt-1 h-9 border-red-200 bg-white text-sm dark:border-red-900/60 dark:bg-slate-950/40';
 
@@ -160,7 +173,11 @@ function FailureContext() {
       </div>
 
       {requireDefectOnFailure && (
-        <div className="mb-3 flex items-center gap-2 rounded-md bg-white/70 px-3 py-2 text-xs text-red-700 dark:bg-slate-950/40 dark:text-red-300">
+        <div className={`mb-3 flex items-center gap-2 rounded-md px-3 py-2 text-xs ${
+          needsDefectEvidence
+            ? 'bg-white/70 text-red-700 dark:bg-slate-950/40 dark:text-red-300'
+            : 'bg-white/40 text-red-500/70 dark:bg-slate-950/20 dark:text-red-400/60'
+        }`}>
           <ShieldAlert className="h-3.5 w-3.5 shrink-0" />
           {t('defectRequiredHint')}
         </div>
@@ -177,18 +194,23 @@ function FailureContext() {
         <div className="mb-3 grid gap-3 md:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
           <div>
             <Label htmlFor="failingStep" className="text-xs font-medium text-red-700 dark:text-red-300">{t('failingStep')}</Label>
-            <Select value={selectedFailureStepNumber} onValueChange={setSelectedFailureStepNumber}>
+            <Select value={selectedFailureStepNumber} onValueChange={setSelectedFailureStepNumber} disabled={failedSteps.length === 0}>
               <SelectTrigger id="failingStep" className={fieldClass}>
                 <SelectValue placeholder={t('selectFailingStep')} />
               </SelectTrigger>
               <SelectContent>
-                {testSteps.map((step) => (
+                {failedSteps.map((step) => (
                   <SelectItem key={step.id || step.step_number} value={String(step.step_number)}>
                     {t('stepNumberLabel', { number: step.step_number })}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
+            {failedSteps.length === 0 ? (
+              <p className="mt-1 text-[11px] text-red-600 dark:text-red-400">{t('markStepFailedFirst')}</p>
+            ) : needsFailingStepSelection && (
+              <p className="mt-1 text-[11px] text-red-600 dark:text-red-400">{t('selectFailingStepRequired')}</p>
+            )}
           </div>
           <div>
             <Label htmlFor="failureStepActual" className="text-xs font-medium text-red-700 dark:text-red-300">{t('failureStepActual')}</Label>
@@ -200,31 +222,26 @@ function FailureContext() {
               maxLength={5000}
               className={fieldClass}
             />
+            {needsFailureDescription && (
+              <p className="mt-1 text-[11px] text-red-600 dark:text-red-400">{t('describeWhatHappenedRequired')}</p>
+            )}
           </div>
         </div>
       )}
 
-      <div className="grid gap-3 md:grid-cols-2">
-        <div>
-          <Label htmlFor="defectLink" className="text-xs font-medium text-red-700 dark:text-red-300">{t('defectLinkLabel')}</Label>
-          <Input
-            id="defectLink" name="defect-url" {...urlInputProps}
-            value={defectLink}
-            onChange={(e) => setDefectLink(e.target.value)}
-            placeholder={t('defectLinkPlaceholder')}
-            className={fieldClass}
-          />
-        </div>
-        <div>
-          <Label htmlFor="customLink" className="text-xs font-medium text-red-700 dark:text-red-300">{t('customLinkLabel')}</Label>
-          <Input
-            id="customLink" name="custom-url" {...urlInputProps}
-            value={customLink}
-            onChange={(e) => setCustomLink(e.target.value)}
-            placeholder={t('customLinkPlaceholder')}
-            className={fieldClass}
-          />
-        </div>
+      <div>
+        <Label htmlFor="customLink" className="text-xs font-medium text-red-700 dark:text-red-300">{t('customLinkLabel')}</Label>
+        <SearchableAdoWorkItemLinkSelect
+          id="customLink"
+          projectId={Number(projectId)}
+          value={customLink}
+          onChange={setCustomLink}
+          workItemTypes={otherTypes}
+          searchPlaceholder={t('searchAdoOtherWorkItemsPlaceholder')}
+          emptyLabel={t('noCustomWorkItemSelected')}
+          disabled={!canWrite}
+          className="mt-1"
+        />
       </div>
     </div>
   );

@@ -13,6 +13,10 @@ export function ResultSummaryCard() {
     openDefectDialog, canWrite, isFailedOrBlockedStatus,
   } = useExecution();
   const { formatDateTime } = useDateFormat();
+  // Same rule as the Report Defect button in LinkedDefectsCard: a defect is
+  // already linked (see resultDefectLinks below), so reporting a brand new
+  // one on top of that would just duplicate it.
+  const hasLinkedDefect = resultDefectLinks.length > 0;
 
   const option = getStatusOption(executionStatus);
   const Icon = option?.icon;
@@ -67,7 +71,13 @@ export function ResultSummaryCard() {
         </dl>
 
         {canWrite && isFailedOrBlockedStatus && (
-          <Button variant="outline" className="h-8 w-full justify-center text-xs" onClick={openDefectDialog}>
+          <Button
+            variant="outline"
+            className="h-8 w-full justify-center text-xs"
+            onClick={openDefectDialog}
+            disabled={hasLinkedDefect}
+            title={hasLinkedDefect ? t('reportDefectDisabledLinkedWorkItem') : undefined}
+          >
             <Bug className="mr-2 h-3.5 w-3.5 text-orange-600" />
             {t('reportDefect')}
           </Button>
