@@ -275,22 +275,23 @@ def test_tester_role_permission_set():
     from app.models import Role
     from app.rbac import ROLE_PERMISSIONS
 
-    assert ROLE_PERMISSIONS[Role.TESTER] == {"read", "write", "execute", "delete"}
-    assert "manage_projects" not in ROLE_PERMISSIONS[Role.TESTER]
+    # Testers run what they are given: read + execute, nothing that authors or removes.
+    assert ROLE_PERMISSIONS[Role.TESTER] == {"read", "execute"}
 
 
 def test_tester_global_permissions():
     from app.rbac import has_permission, can
 
     tester = _user(role="tester")
-    # Content deletion (global check) is allowed; project management is not.
-    assert has_permission(tester, "delete") is True
-    assert has_permission(tester, "write") is True
+    # Executing (and everything gated on it, like filing defects) is allowed;
+    # authoring, deleting and project management are not.
     assert has_permission(tester, "execute") is True
+    assert has_permission(tester, "write") is False
+    assert has_permission(tester, "delete") is False
     assert has_permission(tester, "manage_projects") is False
     # `can` is a thin alias used by serializers for capability flags.
-    assert can(tester, "delete") is True
-    assert can(tester, "manage_projects") is False
+    assert can(tester, "execute") is True
+    assert can(tester, "delete") is False
 
 
 def test_viewer_still_cannot_delete():
@@ -307,14 +308,12 @@ def test_manager_can_manage_projects():
 
 
 def test_effective_permissions_for_tester():
-    """The frontend reads this to gate controls: delete in, manage_projects out."""
+    """The frontend reads this to gate controls: execute in, authoring out."""
     from app.rbac import effective_permissions
 
     tester = types.SimpleNamespace(role="tester", is_superuser=False, id=7)
     result = effective_permissions(tester, _FakeDB())
-    assert "delete" in result["global"]
-    assert "write" in result["global"]
-    assert "manage_projects" not in result["global"]
+    assert set(result["global"]) == {"read", "execute"}
     assert result["projects"] == {}
 
 
@@ -327,12 +326,12 @@ def test_effective_permissions_for_superuser_is_full_admin_set():
     assert set(result["global"]) == set(ROLE_PERMISSIONS[Role.ADMIN])
 
 
-def test_effective_permissions_elevated_viewer_gains_project_delete(monkeypatch):
-    """A global viewer assigned tester in a project gets delete *there* only.
+def test_effective_permissions_elevated_viewer_gains_project_execute(monkeypatch):
+    """A global viewer assigned tester in a project gets execute *there* only.
 
     The per-project set is derived from ``has_permission`` itself (so it can't
-    diverge from enforcement): the elevated viewer can delete test content within
-    that project while staying read-only globally and lacking project management.
+    diverge from enforcement): the elevated viewer can execute the runs assigned
+    to them within that project while staying read-only globally.
     """
     import app.rbac as rbac_module
 
@@ -344,8 +343,9 @@ def test_effective_permissions_elevated_viewer_gains_project_delete(monkeypatch)
         lambda user, _db: [{"project": project, "role": "tester"}],
     )
     result = rbac_module.effective_permissions(_viewer_with_id(), db)
-    assert "delete" not in result["global"]
-    assert "delete" in result["projects"][42]
+    assert "execute" not in result["global"]
+    assert "execute" in result["projects"][42]
+    assert "delete" not in result["projects"][42]
     assert "manage_projects" not in result["projects"][42]
 
 

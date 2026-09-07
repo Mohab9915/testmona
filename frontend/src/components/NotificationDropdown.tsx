@@ -55,13 +55,6 @@ export function NotificationDropdown({ unreadCount, onUnreadCountChange }: Notif
   const { user } = useAuthStore();
   const { t, isRTL, language } = useTranslation();
 
-  const decodeHtmlEntities = (value: string) => {
-    if (!value || typeof document === 'undefined') return value;
-    const textarea = document.createElement('textarea');
-    textarea.innerHTML = value;
-    return textarea.value;
-  };
-
   const formatRelatedEntityType = (entityType?: string | null) => {
     if (!entityType) return '';
     const labels: Record<string, string> = {
@@ -516,7 +509,7 @@ export function NotificationDropdown({ unreadCount, onUnreadCountChange }: Notif
                       <div className="min-w-0 flex-1">
                         <div className="flex items-start gap-2">
                           <h4 className={`min-w-0 flex-1 truncate text-sm ${isUnread ? 'font-semibold text-slate-950 dark:text-white' : 'font-medium text-slate-700 dark:text-slate-200'}`}>
-                            {decodeHtmlEntities(notification.title)}
+                            {notification.title}
                           </h4>
                           <span className="shrink-0 text-[11px] font-medium text-slate-400 dark:text-slate-500">
                             {formatDate(notification.created_at)}
@@ -525,7 +518,7 @@ export function NotificationDropdown({ unreadCount, onUnreadCountChange }: Notif
                         </div>
 
                         <p className="mt-0.5 line-clamp-2 text-xs leading-5 text-slate-500 dark:text-slate-400">
-                          {decodeHtmlEntities(notification.message)}
+                          {notification.message}
                         </p>
 
                         <div className="mt-1.5 flex items-center justify-between gap-2">

@@ -12,7 +12,7 @@ import { StatusSelector } from './StatusSelector';
 
 export function ExecutionForm() {
   const {
-    t, currentUser, users, canWrite,
+    t, currentUser, users, canWrite, readOnlyReason,
     assignee, setAssignee,
     isFailedOrBlockedStatus, executionStatus,
     executionNotes, setExecutionNotes,
@@ -37,7 +37,7 @@ export function ExecutionForm() {
         {!canWrite && (
           <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-500 dark:border-slate-800 dark:bg-slate-900/50 dark:text-slate-400">
             <Eye className="h-3.5 w-3.5 shrink-0" />
-            {t('readOnlyNotice')}
+            {readOnlyReason ?? t('readOnlyNotice')}
           </div>
         )}
         <div>

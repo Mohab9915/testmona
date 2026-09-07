@@ -134,6 +134,9 @@ class TestPlan(Base):
     creator = relationship("User")
     test_runs = relationship("TestRun", back_populates="test_plan")
     requirements = relationship("Requirement", secondary="requirement_test_plan_links", back_populates="test_plans")
+    # The suites this plan intends to execute. Every run created from the plan
+    # is seeded with the cases in these suites.
+    suites = relationship("TestSuite", secondary="test_plan_suites", order_by="TestSuite.name")
 
 
 class Milestone(Base):

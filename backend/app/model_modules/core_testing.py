@@ -233,6 +233,9 @@ class TestRun(Base):
     assigned_to = Column(Integer, ForeignKey("users.id"))
     milestone_id = Column(Integer, ForeignKey("milestones.id"))
     priority = Column(String(20), default="medium")  # low, medium, high, critical
+    # Build/version under test — part of the run's historical snapshot, so the
+    # same plan can be re-executed per build without cloning its cases.
+    build = Column(String(100))
     estimated_duration = Column(Integer)  # in minutes
     # environment = Column(String(100))  # environment name (development, staging, production, etc.) - Temporarily disabled
     status = Column(String(20), default="pending")

@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Test plan scope and per-build runs.** A test plan now holds the test suites it intends
+  to execute (plan → suites → cases), and **Run This Plan** starts a run seeded with those
+  cases. Runs carry the **build** they were executed against, so the same plan can be
+  re-run per build instead of duplicating its test cases.
 - **Installation Guide.** A dedicated [docs/INSTALLATION.md](docs/INSTALLATION.md) covering
   prerequisites, scripted and manual setup, the first-run setup wizard, database options,
   Docker, a configuration reference, updating, and troubleshooting; linked from the README.
@@ -17,6 +21,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   leading icon column.
 
 ### Fixed
+- **Test run status followed the viewer, not the results.** A run's status was derived and
+  written back by the run detail page, so a run only left **Pending** when somebody opened
+  it — and opening a freshly seeded run marked it **Running** before anything had been
+  executed. The server now derives it on every write that touches results (manual
+  execution, adding or removing cases, CI imports): a run stays **Pending** until a result
+  is recorded, is **Running** while some remain, and finishes as **Failed** or
+  **Completed**. A migration re-derives runs already sitting in a stale state.
+- **HTML entities in ordinary text.** Every string field was HTML-escaped before it was
+  stored, so `Noise & Turn` was saved and displayed as `Noise &amp; Turn` and `customer's`
+  as `customer&#x27;s`, compounding on each re-save. Text is now stored exactly as typed
+  and escaped where it is rendered (React escapes text nodes; rich-text goes through
+  DOMPurify), the frontend's compensating entity decoders are gone, and a migration
+  decodes the values already in the database.
 - Test cases page: fetch all of a project's test cases (paginating past the per-request
   limit) instead of only the first 100, so older suites such as login were never hidden
   from the list and the header count matched the dashboard total.

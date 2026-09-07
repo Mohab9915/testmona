@@ -36,6 +36,8 @@ interface SortableTestCaseRowProps {
   getTypeBadge: (type: string) => BadgeStyle;
   getPriorityBadge: (priority: string) => BadgeStyle;
   onTagClick?: (tagName: string) => void;
+  /** Whether the viewer may author test content — hides edit/move/execute/delete. */
+  canAuthor: boolean;
   isRTL: boolean;
 }
 
@@ -57,6 +59,7 @@ export function SortableTestCaseRow({
   getTypeBadge,
   getPriorityBadge,
   onTagClick,
+  canAuthor,
   isRTL,
 }: SortableTestCaseRowProps) {
   const navigate = useNavigate();
@@ -159,12 +162,20 @@ export function SortableTestCaseRow({
             <Button variant="ghost" size="sm"><MoreHorizontal className="h-4 w-4" /></Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => onEdit(testCase)}><Edit className={`h-4 w-4 ${isRTL ? 'ml-2' : 'mr-2'}`} /> {t('edit')}</DropdownMenuItem>
-            <DropdownMenuItem onClick={() => onMove(testCase)}><ArrowUp className={`h-4 w-4 ${isRTL ? 'ml-2' : 'mr-2'}`} /> {t('move')}</DropdownMenuItem>
-            <DropdownMenuItem onClick={() => onExecute(testCase)}><Play className={`h-4 w-4 ${isRTL ? 'ml-2' : 'mr-2'}`} /> {t('execute')}</DropdownMenuItem>
+            {canAuthor && (
+              <>
+                <DropdownMenuItem onClick={() => onEdit(testCase)}><Edit className={`h-4 w-4 ${isRTL ? 'ml-2' : 'mr-2'}`} /> {t('edit')}</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => onMove(testCase)}><ArrowUp className={`h-4 w-4 ${isRTL ? 'ml-2' : 'mr-2'}`} /> {t('move')}</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => onExecute(testCase)}><Play className={`h-4 w-4 ${isRTL ? 'ml-2' : 'mr-2'}`} /> {t('execute')}</DropdownMenuItem>
+              </>
+            )}
             <DropdownMenuItem onClick={() => onViewHistory(testCase)}><History className={`h-4 w-4 ${isRTL ? 'ml-2' : 'mr-2'}`} /> {t('viewHistory')}</DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={() => onDelete(testCase.id)} className="text-red-600"><Trash2 className={`h-4 w-4 ${isRTL ? 'ml-2' : 'mr-2'}`} /> {t('delete')}</DropdownMenuItem>
+            {canAuthor && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => onDelete(testCase.id)} className="text-red-600"><Trash2 className={`h-4 w-4 ${isRTL ? 'ml-2' : 'mr-2'}`} /> {t('delete')}</DropdownMenuItem>
+              </>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
       </TableCell>

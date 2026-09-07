@@ -288,7 +288,9 @@ export function Defects() {
   const { t, isRTL } = useTranslation();
   const { formatDate, formatDateTime } = useDateFormat();
   const formatSnapshotDate = (value?: string | null): string => (value ? formatDateTime(value) || '-' : '-');
-  const { canWrite } = usePermissions();
+  // Filing and updating defects is gated on "execute" server-side, not "write" —
+  // testers are expected to raise bugs from their runs.
+  const { canExecute: canWrite } = usePermissions();
   const { appName } = useAppName(false);
   const linkedMilestoneId = parsePositiveQueryNumber(searchParams.get('milestone_id'));
   

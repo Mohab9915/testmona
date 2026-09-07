@@ -4076,18 +4076,24 @@ export function TestCases() {
                   <span className="text-sm font-medium text-blue-700 dark:text-blue-300">
                     {t('selectedCount', { count: selectedTestCases.length })}
                   </span>
-                  <Button variant="outline" size="sm" onClick={() => setBulkEditOpen(true)}>
-                    <Edit className={`h-4 w-4 ${isRTL ? 'ml-2' : 'mr-2'}`} /> {t('bulkEdit')}
-                  </Button>
-                  <Button variant="outline" size="sm" onClick={handleBulkExecute} className="text-blue-600">
-                    <Play className={`h-4 w-4 ${isRTL ? 'ml-2' : 'mr-2'}`} /> {t('execute')}
-                  </Button>
+                  {canWrite && (
+                    <>
+                      <Button variant="outline" size="sm" onClick={() => setBulkEditOpen(true)}>
+                        <Edit className={`h-4 w-4 ${isRTL ? 'ml-2' : 'mr-2'}`} /> {t('bulkEdit')}
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={handleBulkExecute} className="text-blue-600">
+                        <Play className={`h-4 w-4 ${isRTL ? 'ml-2' : 'mr-2'}`} /> {t('execute')}
+                      </Button>
+                    </>
+                  )}
                   <Button variant="outline" size="sm" onClick={handleExportSelected} className="text-green-600">
                     <Download className={`h-4 w-4 ${isRTL ? 'ml-2' : 'mr-2'}`} /> {t('exportCSV')}
                   </Button>
-                  <Button variant="outline" size="sm" onClick={handleBulkDelete} className="text-red-600">
-                    <Trash2 className={`h-4 w-4 ${isRTL ? 'ml-2' : 'mr-2'}`} /> {t('delete')}
-                  </Button>
+                  {canWrite && (
+                    <Button variant="outline" size="sm" onClick={handleBulkDelete} className="text-red-600">
+                      <Trash2 className={`h-4 w-4 ${isRTL ? 'ml-2' : 'mr-2'}`} /> {t('delete')}
+                    </Button>
+                  )}
                 </div>
               )}
             </div>
@@ -4291,6 +4297,7 @@ export function TestCases() {
                           onEdit={handleEdit}
                           onMove={handleMoveTestCase}
                           onExecute={handleExecute}
+                          canAuthor={canWrite}
                           onViewHistory={handleViewHistory}
                           onDelete={handleDelete}
                           getTestCaseDetailUrl={getTestCaseDetailUrl}

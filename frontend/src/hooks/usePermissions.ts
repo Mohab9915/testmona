@@ -10,10 +10,11 @@ import { canWrite, isAdminUser, isViewerRole } from '@/utils/roles';
  * all non-self-service writes by the read-only guard in `app/auth.py`). Use this to
  * hide/disable create/edit/delete/execute controls so users don't trigger 403s.
  *
- * `canWrite`/`isViewer`/`isAdmin` are derived from the user's global role (no
- * request needed). `canDelete`/`canExecute`/`canManageProject` reflect the user's
- * effective **global** permission set fetched from `/users/me/permissions` (the
- * server is the source of truth — we no longer mirror the role table client-side).
+ * `isViewer`/`isAdmin` are derived from the user's global role (no request
+ * needed). `canWrite`/`canDelete`/`canExecute`/`canManageProject` reflect the
+ * user's effective **global** permission set fetched from `/users/me/permissions`
+ * (the server is the source of truth — we no longer mirror the role table
+ * client-side), so an execute-only tester sees no authoring controls.
  * For project-scoped decisions use {@link useProjectPermissions}.
  */
 export function usePermissions() {
@@ -32,7 +33,9 @@ export function usePermissions() {
     user,
     isAdmin: isAdminUser(user),
     isViewer: isViewerRole(user?.role),
-    canWrite: canWrite(user),
+    // Server-derived: a tester is read+execute only, so authoring controls stay
+    // hidden for them. Falls back to the role gate until the fetch resolves.
+    canWrite: permissions ? globalPerms.has('write') : canWrite(user),
     canDelete: globalPerms.has('delete'),
     canExecute: globalPerms.has('execute') || globalPerms.has('write'),
     canManageProject: globalPerms.has('manage_projects'),

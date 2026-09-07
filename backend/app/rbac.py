@@ -114,7 +114,11 @@ def enforce_viewer_read_only(
 ROLE_PERMISSIONS = {
     Role.ADMIN: {"read", "write", "delete", "execute", "manage_users", "manage_projects"},
     Role.MANAGER: {"read", "write", "delete", "execute", "manage_projects"},
-    Role.TESTER: {"read", "write", "execute", "delete"},
+    # Testers can execute test runs, log results, and file/update defects (all
+    # gated on "execute" at the relevant routes) — but not author or delete
+    # test suites/cases/plans/requirements/milestones/etc. (gated on "write"),
+    # which stays Manager/Admin only.
+    Role.TESTER: {"read", "execute"},
     Role.VIEWER: {"read"},
 }
 
@@ -207,6 +211,76 @@ def can(user: User, permission: str, project_id: int = None, db: Session = None)
     frontend can gate controls on exactly what the backend will allow.
     """
     return has_permission(user, permission, project_id, db)
+
+
+def can_execute_test_run(user: User, test_run: object, db: Session = None) -> bool:
+    """Whether ``user`` may record execution work against ``test_run``.
+
+    Execution is *assignment-scoped*. A role that can only ``execute`` (tester)
+    works exclusively on the runs assigned to it: it may not log results into a
+    colleague's run, nor pick up an unassigned one. Roles that can author runs in
+    the project (admin/manager/project owner — anything holding ``write``) own the
+    plan the run belongs to, so they stay unrestricted.
+
+    ``test_run`` is any object exposing ``project_id`` and ``assigned_to``.
+    """
+    project_id = getattr(test_run, "project_id", None)
+    if project_id is None:
+        return False
+    if not has_permission(user, "execute", project_id, db):
+        return False
+    # Whoever may author runs in the project may execute any of them.
+    if has_permission(user, "write", project_id, db):
+        return True
+    assigned_to = getattr(test_run, "assigned_to", None)
+    return assigned_to is not None and assigned_to == getattr(user, "id", None)
+
+
+def require_test_run_execution(
+    user: User, test_run: object, db: Session = None, action: str = "execute"
+) -> None:
+    """Raise 403 unless ``user`` may :func:`can_execute_test_run` ``test_run``.
+
+    The two failure modes are split so the caller sees *why*: no execute rights in
+    the project at all, versus execute rights but somebody else's run.
+    """
+    if can_execute_test_run(user, test_run, db):
+        return
+
+    project_id = getattr(test_run, "project_id", None)
+    if project_id is not None and has_permission(user, "execute", project_id, db):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This test run is not assigned to you",
+        )
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail=f"Not authorized to {action} this test run",
+    )
+
+
+def can_view_test_run(user: User, test_run: object, db: Session = None) -> bool:
+    """Whether ``test_run`` should appear in ``user``'s browse list of runs.
+
+    Authoring roles (``write``) and plain read-only roles (viewer: ``read`` but not
+    ``execute``) see every run in a project they can read. Execute-only roles
+    (tester) only see the runs assigned to them in the browse list — the same
+    scoping :func:`can_execute_test_run` applies to what they may act on.
+
+    This intentionally does *not* gate opening a run by ID: other features (defect
+    detail, milestone rollups, dashboards, the traceability matrix) resolve a run
+    regardless of its assignee, and execution itself is separately enforced by
+    :func:`require_test_run_execution`. Only the list endpoint applies this filter.
+    """
+    project_id = getattr(test_run, "project_id", None)
+    if project_id is None:
+        return False
+    if has_permission(user, "write", project_id, db):
+        return True
+    if has_permission(user, "execute", project_id, db):
+        assigned_to = getattr(test_run, "assigned_to", None)
+        return assigned_to is not None and assigned_to == getattr(user, "id", None)
+    return has_permission(user, "read", project_id, db)
 
 
 # Every distinct permission known to the RBAC table — the universe to probe when

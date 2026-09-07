@@ -161,6 +161,7 @@ export interface TestRun {
   assignee?: User;
   estimated_duration?: number;
   priority?: 'low' | 'medium' | 'high' | 'critical';
+  build?: string | null;  // build/version this execution ran against
   total_tests?: number;
   executed_tests?: number;
   not_started_tests?: number;

@@ -219,13 +219,6 @@ export function WorkInbox() {
 
   const localeTag = language === 'fa' ? 'fa-IR' : language === 'ar' ? 'ar' : 'en-US';
 
-  const decodeHtmlEntities = (value: string) => {
-    if (!value || typeof document === 'undefined') return value;
-    const textarea = document.createElement('textarea');
-    textarea.innerHTML = value;
-    return textarea.value;
-  };
-
   const fetchSummary = useCallback(async () => {
     try {
       setSummary(await inboxAPI.summary());
@@ -957,7 +950,6 @@ export function WorkInbox() {
                           notification={notification}
                           status={status}
                           t={t}
-                          decode={decodeHtmlEntities}
                           categoryLabel={categoryLabel}
                           formatDate={formatDate}
                           formatSnoozeUntil={formatSnoozeUntil}
@@ -1188,7 +1180,6 @@ function InboxRow({
   notification,
   status,
   t,
-  decode,
   categoryLabel,
   formatDate,
   formatSnoozeUntil,
@@ -1208,7 +1199,6 @@ function InboxRow({
   notification: Notification;
   status: InboxStatus;
   t: (k: string, p?: Record<string, string | number>) => string;
-  decode: (v: string) => string;
   categoryLabel: (key: string, fallback: string) => string;
   formatDate: (d: string) => string;
   formatSnoozeUntil: (d?: string | null) => string;
@@ -1270,7 +1260,7 @@ function InboxRow({
         <div className="flex items-start gap-2">
           <button type="button" onClick={onOpen} className="min-w-0 flex-1 text-start">
             <h3 className="truncate text-sm font-medium text-slate-700 dark:text-slate-200">
-              {decode(notification.title)}
+              {notification.title}
             </h3>
           </button>
           <span
@@ -1290,7 +1280,7 @@ function InboxRow({
         )}
 
         <p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-500 dark:text-slate-400">
-          {decode(notification.message)}
+          {notification.message}
         </p>
 
         {/* Aging / SLA signal (W4) — open items only; category-aware overdue. */}

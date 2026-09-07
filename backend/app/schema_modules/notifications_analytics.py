@@ -3,7 +3,8 @@ from typing import List, Optional, Dict, Any, Union
 from datetime import datetime, timezone
 from ..models import Priority, Status, TestStatus, ResultStatus, Role, Permission, CustomFieldType, TestType, RecycleBinType, RequirementStatus, DefectStatus, DefectSeverity, DefectPriority, DefectLinkType, MilestoneStatus, NotificationType, StepCategory, StepComplexity, DocStatus
 import re
-import html
+
+from ..utils import normalize_user_text
 
 from .versioning import (
     DateValidationRules,
@@ -38,12 +39,12 @@ class NotificationBase(BaseModel):
 
     @model_validator(mode='before')
     @classmethod
-    def sanitize_html(cls, data):
-        """Sanitize HTML in string fields to prevent XSS attacks"""
+    def normalize_text_fields(cls, data):
+        """Normalize user-supplied string fields; see ``app.utils.normalize_user_text``."""
         if isinstance(data, dict):
             for key, value in data.items():
                 if isinstance(value, str) and key not in ['type']:
-                    data[key] = html.escape(value)
+                    data[key] = normalize_user_text(value)
         return data
 
 

@@ -190,10 +190,11 @@ def test_test_plan_and_milestone_schema_validation():
         schemas.MilestoneCreate(title="Milestone", project_id=1, progress_percentage=101)
 
     plan = schemas.TestPlanCreate(title="  Regression  ", project_id=1, created_by=1,
-                                  description="<b>scope</b>")
+                                  description="<b>scope</b> & more")
     milestone = schemas.MilestoneCreate(title="  Release 1  ", project_id=1, progress_percentage=40)
     assert plan.title == "Regression"
-    assert plan.description == "&lt;b&gt;scope&lt;/b&gt;"
+    # Text is stored verbatim; escaping happens on render, not on write.
+    assert plan.description == "<b>scope</b> & more"
     assert milestone.title == "Release 1"
 
 
@@ -292,11 +293,12 @@ def test_defect_schemas_reject_unsafe_or_ambiguous_payloads():
     with pytest.raises(ValueError):
         schemas.TestResultDefectLinkCreate(defect_id=1, new_defect=schemas.DefectCreate(title="Bug", project_id=1))
 
-    defect = schemas.DefectCreate(title="<script>alert(1)</script>", project_id=1,
+    defect = schemas.DefectCreate(title="Crash on <save> & exit", project_id=1,
                                   external_issue_url=" https://tracker.example/BUG-1 ")
     step = schemas.TestResultFailingStepSnapshot(step_number=2, status="BLOCKED")
     link = schemas.TestResultDefectLinkCreate(defect_id=4, failing_step=step)
-    assert defect.title == "&lt;script&gt;alert(1)&lt;/script&gt;"
+    # Text is stored verbatim; escaping happens on render, not on write.
+    assert defect.title == "Crash on <save> & exit"
     assert defect.external_issue_url == "https://tracker.example/BUG-1"
     assert link.failing_step.status == "blocked"
 

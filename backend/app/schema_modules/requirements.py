@@ -3,7 +3,8 @@ from typing import List, Optional, Dict, Any, Union
 from datetime import datetime
 from ..models import Priority, Status, TestStatus, ResultStatus, Role, Permission, CustomFieldType, TestType, RecycleBinType, RequirementStatus, DefectStatus, DefectSeverity, DefectPriority, DefectLinkType, MilestoneStatus, NotificationType, StepCategory, StepComplexity, DocStatus
 import re
-import html
+
+from ..utils import normalize_user_text
 
 from .versioning import (
     DateValidationRules,
@@ -43,17 +44,17 @@ class RequirementBase(BaseModel):
 
     @model_validator(mode='before')
     @classmethod
-    def sanitize_html(cls, data):
-        """Sanitize HTML in string fields to prevent XSS attacks.
+    def normalize_text_fields(cls, data):
+        """Normalize user-supplied string fields; see ``app.utils.normalize_user_text``.
 
-        Unescape first so the operation is idempotent: requirement content is
-        loaded into the edit form and sent back on every save, so a plain
-        ``html.escape`` would compound (``&lt;`` -> ``&amp;lt;``) each update.
+        Requirement bodies are rich text authored by the editor and are stored
+        as-is, so the HTML the editor produces survives a round-trip through
+        the edit form unchanged.
         """
         if isinstance(data, dict):
             for key, value in data.items():
                 if isinstance(value, str) and key not in ['status', 'priority']:
-                    data[key] = html.escape(html.unescape(value))
+                    data[key] = normalize_user_text(value)
         return data
 
 
@@ -76,16 +77,12 @@ class RequirementUpdate(BaseModel):
 
     @model_validator(mode='before')
     @classmethod
-    def sanitize_html(cls, data):
-        """Sanitize HTML in string fields to prevent XSS attacks.
-
-        Unescape first so re-saving an already-escaped value is idempotent
-        rather than compounding the escaping on every update.
-        """
+    def normalize_text_fields(cls, data):
+        """Normalize user-supplied string fields; see ``app.utils.normalize_user_text``."""
         if isinstance(data, dict):
             for key, value in data.items():
                 if isinstance(value, str) and key not in ['status', 'priority']:
-                    data[key] = html.escape(html.unescape(value))
+                    data[key] = normalize_user_text(value)
         return data
 
 

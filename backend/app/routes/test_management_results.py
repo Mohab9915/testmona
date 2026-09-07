@@ -68,8 +68,10 @@ def register_result_routes(app):
         if test_case_project_id != test_run.project_id:
             raise HTTPException(status_code=400, detail="Test case does not belong to the test run project")
 
+        # Putting a test case into a run defines the run's scope, which is authoring
+        # rather than execution: it stays with the roles that can create the run itself.
         if not rbac.has_permission(current_user, "write", test_run.project_id, db):
-            raise HTTPException(status_code=403, detail="Not authorized to create test result in this project")
+            raise HTTPException(status_code=403, detail="Not authorized to add test cases to this test run")
 
         # Canonicalize the status so storage never holds two spellings of the same
         # outcome (skip/skipped, pass/passed, ...).
@@ -178,9 +180,7 @@ def register_result_routes(app):
         # Get the test run to check project access
         test_run = crud.get_test_run(db, test_run_id=db_test_result.test_run_id)
         if test_run:
-            # Check if user has permission to update this test result's project
-            if not rbac.has_permission(current_user, "write", test_run.project_id, db):
-                raise HTTPException(status_code=403, detail="Not authorized to update this test result")
+            rbac.require_test_run_execution(current_user, test_run, db, action="record results for")
 
         # Canonicalize the status so storage never holds two spellings of the same
         # outcome (skip/skipped, pass/passed, ...).
@@ -209,9 +209,9 @@ def register_result_routes(app):
         # Get the test run to check project access
         test_run = crud.get_test_run(db, test_run_id=db_test_result.test_run_id)
         if test_run:
-            # Check if user has permission to delete this test result's project
-            if not rbac.has_permission(current_user, "delete", test_run.project_id, db):
-                raise HTTPException(status_code=403, detail="Not authorized to delete this test result")
+            # Dropping a case from a run edits the run's scope, so it needs authoring rights.
+            if not rbac.has_permission(current_user, "write", test_run.project_id, db):
+                raise HTTPException(status_code=403, detail="Not authorized to remove test cases from this test run")
         
         # Perform the deletion
         db_test_result = crud.delete_test_result(db, test_result_id=test_result_id)
@@ -230,8 +230,8 @@ def register_result_routes(app):
         
         # Check project access
         test_run = crud.get_test_run(db, test_run_id=db_test_result.test_run_id)
-        if test_run and not rbac.has_permission(current_user, "write", test_run.project_id, db):
-            raise HTTPException(status_code=403, detail="Not authorized to pause this test result")
+        if test_run:
+            rbac.require_test_run_execution(current_user, test_run, db, action="pause work in")
         
         # Update execution state to paused
         update_data = {"execution_state": "paused"}
@@ -252,8 +252,8 @@ def register_result_routes(app):
         
         # Check project access
         test_run = crud.get_test_run(db, test_run_id=db_test_result.test_run_id)
-        if test_run and not rbac.has_permission(current_user, "write", test_run.project_id, db):
-            raise HTTPException(status_code=403, detail="Not authorized to resume this test result")
+        if test_run:
+            rbac.require_test_run_execution(current_user, test_run, db, action="resume work in")
         
         # Update execution state to running
         update_data = {"execution_state": "running"}
@@ -275,8 +275,8 @@ def register_result_routes(app):
         
         # Check project access
         test_run = crud.get_test_run(db, test_run_id=db_test_result.test_run_id)
-        if test_run and not rbac.has_permission(current_user, "write", test_run.project_id, db):
-            raise HTTPException(status_code=403, detail="Not authorized to modify this test result")
+        if test_run:
+            rbac.require_test_run_execution(current_user, test_run, db, action="log time against")
         
         # Validate input
         hours = time_data.get("hours", 0)
@@ -320,8 +320,8 @@ def register_result_routes(app):
         
         # Check project access
         test_run = crud.get_test_run(db, test_run_id=db_test_result.test_run_id)
-        if test_run and not rbac.has_permission(current_user, "write", test_run.project_id, db):
-            raise HTTPException(status_code=403, detail="Not authorized to reset time for this test result")
+        if test_run:
+            rbac.require_test_run_execution(current_user, test_run, db, action="reset times in")
         
         try:
             # Reset timing fields for this specific test result only
@@ -394,8 +394,7 @@ def register_result_routes(app):
         test_run = crud.get_test_run(db, test_run_id=db_test_result.test_run_id)
         if test_run is None:
             raise HTTPException(status_code=404, detail="Test run not found")
-        if not rbac.has_permission(current_user, "write", test_run.project_id, db):
-            raise HTTPException(status_code=403, detail="Not authorized to modify this test result")
+        rbac.require_test_run_execution(current_user, test_run, db, action="record results for")
 
         # A step marked failed/blocked makes an overall passed/skipped result a
         # contradiction. The UI already prevents this; this is the backstop for

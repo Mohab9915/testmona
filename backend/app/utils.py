@@ -1,13 +1,23 @@
 """
 Utility functions for sanitization and validation.
+
+Note on XSS: user-supplied text is stored verbatim and escaped at *render*
+time, not on write. React escapes text nodes by default, and every
+``dangerouslySetInnerHTML`` path runs its value through DOMPurify (see
+``frontend/src/lib/sanitize.ts``). Escaping on write instead corrupted
+ordinary prose -- ``Noise & Turn`` was stored as ``Noise &amp; Turn`` and
+``customer's`` as ``customer&#x27;s`` -- and re-saving compounded it.
 """
 
-import html
 import re
 import json
 from urllib.parse import urlparse
 from typing import Any
 from fastapi import HTTPException
+
+# C0/C1 control characters have no place in stored text; tab, newline and
+# carriage return are kept because multi-line fields rely on them.
+_CONTROL_CHARS_RE = re.compile(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]')
 
 
 def is_valid_url(url: str) -> bool:
@@ -28,15 +38,22 @@ def is_valid_url(url: str) -> bool:
         return False
 
 
-def sanitize_string(value: str) -> str:
-    """Sanitize a string to prevent XSS attacks"""
+def normalize_user_text(value: Any) -> Any:
+    """Normalize a user-supplied string for storage, preserving it verbatim.
+
+    Strips control characters only. HTML is deliberately *not* escaped here --
+    see the module docstring for why that happens on render instead.
+    """
     if not isinstance(value, str):
         return value
-    # Strip whitespace
-    value = value.strip()
-    # Escape HTML entities
-    value = html.escape(value)
-    return value
+    return _CONTROL_CHARS_RE.sub('', value)
+
+
+def sanitize_string(value: str) -> str:
+    """Normalize a string for storage (whitespace-trimmed, control chars removed)."""
+    if not isinstance(value, str):
+        return value
+    return normalize_user_text(value.strip())
 
 
 def sanitize_data(data: Any, skip_fields: set = None) -> Any:

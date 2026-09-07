@@ -31,6 +31,7 @@ import { useDateFormat } from '@/hooks/useDateFormat';
 import { useToast } from '@/hooks/use-toast';
 import { api, customFieldsAPI, datasetsAPI, sectionsAPI, testCasesAPI, testSuitesAPI, type TestDataset, type GlobalParameter } from '@/lib/api';
 import { useResolvedEntityId } from '@/hooks/useResolvedEntityId';
+import { useProjectPermissions } from '@/hooks/useProjectPermissions';
 import { entityKey } from '@/lib/utils';
 import { loadProjectParameters, paramsToMap, referencedKeys, resolveParameters } from '@/utils/parameters';
 import { CustomFieldDefinition, CustomFieldValue, Requirement, TestCase, TestSuite } from '@/types';
@@ -124,6 +125,11 @@ export function TestCaseDetail() {
   }, [testCase]);
 
   const effectiveProjectId = projectId || testSuite?.project_id?.toString() || (testCase as any)?.project_id?.toString();
+  // Ad-hoc "Execute" spins up (or extends) a test run, which is authoring — an
+  // execute-only tester works the runs assigned to them instead.
+  const { canWrite: canAuthor } = useProjectPermissions(
+    effectiveProjectId ? Number(effectiveProjectId) : null
+  );
 
   const navigateBack = () => {
     if (effectiveProjectId) {
@@ -589,14 +595,18 @@ export function TestCaseDetail() {
                 </div>
               </div>
               <div className="grid gap-2 sm:grid-cols-2 lg:min-w-[380px] lg:grid-cols-1">
-                <Button onClick={handleExecute} className="h-10 justify-center bg-blue-600 hover:bg-blue-700">
-                  <Play className={`${isRTL ? 'ml-2' : 'mr-2'} h-4 w-4`} />
-                  {t('execute')}
-                </Button>
-                <Button variant="outline" onClick={handleEdit} className="h-10 justify-center">
-                  <Edit className={`${isRTL ? 'ml-2' : 'mr-2'} h-4 w-4`} />
-                  {t('edit')}
-                </Button>
+                {canAuthor && (
+                  <>
+                    <Button onClick={handleExecute} className="h-10 justify-center bg-blue-600 hover:bg-blue-700">
+                      <Play className={`${isRTL ? 'ml-2' : 'mr-2'} h-4 w-4`} />
+                      {t('execute')}
+                    </Button>
+                    <Button variant="outline" onClick={handleEdit} className="h-10 justify-center">
+                      <Edit className={`${isRTL ? 'ml-2' : 'mr-2'} h-4 w-4`} />
+                      {t('edit')}
+                    </Button>
+                  </>
+                )}
                 <Button variant="outline" onClick={handleShare} className="h-10 justify-center">
                   <Share2 className={`${isRTL ? 'ml-2' : 'mr-2'} h-4 w-4`} />
                   {t('copyLink')}

@@ -52,3 +52,23 @@ export function roleCanWrite(role?: string | null): boolean {
     normalized === USER_ROLES.TESTER
   );
 }
+
+/**
+ * Whether the current user may record execution work on a given test run.
+ *
+ * Mirrors `rbac.can_execute_test_run` on the backend: a role that can author runs
+ * in the project (`write`) may execute any of them, while an execute-only role
+ * (tester) works exclusively on the runs assigned to it — never a colleague's run
+ * and never an unassigned one. UX gating only; the backend still enforces it.
+ */
+export function canExecuteTestRun(
+  run: { assigned_to?: number | string | null } | null | undefined,
+  perms: { canWrite: boolean; canExecute: boolean },
+  userId?: number | string | null,
+): boolean {
+  if (!run) return false;
+  if (perms.canWrite) return true;
+  if (!perms.canExecute) return false;
+  if (run.assigned_to == null || userId == null) return false;
+  return Number(run.assigned_to) === Number(userId);
+}

@@ -3,7 +3,8 @@ from typing import List, Optional, Dict, Any, Union
 from datetime import datetime
 from ..models import Priority, Status, TestStatus, ResultStatus, Role, Permission, CustomFieldType, TestType, RecycleBinType, RequirementStatus, DefectStatus, DefectSeverity, DefectPriority, DefectLinkType, MilestoneStatus, NotificationType, StepCategory, StepComplexity, DocStatus
 import re
-import html
+
+from ..utils import normalize_user_text
 
 from .versioning import (
     DateValidationRules,
@@ -48,11 +49,12 @@ class TestPlanBase(BaseModel):
 
     @model_validator(mode='before')
     @classmethod
-    def sanitize_html(cls, data):
+    def normalize_text_fields(cls, data):
+        """Normalize user-supplied string fields; see ``app.utils.normalize_user_text``."""
         if isinstance(data, dict):
             for key, value in data.items():
                 if isinstance(value, str) and key not in ['status']:
-                    data[key] = html.escape(value)
+                    data[key] = normalize_user_text(value)
         return data
 
     @field_validator('title')
@@ -113,11 +115,12 @@ class TestPlanUpdate(BaseModel):
 
     @model_validator(mode='before')
     @classmethod
-    def sanitize_html(cls, data):
+    def normalize_text_fields(cls, data):
+        """Normalize user-supplied string fields; see ``app.utils.normalize_user_text``."""
         if isinstance(data, dict):
             for key, value in data.items():
                 if isinstance(value, str) and key not in ['status']:
-                    data[key] = html.escape(value)
+                    data[key] = normalize_user_text(value)
         return data
 
     @field_validator('title')
@@ -165,6 +168,33 @@ class TestPlan(TestPlanBase):
 
     class Config:
         from_attributes = True
+
+
+class TestPlanSuiteUpdate(BaseModel):
+    """Replace the set of suites a plan intends to execute."""
+    suite_ids: List[int] = Field(..., max_length=200)
+
+    @field_validator('suite_ids')
+    @classmethod
+    def validate_suite_ids(cls, v: List[int]) -> List[int]:
+        if any(suite_id <= 0 for suite_id in v):
+            raise ValueError('suite_ids must contain positive integers')
+        return list(dict.fromkeys(v))
+
+
+class TestPlanSuiteScope(BaseModel):
+    suite_ids: List[int] = []
+    test_case_count: int = 0
+
+
+class TestPlanRunCreate(BaseModel):
+    """One execution of a plan, seeded from the plan's suites."""
+    name: Optional[str] = Field(None, max_length=255)
+    description: Optional[str] = Field(None, max_length=1000)
+    build: Optional[str] = Field(None, max_length=100)
+    environment_id: Optional[int] = Field(None, ge=1)
+    assigned_to: Optional[int] = Field(None, ge=1)
+    priority: Optional[str] = Field(None, pattern="^(low|medium|high|critical)$")
 
 
 # Milestone Schemas

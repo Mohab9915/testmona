@@ -60,7 +60,7 @@ import { useProjectPermissions } from '@/hooks/useProjectPermissions';
 import { ContentEditor, htmlToMarkdown, markdownToHtml } from '@/components/ui/content-editor';
 import { GherkinEditor } from '@/components/requirements/GherkinEditor';
 import { isGherkinText } from '@/components/requirements/gherkin';
-import { decodeEntitiesDeep, htmlToReadableText, isHtmlMarkup, richTextToMarkdownForEdit } from '@/components/requirements/richText';
+import { htmlToReadableText, isHtmlMarkup, richTextToMarkdownForEdit } from '@/components/requirements/richText';
 import { diffWords } from 'diff';
 import { sanitizeHtml } from '@/lib/sanitize';
 
@@ -199,37 +199,12 @@ export function Requirements() {
       .replace(/\s+/g, ' ')
       .trim();
 
-  // Requirement description/acceptance is stored as rich-text HTML, sometimes
-  // escaped or double-escaped. Decode it, then show only readable text in the
-  // list/export views so wrapper tags like <p> are not displayed.
+  // Requirement description/acceptance is stored as rich-text HTML, exactly as
+  // the editor produced it. Show only readable text in the list/export views so
+  // wrapper tags like <p> are not displayed.
   const toDisplayText = (value?: string | null): string => {
     if (!value) return '';
-    const decodeHtmlEntities = (input: string): string => {
-      const namedEntities: Record<string, string> = {
-        amp: '&',
-        lt: '<',
-        gt: '>',
-        quot: '"',
-        apos: "'",
-        nbsp: ' ',
-      };
-
-      return input.replace(/&(#\d+|#x[0-9a-fA-F]+|[a-zA-Z]+);/g, (match, entity: string) => {
-        if (entity.startsWith('#x') || entity.startsWith('#X')) {
-          const codePoint = Number.parseInt(entity.slice(2), 16);
-          return Number.isFinite(codePoint) ? String.fromCodePoint(codePoint) : match;
-        }
-
-        if (entity.startsWith('#')) {
-          const codePoint = Number.parseInt(entity.slice(1), 10);
-          return Number.isFinite(codePoint) ? String.fromCodePoint(codePoint) : match;
-        }
-
-        return namedEntities[entity] ?? match;
-      });
-    };
-
-    const decoded = decodeHtmlEntities(decodeHtmlEntities(value));
+    const decoded = value;
     if (!/<[a-z][\s\S]*>/i.test(decoded)) {
       return decoded.replace(/\s+/g, ' ').trim();
     }
@@ -845,7 +820,7 @@ export function Requirements() {
   };
 
   const handleEditRequirement = (requirement: Requirement) => {
-    const decodedAcceptance = decodeEntitiesDeep(requirement.acceptance_criteria);
+    const decodedAcceptance = requirement.acceptance_criteria || '';
     const readableAcceptance = htmlToReadableText(requirement.acceptance_criteria);
     const shouldUseGherkinSyntax = isGherkinText(readableAcceptance);
     const descriptionForEdit = richTextToMarkdownForEdit(requirement.description);

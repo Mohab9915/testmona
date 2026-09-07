@@ -3,7 +3,8 @@ from typing import List, Optional, Dict, Any, Union
 from datetime import datetime
 from ..models import Priority, Status, TestStatus, ResultStatus, Role, Permission, CustomFieldType, TestType, RecycleBinType, RequirementStatus, DefectStatus, DefectSeverity, DefectPriority, DefectLinkType, MilestoneStatus, NotificationType, StepCategory, StepComplexity, DocStatus, DocReviewRoundStatus, DocReviewDecision
 import re
-import html
+
+from ..utils import normalize_user_text
 
 from .versioning import (
     DateValidationRules,
@@ -40,15 +41,14 @@ DOC_TAGS_MAX = 500
 
 
 def _clean_plain_text(value: Optional[str], *, max_len: Optional[int] = None) -> Optional[str]:
-    """Strip and HTML-escape a short plain-text field (title/tags/classification).
+    """Trim and length-cap a short plain-text field (title/tags/classification).
 
-    Unescape first so re-saving an already-escaped value stays idempotent. The
-    canonical ``content_markdown`` is intentionally NOT escaped here — it is
-    sanitized on render by the frontend so Markdown stays clean and diffable.
+    Text is stored verbatim and escaped on render; see
+    ``app.utils.normalize_user_text``.
     """
     if value is None:
         return None
-    cleaned = html.escape(html.unescape(value)).strip()
+    cleaned = normalize_user_text(value).strip()
     if max_len is not None and len(cleaned) > max_len:
         cleaned = cleaned[:max_len]
     return cleaned

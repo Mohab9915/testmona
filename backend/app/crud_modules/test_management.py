@@ -137,6 +137,10 @@ def delete_test_suite(db: Session, test_suite_id: int):
     # Bare delete fails with an integrity error when test_cases/sections still
     # reference this suite — the route is expected to enforce the "must be empty"
     # rule via a 409 before we reach this point.
+    # Test plans only reference the suite as scope, so drop those links rather
+    # than blocking the delete on them.
+    from ..models import test_plan_suites
+    db.execute(test_plan_suites.delete().where(test_plan_suites.c.test_suite_id == test_suite_id))
     db.delete(db_test_suite)
     safe_commit(db)
     return db_test_suite
@@ -372,6 +376,7 @@ def create_test_run(db: Session, test_run: TestRunCreate):
         environment_id=test_run_data.get('environment_id'),
         assigned_to=test_run_data.get('assigned_to'),
         priority=test_run_data.get('priority'),
+        build=test_run_data.get('build'),
         estimated_duration=test_run_data.get('estimated_duration'),
         schedule_id=test_run_data.get('schedule_id')
     )
@@ -382,20 +387,17 @@ def create_test_run(db: Session, test_run: TestRunCreate):
     return db_test_run
 
 
-def create_test_suite_run(db: Session, test_suite: TestSuite, test_cases: List[TestCase], run_data: schemas.TestSuiteRunCreate):
-    """Create a test run and its initial results atomically for a suite."""
+def create_seeded_test_run(db: Session, project_id: int, name: str, description, test_cases: List[TestCase], **run_fields):
+    """Create a test run and its initial not_started results atomically."""
     if not test_cases:
-        raise ValueError("Cannot create a test run for a suite with no test cases")
+        raise ValueError("Cannot create a test run with no test cases")
 
-    run_values = run_data.model_dump(exclude_unset=True)
     db_test_run = TestRun(
-        name=run_values.get("name") or f"Test Run - {test_suite.name}",
-        description=run_values.get("description") or f"Test run for {test_suite.name}",
-        project_id=test_suite.project_id,
+        name=name,
+        description=description,
+        project_id=project_id,
         status="pending",
-        assigned_to=run_values.get("assigned_to"),
-        priority=run_values.get("priority") or "medium",
-        estimated_duration=run_values.get("estimated_duration"),
+        **run_fields,
     )
     db.add(db_test_run)
     db.flush()
@@ -413,9 +415,49 @@ def create_test_suite_run(db: Session, test_suite: TestSuite, test_cases: List[T
     db.refresh(db_test_run)
     for test_result in test_results:
         db.refresh(test_result)
+    _refresh_milestone_progress_for_run(db, db_test_run.id)
 
     db_test_run.test_results = test_results
     return db_test_run
+
+
+def create_test_suite_run(db: Session, test_suite: TestSuite, test_cases: List[TestCase], run_data: schemas.TestSuiteRunCreate):
+    """Create a test run and its initial results atomically for a suite."""
+    run_values = run_data.model_dump(exclude_unset=True)
+    return create_seeded_test_run(
+        db,
+        project_id=test_suite.project_id,
+        name=run_values.get("name") or f"Test Run - {test_suite.name}",
+        description=run_values.get("description") or f"Test run for {test_suite.name}",
+        test_cases=test_cases,
+        assigned_to=run_values.get("assigned_to"),
+        priority=run_values.get("priority") or "medium",
+        estimated_duration=run_values.get("estimated_duration"),
+    )
+
+
+def create_test_plan_run(db: Session, test_plan, test_cases: List[TestCase], run_data: schemas.TestPlanRunCreate):
+    """Execute a plan: a new run seeded with every case in the plan's suites.
+
+    The plan is the reusable definition; this is one historical execution of it,
+    stamped with the build and environment it ran against.
+    """
+    run_values = run_data.model_dump(exclude_unset=True)
+    build = (run_values.get("build") or "").strip() or None
+    default_name = f"{test_plan.title} - {build}" if build else test_plan.title
+    return create_seeded_test_run(
+        db,
+        project_id=test_plan.project_id,
+        name=run_values.get("name") or default_name,
+        description=run_values.get("description"),
+        test_cases=test_cases,
+        test_plan_id=test_plan.id,
+        milestone_id=test_plan.milestone_id,
+        build=build,
+        environment_id=run_values.get("environment_id"),
+        assigned_to=run_values.get("assigned_to") or test_plan.assigned_to,
+        priority=run_values.get("priority") or "medium",
+    )
 
 
 def _normalize_run_status(value) -> str:
@@ -445,38 +487,13 @@ def update_test_run(db: Session, test_run_id: int, test_run: TestRunUpdate):
         # Emit ``test_run.completed`` exactly once per transition into a
         # terminal state (a run with a fail/blocked result inside it now
         # lands on "failed" rather than "completed" - both still mean the
-        # run is finished, so both still fire this event). Failures are
-        # swallowed inside emit_event so we never block the update path on
-        # webhook delivery.
+        # run is finished, so both still fire this event). The same emission
+        # is shared with the derived-status path, which reaches a terminal
+        # state without going through this update.
+        from ..services.test_run_status import TERMINAL_RUN_STATUSES, emit_test_run_completed
         new_status = _normalize_run_status(db_test_run.status)
-        _terminal_statuses = {"completed", "failed"}
-        if new_status in _terminal_statuses and prior_status not in _terminal_statuses:
-            try:
-                from ..services.webhook_service import emit_event
-                emit_event(
-                    db,
-                    project_id=db_test_run.project_id,
-                    event="test_run.completed",
-                    payload={
-                        "event": "test_run.completed",
-                        "test_run": {
-                            "id": db_test_run.id,
-                            "name": db_test_run.name,
-                            "project_id": db_test_run.project_id,
-                            "test_plan_id": getattr(db_test_run, "test_plan_id", None),
-                            "milestone_id": getattr(db_test_run, "milestone_id", None),
-                            "status": db_test_run.status,
-                            "started_at": getattr(db_test_run, "started_at", None).isoformat()
-                            if getattr(db_test_run, "started_at", None) else None,
-                            "completed_at": getattr(db_test_run, "completed_at", None).isoformat()
-                            if getattr(db_test_run, "completed_at", None) else None,
-                        },
-                    },
-                )
-            except Exception:
-                # Log but never propagate.
-                import logging
-                logging.getLogger(__name__).exception("Failed to emit test_run.completed")
+        if new_status in TERMINAL_RUN_STATUSES and prior_status not in TERMINAL_RUN_STATUSES:
+            emit_test_run_completed(db, db_test_run)
     return db_test_run
 
 
@@ -564,6 +581,16 @@ def _refresh_milestones_by_ids(db: Session, milestone_ids):
         safe_commit(db)
 
 
+def _refresh_run_status_for_result(db: Session, test_run_id):
+    """Re-derive the run's own status after an execution write, so a run leaves
+    "pending" the moment a result is recorded rather than when someone opens its
+    page. Lazy import avoids a module-load cycle (service <- crud)."""
+    if not test_run_id:
+        return
+    from ..services.test_run_status import refresh_test_run_status
+    refresh_test_run_status(db, test_run_id)
+
+
 def _milestone_id_for_plan(db: Session, test_plan_id):
     if not test_plan_id:
         return None
@@ -579,6 +606,7 @@ def create_test_result(db: Session, test_result: TestResultCreate):
     safe_commit(db)
     db.refresh(db_test_result)
     _refresh_milestone_progress_for_run(db, db_test_result.test_run_id)
+    _refresh_run_status_for_result(db, db_test_result.test_run_id)
     return db_test_result
 
 
@@ -599,6 +627,7 @@ def update_test_result(db: Session, test_result_id: int, test_result: TestResult
         # timing/state-only updates (pause, resume, add-time) sharing this path.
         if 'status' in test_result_data:
             _refresh_milestone_progress_for_run(db, db_test_result.test_run_id)
+            _refresh_run_status_for_result(db, db_test_result.test_run_id)
             # A defect is deliberately NOT auto-created here on every failed
             # save. The execution UI already owns that decision end to end:
             # the "create a new defect for this failure" checkbox opens a
@@ -618,4 +647,5 @@ def delete_test_result(db: Session, test_result_id: int):
         db.delete(db_test_result)
         safe_commit(db)
         _refresh_milestone_progress_for_run(db, run_id)
+        _refresh_run_status_for_result(db, run_id)
     return db_test_result

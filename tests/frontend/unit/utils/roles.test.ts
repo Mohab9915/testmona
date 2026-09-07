@@ -6,6 +6,7 @@ import {
   isViewerRole,
   canWrite,
   canWriteResults,
+  canExecuteTestRun,
   USER_ROLES,
 } from '@/utils/roles';
 
@@ -111,5 +112,36 @@ describe('USER_ROLES constants', () => {
     expect(USER_ROLES.MANAGER).toBe('manager');
     expect(USER_ROLES.TESTER).toBe('tester');
     expect(USER_ROLES.VIEWER).toBe('viewer');
+  });
+});
+
+describe('canExecuteTestRun', () => {
+  const authoring = { canWrite: true, canExecute: true };
+  const executeOnly = { canWrite: false, canExecute: true };
+  const readOnly = { canWrite: false, canExecute: false };
+
+  it('lets an authoring role execute any run', () => {
+    expect(canExecuteTestRun({ assigned_to: 9 }, authoring, 1)).toBe(true);
+    expect(canExecuteTestRun({ assigned_to: null }, authoring, 1)).toBe(true);
+  });
+
+  it('lets an execute-only role work only its own run', () => {
+    expect(canExecuteTestRun({ assigned_to: 1 }, executeOnly, 1)).toBe(true);
+    expect(canExecuteTestRun({ assigned_to: 9 }, executeOnly, 1)).toBe(false);
+  });
+
+  it('does not let an execute-only role pick up an unassigned run', () => {
+    expect(canExecuteTestRun({ assigned_to: null }, executeOnly, 1)).toBe(false);
+    expect(canExecuteTestRun({}, executeOnly, 1)).toBe(false);
+  });
+
+  it('compares ids across string/number shapes', () => {
+    expect(canExecuteTestRun({ assigned_to: '1' }, executeOnly, 1)).toBe(true);
+  });
+
+  it('returns false without a run, a user, or execute rights', () => {
+    expect(canExecuteTestRun(null, authoring, 1)).toBe(false);
+    expect(canExecuteTestRun({ assigned_to: 1 }, executeOnly, null)).toBe(false);
+    expect(canExecuteTestRun({ assigned_to: 1 }, readOnly, 1)).toBe(false);
   });
 });

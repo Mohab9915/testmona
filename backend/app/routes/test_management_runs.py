@@ -113,7 +113,7 @@ def register_run_routes(app):
         if project_id:
             if not rbac.has_permission(current_user, "read", project_id, db):
                 raise HTTPException(status_code=403, detail="Not authorized to access this project")
-        
+
         test_runs = crud.get_test_runs(
             db,
             project_id=project_id,
@@ -127,17 +127,11 @@ def register_run_routes(app):
             milestone_id=milestone_id,
             environment_id=environment_id,
         )
-        
-        # Filter test runs based on user permissions if no project_id specified
-        if not project_id:
-            # User can only see test runs for projects they have access to
-            authorized_runs = []
-            for run in test_runs:
-                if rbac.has_permission(current_user, "read", run.project_id, db):
-                    authorized_runs.append(run)
-            return _attach_test_run_progress(db, authorized_runs)
-        
-        return _attach_test_run_progress(db, test_runs)
+
+        # Execute-only roles (tester) only see the runs assigned to them; authoring
+        # and read-only roles see every run they have project access to.
+        visible_runs = [run for run in test_runs if rbac.can_view_test_run(current_user, run, db)]
+        return _attach_test_run_progress(db, visible_runs)
 
     @app.get("/test-runs/{test_run_id}", response_model=schemas.TestRun)
     def read_test_run(test_run_id: int, db: Session = Depends(get_db), current_user: schemas.User = Depends(get_current_active_user)):
@@ -148,7 +142,14 @@ def register_run_routes(app):
         # Check if user has permission to access this test run's project
         if not rbac.has_permission(current_user, "read", db_test_run.project_id, db):
             raise HTTPException(status_code=403, detail="Not authorized to access this test run")
-        
+
+        # Opening a single run by ID stays project-scoped rather than
+        # assignment-scoped: defect details, milestone rollups, dashboards and the
+        # traceability matrix all resolve runs this way regardless of who they're
+        # assigned to, and execution itself is already gated by
+        # `rbac.require_test_run_execution`. Only the browse list
+        # (`GET /test-runs`) narrows to "assigned to me" for execute-only roles.
+
         _attach_test_run_progress(db, [db_test_run])
         return db_test_run
 
@@ -327,8 +328,7 @@ def register_run_routes(app):
         db_test_run = crud.get_test_run(db, test_run_id=test_run_id)
         if db_test_run is None:
             raise HTTPException(status_code=404, detail="Test run not found")
-        if not rbac.has_permission(current_user, "execute", db_test_run.project_id, db):
-            raise HTTPException(status_code=403, detail="Not authorized to import results into this test run")
+        rbac.require_test_run_execution(current_user, db_test_run, db, action="import results into")
 
         content = await file.read()
         if not content:
@@ -361,9 +361,12 @@ def register_run_routes(app):
             )
             crud.safe_commit(db)
             # A CI import bulk-writes results outside the per-result crud path,
-            # so refresh the milestone progress for this run explicitly.
+            # so refresh the milestone progress and the run's own derived status
+            # for this run explicitly.
             from ..services.milestone_service import recompute_milestones_for_test_run
+            from ..services.test_run_status import refresh_test_run_status
             recompute_milestones_for_test_run(db, db_test_run)
+            refresh_test_run_status(db, db_test_run)
         except Exception:
             db.rollback()
             raise

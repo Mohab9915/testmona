@@ -504,6 +504,24 @@ def _get_test_plan_or_404(db: Session, test_plan_id: int):
     return test_plan
 
 
+def _plan_suite_ids(db: Session, test_plan_id: int) -> List[int]:
+    rows = db.query(models.test_plan_suites.c.test_suite_id).filter(
+        models.test_plan_suites.c.test_plan_id == test_plan_id
+    ).all()
+    return [row[0] for row in rows]
+
+
+def _plan_scope_test_cases(db: Session, test_plan_id: int) -> List[models.TestCase]:
+    """Every live test case in the suites the plan intends to execute."""
+    suite_ids = _plan_suite_ids(db, test_plan_id)
+    if not suite_ids:
+        return []
+    return db.query(models.TestCase).filter(
+        models.TestCase.test_suite_id.in_(suite_ids),
+        models.TestCase.is_deleted == False,  # noqa: E712 - SQL boolean comparison
+    ).all()
+
+
 def _linked_test_plan_requirement_ids(db: Session, test_plan_id: int) -> set[int]:
     rows = db.query(models.requirement_test_plan_links.c.requirement_id).filter(
         models.requirement_test_plan_links.c.test_plan_id == test_plan_id,
@@ -1905,7 +1923,7 @@ def register_requirements_defects_plans_routes(app):
         db: Session = Depends(get_db),
         current_user: schemas.User = Depends(get_current_active_user)
     ):
-        if not rbac.has_permission(current_user, "write", defect.project_id, db):
+        if not rbac.has_permission(current_user, "execute", defect.project_id, db):
             raise HTTPException(status_code=403, detail="Insufficient permissions")
 
         if not defect.title.strip():
@@ -2111,7 +2129,7 @@ def register_requirements_defects_plans_routes(app):
         if db_defect is None:
             raise HTTPException(status_code=404, detail="Defect not found")
 
-        if not rbac.has_permission(current_user, "write", db_defect.project_id, db):
+        if not rbac.has_permission(current_user, "execute", db_defect.project_id, db):
             raise HTTPException(status_code=403, detail="Insufficient permissions")
 
         # Captured before the update so we only notify on an actual re-assignment
@@ -2489,7 +2507,7 @@ def register_requirements_defects_plans_routes(app):
         project_id = _resolve_test_result_project(db, test_result)
         if project_id is None:
             raise HTTPException(status_code=400, detail="Test result is not associated with a project")
-        if not rbac.has_permission(current_user, "write", project_id, db):
+        if not rbac.has_permission(current_user, "execute", project_id, db):
             raise HTTPException(status_code=403, detail="Insufficient permissions")
 
         # Validate the failing step (and everything else we can check) BEFORE
@@ -2631,7 +2649,7 @@ def register_requirements_defects_plans_routes(app):
 
         test_result = crud.get_test_result(db, test_result_id=test_result_id)
         project_id = _resolve_test_result_project(db, test_result)
-        if project_id is not None and not rbac.has_permission(current_user, "write", project_id, db):
+        if project_id is not None and not rbac.has_permission(current_user, "execute", project_id, db):
             raise HTTPException(status_code=403, detail="Insufficient permissions")
 
         crud.unlink_defect_from_test_result(db, link_id)
@@ -2659,7 +2677,7 @@ def register_requirements_defects_plans_routes(app):
         project_id = _resolve_test_result_project(db, test_result)
         if project_id is None:
             raise HTTPException(status_code=400, detail="Test result is not associated with a project")
-        if not rbac.has_permission(current_user, "write", project_id, db):
+        if not rbac.has_permission(current_user, "execute", project_id, db):
             raise HTTPException(status_code=403, detail="Insufficient permissions")
 
         if payload.failing_step is not None and payload.clear_failing_step:
@@ -2904,6 +2922,10 @@ def register_requirements_defects_plans_routes(app):
             "risks_assumptions": test_plan.risks_assumptions,
             "test_run_count": execution.get("run_count", 0),
             "requirement_count": requirement_count,
+            # The plan's reusable scope: the suites it executes, and how many
+            # cases a run created from it would carry.
+            "suite_ids": [suite.id for suite in test_plan.suites],
+            "planned_case_count": len(_plan_scope_test_cases(db, test_plan.id)),
             "created_at": test_plan.created_at,
             "updated_at": test_plan.updated_at,
             **{
@@ -3220,6 +3242,77 @@ def register_requirements_defects_plans_routes(app):
                 for rid in unique_requirement_ids
             ],
         )
+
+    @app.put("/test-plans/{test_plan_id}/suites", response_model=schemas.TestPlanSuiteScope)
+    def set_test_plan_suites(
+        request: schemas.TestPlanSuiteUpdate,
+        test_plan_id: int = Path(..., ge=1),
+        db: Session = Depends(get_db),
+        current_user: schemas.User = Depends(get_current_active_user)
+    ):
+        """Replace the suites this plan intends to execute (its reusable scope)."""
+        test_plan = _get_test_plan_or_404(db, test_plan_id)
+        if not rbac.has_permission(current_user, "write", test_plan.project_id, db):
+            raise HTTPException(status_code=403, detail="Insufficient permissions")
+
+        suites = db.query(models.TestSuite).filter(models.TestSuite.id.in_(request.suite_ids)).all() if request.suite_ids else []
+        found_ids = {suite.id for suite in suites}
+        missing_ids = [sid for sid in request.suite_ids if sid not in found_ids]
+        if missing_ids:
+            raise HTTPException(status_code=404, detail=f"Test suite(s) not found: {missing_ids}")
+        wrong_project_ids = [suite.id for suite in suites if suite.project_id != test_plan.project_id]
+        if wrong_project_ids:
+            raise HTTPException(status_code=400, detail=f"Test suite(s) do not belong to this test plan's project: {wrong_project_ids}")
+
+        try:
+            test_plan.suites = suites
+            db.commit()
+        except IntegrityError:
+            db.rollback()
+            raise HTTPException(status_code=409, detail="Failed to update test plan suites")
+
+        return schemas.TestPlanSuiteScope(
+            suite_ids=[suite.id for suite in suites],
+            test_case_count=len(_plan_scope_test_cases(db, test_plan.id)),
+        )
+
+    @app.post("/test-plans/{test_plan_id}/runs", response_model=schemas.TestRun,
+              dependencies=[Depends(require_project_feature("test_runs"))])
+    def create_run_from_test_plan(
+        run_data: schemas.TestPlanRunCreate,
+        test_plan_id: int = Path(..., ge=1),
+        db: Session = Depends(get_db),
+        current_user: schemas.User = Depends(get_current_active_user)
+    ):
+        """Execute the plan once: a new run seeded with the plan's cases.
+
+        The plan stays the reusable definition — re-running it against a new
+        build creates another run rather than duplicating any test case.
+        """
+        test_plan = _get_test_plan_or_404(db, test_plan_id)
+        if not rbac.has_permission(current_user, "write", test_plan.project_id, db):
+            raise HTTPException(status_code=403, detail="Insufficient permissions")
+
+        test_cases = _plan_scope_test_cases(db, test_plan.id)
+        if not test_cases:
+            raise HTTPException(status_code=400, detail="This test plan has no test suites in scope, or its suites have no test cases")
+
+        if run_data.environment_id:
+            environment = db.query(models.ExecutionEnvironment).filter(
+                models.ExecutionEnvironment.id == run_data.environment_id
+            ).first()
+            if environment is None or environment.project_id != test_plan.project_id:
+                raise HTTPException(status_code=400, detail="Environment does not belong to this test plan's project")
+
+        try:
+            db_test_run = crud.create_test_plan_run(db, test_plan, test_cases, run_data)
+        except Exception:
+            db.rollback()
+            raise
+
+        from .test_management_helpers import _attach_test_run_progress
+        _attach_test_run_progress(db, [db_test_run])
+        return db_test_run
 
     # Milestones Endpoints
     @app.post("/milestones", response_model=schemas.Milestone,

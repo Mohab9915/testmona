@@ -3,7 +3,8 @@ from typing import List, Optional, Dict, Any, Union
 from datetime import datetime
 from ..models import Priority, Status, TestStatus, ResultStatus, Role, Permission, CustomFieldType, TestType, RecycleBinType, RequirementStatus, DefectStatus, DefectSeverity, DefectPriority, DefectLinkType, MilestoneStatus, NotificationType, StepCategory, StepComplexity, DocStatus
 import re
-import html
+
+from ..utils import normalize_user_text
 
 from .versioning import (
     DateValidationRules,
@@ -60,15 +61,14 @@ class CustomFieldDefinitionBase(BaseModel):
 
     @model_validator(mode='before')
     @classmethod
-    def sanitize_html(cls, data):
-        """Sanitize HTML in string fields to prevent XSS attacks"""
+    def normalize_text_fields(cls, data):
+        """Normalize user-supplied string fields; see ``app.utils.normalize_user_text``."""
         if isinstance(data, dict):
             for key, value in data.items():
                 if isinstance(value, str) and key not in ['field_type']:
-                    data[key] = html.escape(value)
+                    data[key] = normalize_user_text(value)
                 elif isinstance(value, list) and key == 'options':
-                    # Sanitize strings in options array
-                    data[key] = [html.escape(item) if isinstance(item, str) else item for item in value]
+                    data[key] = [normalize_user_text(item) for item in value]
         return data
 
     @model_validator(mode='after')
@@ -252,15 +252,14 @@ class CustomFieldDefinitionUpdate(BaseModel):
 
     @model_validator(mode='before')
     @classmethod
-    def sanitize_html(cls, data):
-        """Sanitize HTML in string fields to prevent XSS attacks"""
+    def normalize_text_fields(cls, data):
+        """Normalize user-supplied string fields; see ``app.utils.normalize_user_text``."""
         if isinstance(data, dict):
             for key, value in data.items():
                 if isinstance(value, str) and key not in ['field_type']:
-                    data[key] = html.escape(value)
+                    data[key] = normalize_user_text(value)
                 elif isinstance(value, list) and key == 'options':
-                    # Sanitize strings in options array
-                    data[key] = [html.escape(item) if isinstance(item, str) else item for item in value]
+                    data[key] = [normalize_user_text(item) for item in value]
         return data
 
     @model_validator(mode='after')
@@ -431,12 +430,12 @@ class CustomFieldValueBase(BaseModel):
 
     @model_validator(mode='before')
     @classmethod
-    def sanitize_html(cls, data):
-        """Sanitize HTML in string fields to prevent XSS attacks"""
+    def normalize_text_fields(cls, data):
+        """Normalize user-supplied string fields; see ``app.utils.normalize_user_text``."""
         if isinstance(data, dict):
             for key, val in data.items():
                 if isinstance(val, str):
-                    data[key] = html.escape(val)
+                    data[key] = normalize_user_text(val)
         return data
 
 
@@ -457,11 +456,11 @@ class CustomFieldValueUpdate(BaseModel):
 
     @model_validator(mode='before')
     @classmethod
-    def sanitize_html(cls, data):
+    def normalize_text_fields(cls, data):
         if isinstance(data, dict):
             for key, val in data.items():
                 if isinstance(val, str):
-                    data[key] = html.escape(val)
+                    data[key] = normalize_user_text(val)
         return data
 
 

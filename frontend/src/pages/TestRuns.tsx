@@ -61,6 +61,7 @@ import { entityKey } from '@/lib/utils';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useDateFormat } from '@/hooks/useDateFormat';
 import { usePermissions } from '@/hooks/usePermissions';
+import { useProjectPermissions } from '@/hooks/useProjectPermissions';
 import { useAuthStore } from '@/stores/authStore';
 
 // Define User interface locally since it's not in types
@@ -115,6 +116,7 @@ export function TestRuns() {
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [runName, setRunName] = useState('');
   const [runDescription, setRunDescription] = useState('');
+  const [runBuild, setRunBuild] = useState('');
   const [scheduledDate, setScheduledDate] = useState('');
   const [environment, setEnvironment] = useState('');
   const [assignedTo, setAssignedTo] = useState('');
@@ -148,6 +150,12 @@ export function TestRuns() {
   
   // Validate projectId from URL params
   const currentProjectId = projectId ? parseInt(projectId) : null;
+  const projectPerms = useProjectPermissions(currentProjectId);
+  // Execute-only roles (tester) work exclusively on the runs assigned to them
+  // (mirrors `rbac.can_view_test_run` on the backend, which already scopes what
+  // this list returns for them) — pin the "assigned to" filter to themselves so
+  // the UI can't offer a choice the server won't honor.
+  const isExecuteOnly = !projectPerms.canWrite && projectPerms.canExecute;
   const linkedTestPlanId = parsePositiveQueryNumber(searchParams.get('test_plan_id'));
   const linkedMilestoneId = parsePositiveQueryNumber(searchParams.get('milestone_id'));
   const createFromQuery = searchParams.get('create') === '1';
@@ -161,7 +169,7 @@ export function TestRuns() {
     testRunSearchQuery.trim() !== '' ||
     statusFilter !== 'all' ||
     priorityFilter !== 'all' ||
-    assigneeFilter !== 'all' ||
+    (!isExecuteOnly && assigneeFilter !== 'all') ||
     Boolean(linkedEnvironmentId);
   const paginatedTestRuns = useMemo(() => {
     const startIndex = (currentPage - 1) * itemsPerPage;
@@ -291,7 +299,10 @@ export function TestRuns() {
     setTestRunSearchQuery('');
     setStatusFilter('all');
     setPriorityFilter('all');
-    setAssigneeFilter('all');
+    // Execute-only roles stay pinned to their own runs — nothing to clear there.
+    if (!isExecuteOnly) {
+      setAssigneeFilter('all');
+    }
     setCurrentPage(1);
     if (linkedEnvironmentId && currentProjectId) {
       navigate(`/projects/${currentProjectId}/test-runs`, { replace: true });
@@ -301,6 +312,15 @@ export function TestRuns() {
   useEffect(() => {
     setCurrentPage(1);
   }, [testRuns.length, itemsPerPage]);
+
+  // Pin execute-only roles (tester) to "my assigned runs" — they can't switch it
+  // off, so force it as soon as we know their permission set (and whenever it
+  // resolves after project/user changes).
+  useEffect(() => {
+    if (isExecuteOnly && currentUser?.id && assigneeFilter !== String(currentUser.id)) {
+      setAssigneeFilter(String(currentUser.id));
+    }
+  }, [isExecuteOnly, currentUser?.id]);
 
   useEffect(() => {
     const loadPriorityOptions = async () => {
@@ -369,7 +389,8 @@ export function TestRuns() {
   useEffect(() => {
     setHasUnsavedChanges(
       runName.trim() !== '' || 
-      runDescription.trim() !== '' || 
+      runDescription.trim() !== '' ||
+      runBuild.trim() !== '' || 
       scheduledDate !== '' || 
       environment !== '' || 
       assignedTo !== '' || 
@@ -379,7 +400,7 @@ export function TestRuns() {
       selectedTestSuites.length > 0 ||
       selectedSections.length > 0
     );
-  }, [runName, runDescription, scheduledDate, environment, assignedTo, estimatedDuration, priority, defaultPriorityValue, selectedTestCases, selectedTestSuites, selectedSections]);
+  }, [runName, runDescription, runBuild, scheduledDate, environment, assignedTo, estimatedDuration, priority, defaultPriorityValue, selectedTestCases, selectedTestSuites, selectedSections]);
 
   useEffect(() => {
     // Validate projectId is a valid positive integer
@@ -420,7 +441,7 @@ export function TestRuns() {
         }),
         testCasesAPI.getAll(currentProjectId, undefined, undefined, 'id', 'asc', 0, 500).catch(() => []),
         testSuitesAPI.getAll(currentProjectId).catch(() => []),
-        usersAPI.getAll().catch(() => []),
+        usersAPI.getAssignable(currentProjectId).catch(() => []),
         sectionsAPI.getByProject(currentProjectId).catch(() => []),
         environmentsAPI.getAll(currentProjectId).catch(() => []),
       ]);
@@ -451,6 +472,7 @@ export function TestRuns() {
       const newTestRun = await testRunsAPI.create({
         name: runName,
         description: runDescription || undefined,
+        build: runBuild.trim() || undefined,
         project_id: currentProjectId,
         test_plan_id: linkedTestPlanId,
         milestone_id: linkedMilestoneId,
@@ -481,6 +503,7 @@ export function TestRuns() {
       // Reset form
       setRunName('');
       setRunDescription('');
+      setRunBuild('');
       setScheduledDate('');
       setEnvironment('');
       setAssignedTo('');
@@ -526,6 +549,7 @@ export function TestRuns() {
         // Reset form when closing
         setRunName('');
         setRunDescription('');
+        setRunBuild('');
         setScheduledDate('');
         setEnvironment('');
         setAssignedTo('');
@@ -545,6 +569,7 @@ export function TestRuns() {
     if (discard) {
       setRunName('');
       setRunDescription('');
+      setRunBuild('');
       setScheduledDate('');
       setEnvironment('');
       setAssignedTo('');
@@ -870,6 +895,20 @@ export function TestRuns() {
                       <span>{runDescription.length}/1000</span>
                     </div>
                   </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="runBuild" className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+                    {t('buildLabel')}
+                  </Label>
+                  <Input
+                    id="runBuild"
+                    value={runBuild}
+                    onChange={(e) => setRunBuild(e.target.value)}
+                    placeholder={t('buildPlaceholder')}
+                    maxLength={100}
+                    className="h-11 rounded-xl border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-950"
+                  />
                 </div>
               </div>
 
@@ -1334,17 +1373,29 @@ export function TestRuns() {
 
             <div className="space-y-2">
               <Label className="text-sm font-medium text-slate-700 dark:text-slate-200">{t('assignedToLabel')}</Label>
-              <Select value={assigneeFilter} onValueChange={setAssigneeFilter}>
+              {/* Execute-only roles (tester) only ever see their own runs, so this
+                  is locked to themselves rather than offering a choice the
+                  server won't honor. */}
+              <Select value={assigneeFilter} onValueChange={setAssigneeFilter} disabled={isExecuteOnly}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">{t('allAssignees')}</SelectItem>
-                  {users.map((user) => (
-                    <SelectItem key={user.id} value={String(user.id)}>
-                      {user.full_name || user.username || user.email}
+                  {isExecuteOnly ? (
+                    <SelectItem value={String(currentUser?.id)}>
+                      {users.find((user) => user.id === currentUser?.id)?.full_name
+                        || currentUser?.full_name || currentUser?.username || currentUser?.email || t('myAssignedRuns')}
                     </SelectItem>
-                  ))}
+                  ) : (
+                    <>
+                      <SelectItem value="all">{t('allAssignees')}</SelectItem>
+                      {users.map((user) => (
+                        <SelectItem key={user.id} value={String(user.id)}>
+                          {user.full_name || user.username || user.email}
+                        </SelectItem>
+                      ))}
+                    </>
+                  )}
                 </SelectContent>
               </Select>
             </div>
@@ -1366,11 +1417,15 @@ export function TestRuns() {
                 type="button"
                 variant={assigneeFilter === String(currentUser.id) ? 'default' : 'outline-solid'}
                 size="sm"
+                disabled={isExecuteOnly}
+                className={isExecuteOnly ? 'cursor-default' : undefined}
                 onClick={() => setAssigneeFilter(getAssigneeFilterValue('me'))}
               >
                 {t('myAssignedRuns')}
               </Button>
-              {assigneeFilter === String(currentUser.id) && (
+              {/* Execute-only roles can't opt into seeing everyone's runs, so this
+                  escape hatch is hidden for them rather than offered and rejected. */}
+              {!isExecuteOnly && assigneeFilter === String(currentUser.id) && (
                 <Button type="button" variant="ghost" size="sm" onClick={() => setAssigneeFilter('all')}>
                   {t('showAllRuns')}
                 </Button>
@@ -1433,6 +1488,12 @@ export function TestRuns() {
                           <span>{t('runId')}: {entityKey('TR', run)}</span>
                           <span className="h-1 w-1 rounded-full bg-slate-300 dark:bg-slate-600" />
                           <span>{t('projectIdLabel')}: {run.project_id}</span>
+                          {run.build && (
+                            <>
+                              <span className="h-1 w-1 rounded-full bg-slate-300 dark:bg-slate-600" />
+                              <span className="truncate" title={run.build}>{t('buildLabel')}: {run.build}</span>
+                            </>
+                          )}
                         </div>
                         <CardTitle className="line-clamp-2 text-lg leading-tight text-slate-950 dark:text-slate-50" title={run.name}>
                           {run.name}

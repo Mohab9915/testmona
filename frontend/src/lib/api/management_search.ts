@@ -182,6 +182,19 @@ export const testPlansAPI = {
     const response = await api.post(`/test-plans/${id}/requirements/bulk`, payload);
     return response.data;
   },
+  // The plan's reusable scope: the suites it executes. Replaces the whole set.
+  setSuites: async (id: number, suiteIds: number[]): Promise<{ suite_ids: number[]; test_case_count: number }> => {
+    const response = await api.put(`/test-plans/${id}/suites`, { suite_ids: suiteIds });
+    return response.data;
+  },
+  // One execution of the plan, seeded with the cases in its suites.
+  createRun: async (
+    id: number,
+    payload: { name?: string; description?: string; build?: string; environment_id?: number; assigned_to?: number },
+  ) => {
+    const response = await api.post(`/test-plans/${id}/runs`, payload);
+    return response.data;
+  },
 };
 
 // --- Advanced Search (TQL across entities) ---------------------------------

@@ -150,7 +150,6 @@ function FailureContext() {
     t, projectId, testCase, testSteps, stepStatuses, testStepsLoadError, requireDefectOnFailure,
     selectedFailureStepNumber, setSelectedFailureStepNumber,
     failureStepActual, setFailureStepActual,
-    customLink, setCustomLink, canWrite,
     needsFailingStepSelection, needsFailureDescription, needsDefectEvidence,
   } = useExecution();
 
@@ -158,10 +157,6 @@ function FailureContext() {
   // reported against - picking from every step (including ones that passed
   // fine) would misattribute the failure.
   const failedSteps = testSteps.filter((step) => stepStatuses[step.step_number] === 'failed');
-  // The defect itself is linked via "Link Existing Defect"/"Report Defect"
-  // below, not picked here too - a second ADO bug/issue picker up here would
-  // just be the same relationship expressed twice.
-  const { otherTypes } = useAdoWorkItemTypeSplit(Number(projectId));
 
   const fieldClass = 'mt-1 h-9 border-red-200 bg-white text-sm dark:border-red-900/60 dark:bg-slate-950/40';
 
@@ -228,21 +223,6 @@ function FailureContext() {
           </div>
         </div>
       )}
-
-      <div>
-        <Label htmlFor="customLink" className="text-xs font-medium text-red-700 dark:text-red-300">{t('customLinkLabel')}</Label>
-        <SearchableAdoWorkItemLinkSelect
-          id="customLink"
-          projectId={Number(projectId)}
-          value={customLink}
-          onChange={setCustomLink}
-          workItemTypes={otherTypes}
-          searchPlaceholder={t('searchAdoOtherWorkItemsPlaceholder')}
-          emptyLabel={t('noCustomWorkItemSelected')}
-          disabled={!canWrite}
-          className="mt-1"
-        />
-      </div>
     </div>
   );
 }

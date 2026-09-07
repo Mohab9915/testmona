@@ -44,6 +44,7 @@ import {
   Upload,
   FileUp,
   Server,
+  Package,
 } from 'lucide-react';
 import { SearchableDefectSelect } from '@/components/Defects/SearchableDefectSelect';
 import {
@@ -66,8 +67,9 @@ import { useToast } from '@/hooks/use-toast';
 import { TestResult, TestRun, User as UserRecord } from '@/types/index';
 import { formatDurationSeconds } from '@/utils/timeFormat';
 import { useAuthStore } from '@/stores/authStore';
-import { isViewerRole } from '@/utils/roles';
 import { useIsFeatureEnabled } from '@/hooks/useProjectFeatures';
+import { useProjectPermissions } from '@/hooks/useProjectPermissions';
+import { canExecuteTestRun } from '@/utils/roles';
 
 export function TestRunDetail() {
   const { id, projectId } = useParams<{ id: string; projectId: string }>();
@@ -77,9 +79,11 @@ export function TestRunDetail() {
   const { t, isRTL, language } = useTranslation();
   const { formatDateTime } = useDateFormat();
   const currentUser = useAuthStore((state) => state.user);
-  const shouldLoadUsers = Boolean(currentUser?.is_superuser) || !isViewerRole(currentUser?.role);
   const { toast } = useToast();
   const environmentsEnabled = useIsFeatureEnabled(projectId ? Number(projectId) : null, 'environments');
+  const projectPerms = useProjectPermissions(projectId ? Number(projectId) : null);
+  // Shaping the run (its cases, assignee, environment, build) is authoring.
+  const canAuthorRun = projectPerms.canWrite;
   const [testRun, setTestRun] = useState<TestRun | null>(null);
   const [testResults, setTestResults] = useState<TestResult[]>([]);
   const [defectCoverage, setDefectCoverage] = useState<any>(null);
@@ -99,6 +103,7 @@ export function TestRunDetail() {
   const [isAssigningRun, setIsAssigningRun] = useState(false);
   const [environments, setEnvironments] = useState<any[]>([]);
   const [isSettingEnvironment, setIsSettingEnvironment] = useState(false);
+  const [isSavingBuild, setIsSavingBuild] = useState(false);
 
   // Column sorting
   const [sortColumn, setSortColumn] = useState<string | null>(() => searchParams.get('sort') || null);
@@ -359,15 +364,6 @@ export function TestRunDetail() {
     return Boolean(normalizedStatus) && normalizedStatus !== 'not_started' && normalizedStatus !== 'pending';
   };
 
-  // A run that reaches "completed" with a fail/blocked result inside it reads
-  // as a pass (green checkmark) even though it isn't one - this is what
-  // distinguishes a genuinely clean run from one that just finished.
-  const isFailingResultStatus = (status?: string | null) => {
-    const normalizedStatus = normalizeRunStatus(status);
-    return normalizedStatus === 'fail' || normalizedStatus === 'failed'
-      || normalizedStatus === 'block' || normalizedStatus === 'blocked';
-  };
-
   const getResultExecutorName = (result: any) => {
     const executor = result.executor;
     if (executor?.full_name || executor?.username || executor?.email) {
@@ -404,44 +400,24 @@ export function TestRunDetail() {
     return payload;
   };
 
-  const getDerivedRunStatusPayload = (runData: any, resultsData: any[]) => {
-    const currentStatus = normalizeRunStatus(runData.status);
-    const hasResults = resultsData.length > 0;
-    const allCompleted = hasResults && resultsData.every((result: any) => isResultComplete(result.status));
-    const hasFailure = resultsData.some((result: any) => isFailingResultStatus(result.status));
-    const targetStatus = !hasResults ? 'pending' : !allCompleted ? 'running' : hasFailure ? 'failed' : 'completed';
-
-    // "failed" is terminal exactly like "completed" - both stamp completed_at
-    // and stop being "running". Only "completed" (a genuinely clean run) may
-    // be reached again once every result is non-pending and none failed.
-    const isTerminal = targetStatus === 'completed' || targetStatus === 'failed';
-    const completedAtIsConsistent = isTerminal ? Boolean(runData.completed_at) : !runData.completed_at;
-    const startedAtIsConsistent = targetStatus === 'pending' || Boolean(runData.started_at);
-    if (currentStatus === targetStatus && completedAtIsConsistent && startedAtIsConsistent) {
-      return null;
+  // The server derives a run's status from its results on every write that
+  // touches them, so the page only re-reads it. It must never write the status
+  // itself: doing so made a run leave "pending" only when somebody opened this
+  // page, and flipped a freshly seeded run to "running" before anything ran.
+  const refreshTestRun = async (fallbackRun: any = testRun) => {
+    if (!runGlobalId) return fallbackRun;
+    try {
+      return await testRunsAPI.getById(runGlobalId);
+    } catch (error) {
+      console.error('Failed to refresh test run:', error);
+      return fallbackRun;
     }
-
-    return {
-      status: targetStatus,
-      started_at: targetStatus === 'pending' ? null : (runData.started_at || new Date().toISOString()),
-      completed_at: isTerminal ? (runData.completed_at || new Date().toISOString()) : null,
-    };
   };
 
-  const syncTestRunStatus = async (runData: any, resultsData: any[]) => {
-    const statusPayload = getDerivedRunStatusPayload(runData, resultsData);
-    if (!statusPayload || !id) {
-      return runData;
-    }
-
-    await testRunsAPI.update(runGlobalId, statusPayload);
-    return testRunsAPI.getById(runGlobalId);
-  };
-
-  // Function to check and update test run status
+  // Function to check for status changes made elsewhere (other testers, CI imports)
   const checkAndUpdateStatus = async () => {
     if (runIdLoading || !id || !projectId || !runGlobalId) return;
-    
+
     try {
       const testRunData = await testRunsAPI.getById(runGlobalId);
       const currentProjectId = parseInt(projectId);
@@ -453,8 +429,7 @@ export function TestRunDetail() {
       }
 
       const testResultsData = await testResultsAPI.getAll(runGlobalId);
-      const updatedTestRun = await syncTestRunStatus(testRunData, testResultsData);
-      setTestRun(updatedTestRun);
+      setTestRun(testRunData);
       setTestResults(testResultsData);
     } catch (error) {
       console.error('Failed to check/update status:', error);
@@ -488,17 +463,15 @@ export function TestRunDetail() {
         // Load test results for this test run
         const testResultsData = await testResultsAPI.getAll(runGlobalId);
         
-        // Viewer-level users may not have permission to list all users. The run
-        // detail itself should still load; user lists only enrich labels/dropdowns.
-        const usersData = shouldLoadUsers ? await usersAPI.getAll().catch((userError) => {
-          if ((userError as any)?.response?.status !== 403) {
-            console.warn('Failed to load users for test run detail:', userError);
-          }
+        // Only admins may list the whole user directory, so this resolves the
+        // assignee labels/dropdowns from the project's members for everyone else.
+        // The run detail itself should still load if even that fails.
+        const usersData = await usersAPI.getAssignable(currentProjectId).catch((userError) => {
+          console.warn('Failed to load users for test run detail:', userError);
           return [];
-        }) : [];
+        });
         
-        const syncedTestRun = await syncTestRunStatus(testRunData, testResultsData);
-        setTestRun(syncedTestRun);
+        setTestRun(testRunData);
         setTestResults(testResultsData);
         setUsers(usersData);
       } catch (err) {
@@ -514,7 +487,7 @@ export function TestRunDetail() {
     // Set up interval to check status every 5 seconds
     const interval = setInterval(checkAndUpdateStatus, 5000);
     return () => clearInterval(interval);
-  }, [id, projectId, runGlobalId, runIdLoading, shouldLoadUsers]);
+  }, [id, projectId, runGlobalId, runIdLoading]);
 
   // Load sections for chart data
   useEffect(() => {
@@ -824,6 +797,11 @@ export function TestRunDetail() {
     ? formatStatusLabel(testRun.status)
     : t('notAvailableShort');
 
+  // Recording results is assignment-scoped: an execute-only role (tester) works
+  // only the runs assigned to them. Mirrors `rbac.can_execute_test_run`, which
+  // enforces it server-side.
+  const canExecuteRun = canExecuteTestRun(testRun, projectPerms, currentUser?.id);
+
   // Handle adding/removing test cases
   const handleAddTestCases = async () => {
     if (selectedTestCasesToAdd.length === 0) {
@@ -848,7 +826,7 @@ export function TestRunDetail() {
       
       // Reload test results
       const updatedTestResults = await testResultsAPI.getAll(runGlobalId);
-      const updatedTestRun = testRun ? await syncTestRunStatus(testRun, updatedTestResults) : null;
+      const updatedTestRun = testRun ? await refreshTestRun() : null;
       setTestResults(updatedTestResults);
       if (updatedTestRun) {
         setTestRun(updatedTestRun);
@@ -874,7 +852,7 @@ export function TestRunDetail() {
 
       // Reload test results
       const updatedTestResults = await testResultsAPI.getAll(runGlobalId);
-      const updatedTestRun = testRun ? await syncTestRunStatus(testRun, updatedTestResults) : null;
+      const updatedTestRun = testRun ? await refreshTestRun() : null;
       setTestResults(updatedTestResults);
       if (updatedTestRun) {
         setTestRun(updatedTestRun);
@@ -944,7 +922,7 @@ export function TestRunDetail() {
         String(item.id) === String(resultId) ? { ...item, ...updatedResult } : item
       );
 
-      const updatedTestRun = testRun ? await syncTestRunStatus(testRun, updatedTestResults) : null;
+      const updatedTestRun = testRun ? await refreshTestRun() : null;
       setTestResults(updatedTestResults);
       if (updatedTestRun) {
         setTestRun(updatedTestRun);
@@ -965,7 +943,7 @@ export function TestRunDetail() {
 
   // Apply a batch of updated results to local state and re-derive run status
   const commitResults = async (updatedTestResults: TestResult[]) => {
-    const updatedTestRun = testRun ? await syncTestRunStatus(testRun, updatedTestResults) : null;
+    const updatedTestRun = testRun ? await refreshTestRun() : null;
     setTestResults(updatedTestResults);
     if (updatedTestRun) {
       setTestRun(updatedTestRun);
@@ -1230,8 +1208,7 @@ export function TestRunDetail() {
         testResultsAPI.getAll(runGlobalId)
       ]);
       
-      const syncedTestRun = await syncTestRunStatus(updatedTestRun, updatedTestResults);
-      setTestRun(syncedTestRun);
+      setTestRun(updatedTestRun);
       setTestResults(updatedTestResults);
 
       toast({
@@ -1273,8 +1250,7 @@ export function TestRunDetail() {
         testRunsAPI.getById(runGlobalId),
         testResultsAPI.getAll(runGlobalId),
       ]);
-      const syncedRun = await syncTestRunStatus(updatedRun, updatedResults);
-      setTestRun(syncedRun);
+      setTestRun(updatedRun);
       setTestResults(updatedResults);
       bumpDerived();
 
@@ -1356,6 +1332,32 @@ export function TestRunDetail() {
       setTestRun((prev: any) => (prev ? { ...prev, environment_id: prevEnvironmentId } : prev));
     } finally {
       setIsSettingEnvironment(false);
+    }
+  };
+
+  // The build/version this run executed against — part of the run's historical
+  // snapshot, so re-running the same plan later stays distinguishable.
+  const handleSetBuild = async (value: string) => {
+    if (!runGlobalId) return;
+    const nextBuild = value.trim();
+    const prevBuild = testRun?.build ?? '';
+    if (nextBuild === prevBuild) return;
+
+    setTestRun((prev: any) => (prev ? { ...prev, build: nextBuild || null } : prev));
+    try {
+      setIsSavingBuild(true);
+      const updatedRun = await testRunsAPI.update(runGlobalId, { build: nextBuild || null });
+      setTestRun((prev: any) => ({ ...prev, ...updatedRun }));
+    } catch (error) {
+      console.error('Failed to set test run build:', error);
+      toast({
+        title: t('error'),
+        description: getApiErrorMessage(error, t('failedToSaveBuild')),
+        variant: 'destructive',
+      });
+      setTestRun((prev: any) => (prev ? { ...prev, build: prevBuild || null } : prev));
+    } finally {
+      setIsSavingBuild(false);
     }
   };
 
@@ -1462,7 +1464,7 @@ export function TestRunDetail() {
                   <Select
                     value={testRun.assigned_to ? String(testRun.assigned_to) : 'unassigned'}
                     onValueChange={handleAssignRun}
-                    disabled={isAssigningRun}
+                    disabled={isAssigningRun || !canAuthorRun}
                   >
                     <SelectTrigger className="h-7 w-[170px] border-0 bg-transparent px-1 py-0 text-xs font-semibold shadow-none focus:ring-0 sm:text-sm">
                       <SelectValue />
@@ -1489,7 +1491,7 @@ export function TestRunDetail() {
                     <Select
                       value={testRun.environment_id ? String(testRun.environment_id) : 'none'}
                       onValueChange={handleSetEnvironment}
-                      disabled={isSettingEnvironment}
+                      disabled={isSettingEnvironment || !canAuthorRun}
                     >
                       <SelectTrigger className="h-7 w-[170px] border-0 bg-transparent px-1 py-0 text-xs font-semibold shadow-none focus:ring-0 sm:text-sm">
                         <SelectValue placeholder={t('selectTestEnvironment')} />
@@ -1514,19 +1516,38 @@ export function TestRunDetail() {
                     </span>
                   </div>
                 )}
+                <div className="inline-flex items-center gap-2 rounded-full bg-white/75 px-3 h-9 shadow-xs ring-1 ring-slate-200/80 backdrop-blur-sm dark:bg-white/10 dark:ring-white/10">
+                  <Package className="h-4 w-4 text-cyan-600 dark:text-cyan-200" />
+                  <span className="shrink-0">{t('buildLabel')}:</span>
+                  <Input
+                    defaultValue={testRun.build || ''}
+                    key={testRun.build || 'no-build'}
+                    placeholder={t('buildPlaceholder')}
+                    maxLength={100}
+                    readOnly={!canAuthorRun}
+                    onBlur={(e) => handleSetBuild(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+                    className="h-7 w-[110px] border-0 bg-transparent px-1 py-0 text-xs font-semibold shadow-none focus-visible:ring-0 sm:text-sm"
+                  />
+                  <span className="flex h-3.5 w-3.5 shrink-0 items-center justify-center">
+                    {isSavingBuild && <Loader2 className="h-3.5 w-3.5 animate-spin text-cyan-600 dark:text-cyan-200" />}
+                  </span>
+                </div>
               </div>
             </div>
           </div>
 
           <div className="grid w-full gap-2 sm:grid-cols-3 xl:w-auto xl:min-w-[520px]">
-            <Button
-              size="sm"
-              onClick={() => setIsAddTestCasesOpen(true)}
-              className="h-11 justify-center rounded-xl bg-slate-950 text-white hover:bg-slate-800 dark:bg-cyan-300 dark:text-slate-950 dark:hover:bg-cyan-200"
-            >
-              <Plus className={`h-4 w-4 ${isRTL ? 'ml-2' : 'mr-2'}`} />
-              {t('addTestCases')}
-            </Button>
+            {canAuthorRun && (
+              <Button
+                size="sm"
+                onClick={() => setIsAddTestCasesOpen(true)}
+                className="h-11 justify-center rounded-xl bg-slate-950 text-white hover:bg-slate-800 dark:bg-cyan-300 dark:text-slate-950 dark:hover:bg-cyan-200"
+              >
+                <Plus className={`h-4 w-4 ${isRTL ? 'ml-2' : 'mr-2'}`} />
+                {t('addTestCases')}
+              </Button>
+            )}
             <Button
               variant="outline"
               size="sm"
@@ -1536,18 +1557,20 @@ export function TestRunDetail() {
               <Download className={`h-4 w-4 ${isRTL ? 'ml-2' : 'mr-2'}`} />
               {t('exportResults')}
             </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                resetImportDialog();
-                setIsImportOpen(true);
-              }}
-              className="h-11 justify-center rounded-xl border-slate-200 bg-white/80 text-slate-700 hover:bg-white hover:text-slate-950 dark:border-white/20 dark:bg-white/10 dark:text-white dark:hover:bg-white/20 dark:hover:text-white"
-            >
-              <Upload className={`h-4 w-4 ${isRTL ? 'ml-2' : 'mr-2'}`} />
-              {t('importCIResults')}
-            </Button>
+            {canExecuteRun && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  resetImportDialog();
+                  setIsImportOpen(true);
+                }}
+                className="h-11 justify-center rounded-xl border-slate-200 bg-white/80 text-slate-700 hover:bg-white hover:text-slate-950 dark:border-white/20 dark:bg-white/10 dark:text-white dark:hover:bg-white/20 dark:hover:text-white"
+              >
+                <Upload className={`h-4 w-4 ${isRTL ? 'ml-2' : 'mr-2'}`} />
+                {t('importCIResults')}
+              </Button>
+            )}
             <Button
               variant="outline"
               size="sm"
@@ -1924,7 +1947,7 @@ export function TestRunDetail() {
               </span>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="sm" className="h-8 gap-1.5" disabled={bulkBusy}>
+                  <Button variant="outline" size="sm" className="h-8 gap-1.5" disabled={bulkBusy || !canExecuteRun}>
                     <CheckCircle className="h-3.5 w-3.5" />
                     {t('bulkSetStatus')}
                   </Button>
@@ -1940,7 +1963,7 @@ export function TestRunDetail() {
               </DropdownMenu>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="sm" className="h-8 gap-1.5" disabled={bulkBusy}>
+                  <Button variant="outline" size="sm" className="h-8 gap-1.5" disabled={bulkBusy || !canAuthorRun}>
                     <User className="h-3.5 w-3.5" />
                     {t('bulkAssign')}
                   </Button>
@@ -1955,7 +1978,7 @@ export function TestRunDetail() {
                   ))}
                 </DropdownMenuContent>
               </DropdownMenu>
-              <Button variant="outline" size="sm" className="h-8 gap-1.5" disabled={bulkBusy} onClick={bulkMarkRetest}>
+              <Button variant="outline" size="sm" className="h-8 gap-1.5" disabled={bulkBusy || !canExecuteRun} onClick={bulkMarkRetest}>
                 <RefreshCw className="h-3.5 w-3.5" />
                 {t('bulkMarkRetest')}
               </Button>
@@ -1963,7 +1986,7 @@ export function TestRunDetail() {
                 variant="ghost"
                 size="sm"
                 className="h-8 gap-1.5 text-red-600 hover:text-red-700 dark:text-red-400"
-                disabled={bulkBusy}
+                disabled={bulkBusy || !canAuthorRun}
                 onClick={handleRemoveTestCases}
               >
                 <Trash2 className="h-3.5 w-3.5" />
@@ -2139,8 +2162,8 @@ export function TestRunDetail() {
                               <DropdownMenuTrigger asChild>
                                 <button
                                   type="button"
-                                  disabled={isSaving}
-                                  title={t('clickToChangeStatus')}
+                                  disabled={isSaving || !canExecuteRun}
+                                  title={canExecuteRun ? t('clickToChangeStatus') : t('runNotAssignedToYou')}
                                   className="-mx-1 flex items-center gap-1.5 rounded-md px-1 py-0.5 hover:bg-slate-100 disabled:opacity-60 dark:hover:bg-slate-800"
                                 >
                                   {isSaving
@@ -2298,7 +2321,13 @@ export function TestRunDetail() {
                                 </Button>
                               </>
                             ) : (
-                              <Button size="sm" variant="ghost" onClick={() => setEditingResult(result.id)}>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                disabled={!canExecuteRun}
+                                title={canExecuteRun ? undefined : t('runNotAssignedToYou')}
+                                onClick={() => setEditingResult(result.id)}
+                              >
                                 <Edit className="h-4 w-4 mr-1" />
                                 {t('edit')}
                               </Button>

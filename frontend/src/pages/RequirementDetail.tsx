@@ -24,7 +24,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { GherkinViewer } from '@/components/requirements/GherkinViewer';
 import { GherkinEditor } from '@/components/requirements/GherkinEditor';
 import { isGherkinText } from '@/components/requirements/gherkin';
-import { decodeHtmlEntities, decodeEntitiesDeep, htmlToReadableText, isHtmlMarkup } from '@/components/requirements/richText';
+import { htmlToReadableText, isHtmlMarkup } from '@/components/requirements/richText';
 import { ContentEditor, htmlToMarkdown, markdownToHtml } from '@/components/ui/content-editor';
 import { CustomFieldsPanel } from '@/components/CustomFieldsPanel';
 import { RequirementVersionHistory } from '@/components/requirements/RequirementVersionHistory';
@@ -177,10 +177,10 @@ type DuplicateCheckResult = {
 };
 
 const extractSourceDocument = (rawDescription?: string | null): SourceDoc | null => {
-  const decoded = decodeHtmlEntities(rawDescription);
-  if (typeof window !== 'undefined' && /data-requirement-source=/i.test(decoded)) {
+  const raw = rawDescription || '';
+  if (typeof window !== 'undefined' && /data-requirement-source=/i.test(raw)) {
     const parser = new DOMParser();
-    const documentValue = parser.parseFromString(decoded, 'text/html');
+    const documentValue = parser.parseFromString(raw, 'text/html');
     const sourceElement = documentValue.querySelector<HTMLElement>('[data-requirement-source="true"]');
     if (sourceElement) {
       const heading = sourceElement.querySelector('h1,h2,h3')?.textContent?.trim() || 'Source document';
@@ -624,8 +624,8 @@ export function RequirementDetail() {
     setActiveAIDraftIndex((current) => Math.min(current, Math.max(aiDrafts.length - 1, 0)));
   }, [aiDrafts.length]);
 
-  const descriptionHtml = useMemo(() => decodeEntitiesDeep(requirement?.description), [requirement?.description]);
-  const acceptanceHtml = useMemo(() => decodeEntitiesDeep(requirement?.acceptance_criteria), [requirement?.acceptance_criteria]);
+  const descriptionHtml = useMemo(() => requirement?.description || '', [requirement?.description]);
+  const acceptanceHtml = useMemo(() => requirement?.acceptance_criteria || '', [requirement?.acceptance_criteria]);
   const acceptanceText = useMemo(() => htmlToReadableText(requirement?.acceptance_criteria), [requirement?.acceptance_criteria]);
   const sourceDocument = useMemo(() => extractSourceDocument(requirement?.description), [requirement?.description]);
   const tags = useMemo(() => requirement?.tags?.split(',').map((tag) => tag.trim()).filter(Boolean) || [], [requirement?.tags]);
@@ -682,8 +682,8 @@ export function RequirementDetail() {
 
   const openEditDialog = () => {
     if (!requirement) return;
-    const decodedDescription = decodeEntitiesDeep(requirement.description);
-    const decodedAcceptanceHtml = decodeEntitiesDeep(requirement.acceptance_criteria);
+    const decodedDescription = requirement.description || '';
+    const decodedAcceptanceHtml = requirement.acceptance_criteria || '';
     const readableAcceptance = htmlToReadableText(requirement.acceptance_criteria);
     const shouldEditAsGherkin = isGherkinText(readableAcceptance);
     setEditForm({

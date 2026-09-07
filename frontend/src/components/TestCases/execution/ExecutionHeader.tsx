@@ -19,7 +19,7 @@ export function ExecutionHeader() {
   const testRunName = testRun?.name || t('loading');
   const testCaseTitle = testCase?.title || t('loading');
   const suiteName = testCase?.test_suite?.name;
-  const sectionName = testCase?.section;
+  const sectionName = testCase?.section?.name;
   const progressLabel = allTestCases.length > 0 && currentIndex >= 0
     ? t('testCaseProgress', { current: currentIndex + 1, total: allTestCases.length })
     : t('loadingTestCases');

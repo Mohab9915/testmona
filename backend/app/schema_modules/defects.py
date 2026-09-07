@@ -3,7 +3,8 @@ from typing import List, Optional, Dict, Any, Union
 from datetime import datetime
 from ..models import Priority, Status, TestStatus, ResultStatus, Role, Permission, CustomFieldType, TestType, RecycleBinType, RequirementStatus, DefectStatus, DefectSeverity, DefectPriority, DefectLinkType, MilestoneStatus, NotificationType, StepCategory, StepComplexity, DocStatus
 import re
-import html
+
+from ..utils import normalize_user_text
 
 from .versioning import (
     DateValidationRules,
@@ -36,18 +37,14 @@ _DEFECT_SANITIZE_SKIP = {
 }
 
 def _sanitize_defect_strings(data):
-    """Idempotently escape HTML in user-supplied string fields.
+    """Normalize user-supplied string fields; see ``app.utils.normalize_user_text``.
 
-    Skips URL/identifier fields where escaping would mangle valid input
-    (e.g. query strings containing ``&``).
+    Skips URL/identifier fields, which are validated in their own validators.
     """
     if isinstance(data, dict):
         for key, value in data.items():
             if isinstance(value, str) and key not in _DEFECT_SANITIZE_SKIP:
-                # Unescape before escaping so re-saving an already-stored value
-                # is idempotent — a bare ``html.escape`` would compound
-                # ``&lt;`` into ``&amp;lt;`` on every update.
-                data[key] = html.escape(html.unescape(value))
+                data[key] = normalize_user_text(value)
     return data
 
 
@@ -94,7 +91,7 @@ class DefectBase(BaseModel):
 
     @model_validator(mode='before')
     @classmethod
-    def sanitize_html(cls, data):
+    def normalize_text_fields(cls, data):
         return _sanitize_defect_strings(data)
 
     @field_validator('external_issue_url')
@@ -142,7 +139,7 @@ class DefectUpdate(BaseModel):
 
     @model_validator(mode='before')
     @classmethod
-    def sanitize_html(cls, data):
+    def normalize_text_fields(cls, data):
         return _sanitize_defect_strings(data)
 
     @field_validator('external_issue_url')

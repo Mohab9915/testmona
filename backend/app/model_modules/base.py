@@ -335,6 +335,16 @@ requirement_test_plan_links = Table('requirement_test_plan_links', Base.metadata
 )
 
 
+# Association table for the suites a test plan intends to execute. The plan is
+# the reusable definition (plan -> suites -> cases); each execution is a
+# separate test run seeded from this scope, so cases are never cloned per build.
+test_plan_suites = Table('test_plan_suites', Base.metadata,
+    Column('test_plan_id', Integer, ForeignKey('test_plans.id'), nullable=False),
+    Column('test_suite_id', Integer, ForeignKey('test_suites.id'), nullable=False),
+    UniqueConstraint('test_plan_id', 'test_suite_id', name='uq_test_plan_suites_plan_suite')
+)
+
+
 # Association table for shared step usage in test cases
 shared_step_usage = Table('shared_step_usage', Base.metadata,
     Column('shared_step_id', Integer, ForeignKey('shared_steps.id')),

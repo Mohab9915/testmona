@@ -78,7 +78,7 @@ export function TestRunReport() {
       const [runData, resultsData, usersData, customFieldsData, projectData] = await Promise.all([
         testRunsAPI.getById(parsedTestRunId),
         fetchAllResults(),
-        usersAPI.getAll(),
+        parsedProjectId ? usersAPI.getAssignable(parsedProjectId).catch(() => []) : Promise.resolve([]),
         parsedProjectId ? customFieldsAPI.getDefinitions(parsedProjectId, 'test_case').catch(() => []) : Promise.resolve([]),
         parsedProjectId ? projectsAPI.getById(parsedProjectId).catch(() => null) : Promise.resolve(null),
       ]);

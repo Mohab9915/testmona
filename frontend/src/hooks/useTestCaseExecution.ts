@@ -18,7 +18,8 @@ import {
   type TestDataset,
 } from '@/lib/api';
 import { loadProjectParameters, paramsToMap, resolveParameters } from '@/utils/parameters';
-import { canWriteResults } from '@/utils/roles';
+import { canExecuteTestRun, canWriteResults } from '@/utils/roles';
+import { useProjectPermissions } from '@/hooks/useProjectPermissions';
 import {
   type TestStep,
   type ExecutionPhase,
@@ -79,6 +80,7 @@ export function useTestCaseExecution() {
   const { isRTL, t } = useTranslation();
   const { toast } = useToast();
   const { user: currentUser } = useAuthStore();
+  const projectPerms = useProjectPermissions(projectId ? Number(projectId) : null);
 
   // --- Core execution result fields ---
   const [executionStatus, setExecutionStatus] = useState<ExecutionStatus>('pending');
@@ -394,7 +396,7 @@ export function useTestCaseExecution() {
     let cancelled = false;
     const loadInitialData = async () => {
       try {
-        const allUsers = await usersAPI.getAll();
+        const allUsers = projectId ? await usersAPI.getAssignable(parseInt(projectId)) : [];
         if (cancelled) return;
         setUsers(allUsers);
         if (currentUser) setAssignee((prev) => prev || currentUser.id.toString());
@@ -422,7 +424,7 @@ export function useTestCaseExecution() {
     };
     loadInitialData();
     return () => { cancelled = true; };
-  }, [testRunId, runGlobalId, currentUser]);
+  }, [projectId, testRunId, runGlobalId, currentUser]);
 
   // Load any existing execution result for this case in this run.
   useEffect(() => {
@@ -666,8 +668,16 @@ export function useTestCaseExecution() {
   const isFailedOrBlockedStatus = executionStatus === 'failed' || executionStatus === 'blocked';
   const selectedFailureStep = testSteps.find((step) => String(step.step_number) === selectedFailureStepNumber);
 
-  // Whether the current user may record results (viewers are read-only).
-  const canWrite = canWriteResults(currentUser);
+  // Whether the current user may record results here. Viewers are read-only, and
+  // execution is assignment-scoped: an execute-only role (tester) works its own
+  // runs, not a colleague's and not an unassigned one. Mirrors the backend rule in
+  // `rbac.can_execute_test_run`, which is what actually enforces it.
+  const runAssignmentBlocks = Boolean(
+    testRun && projectPerms.canExecute && !canExecuteTestRun(testRun, projectPerms, currentUser?.id)
+  );
+  const canWrite = canWriteResults(currentUser) && !runAssignmentBlocks;
+  // Why the form is read-only, so the banner can say more than "read only".
+  const readOnlyReason = runAssignmentBlocks ? t('runNotAssignedToYou') : null;
 
   // --- Non-blocking save hints ---
   // Everything here used to be a toast that blocked the Save button. With
@@ -1338,7 +1348,7 @@ export function useTestCaseExecution() {
     failureStepActual, setFailureStepActual,
     requireDefectOnFailure, retestNeeded,
     isFailedOrBlockedStatus, selectedFailureStep,
-    canWrite,
+    canWrite, readOnlyReason,
     // page data
     isLoading, isSaving, loadError, users, allTestCases, testCase, testSteps, testStepsLoadError,
     testRun, executionHistory, historyLoadError,

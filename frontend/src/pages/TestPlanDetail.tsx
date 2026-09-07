@@ -34,8 +34,16 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { WatchButton } from '@/components/WatchButton';
-import { testPlansAPI, testRunsAPI, getApiErrorMessage } from '@/lib/api';
+import { testPlansAPI, testRunsAPI, testSuitesAPI, environmentsAPI, getApiErrorMessage } from '@/lib/api';
 import { useResolvedEntityId } from '@/hooks/useResolvedEntityId';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useDateFormat } from '@/hooks/useDateFormat';
@@ -43,6 +51,18 @@ import { TestRun } from '@/types';
 
 type TestPlanStatus = 'pending' | 'running' | 'passed' | 'failed' | 'skipped' | 'blocked' | 'completed';
 type ExecutionStatus = 'not_started' | 'in_progress' | 'blocked' | 'failed' | 'passed';
+
+interface PlanSuite {
+  id: number;
+  project_seq?: number | null;
+  name: string;
+  test_case_count?: number;
+}
+
+interface PlanEnvironment {
+  id: number;
+  name: string;
+}
 
 interface LinkedRequirement {
   id: number;
@@ -74,6 +94,8 @@ interface TestPlanDetailData {
   risks_assumptions: string | null;
   test_run_count: number;
   requirement_count?: number | null;
+  suite_ids?: number[];
+  planned_case_count?: number;
   execution_status?: ExecutionStatus | null;
   execution_progress?: number | null;
   pass_rate?: number | null;
@@ -130,6 +152,23 @@ export function TestPlanDetail() {
   const [selectedReqIds, setSelectedReqIds] = useState<number[]>([]);
   const [reqSaving, setReqSaving] = useState(false);
 
+  // The plan's reusable scope: the suites it executes. Every run started from
+  // the plan is seeded with the cases in these suites, so a new build means a
+  // new run — never a copy of the test cases.
+  const [suites, setSuites] = useState<PlanSuite[]>([]);
+  const [scopeOpen, setScopeOpen] = useState(false);
+  const [selectedSuiteIds, setSelectedSuiteIds] = useState<number[]>([]);
+  const [suiteSearch, setSuiteSearch] = useState('');
+  const [scopeSaving, setScopeSaving] = useState(false);
+
+  // Start a run from the plan's scope, stamped with the build under test.
+  const [runOpen, setRunOpen] = useState(false);
+  const [environments, setEnvironments] = useState<PlanEnvironment[]>([]);
+  const [runBuild, setRunBuild] = useState('');
+  const [runNameInput, setRunNameInput] = useState('');
+  const [runEnvironmentId, setRunEnvironmentId] = useState('none');
+  const [runStarting, setRunStarting] = useState(false);
+
   // Assign existing test runs to this plan (as opposed to always creating a
   // new one). Mirrors the requirements-linking dialog above: the checklist
   // reflects current membership and saving diffs the selection.
@@ -163,9 +202,10 @@ export function TestPlanDetail() {
       try {
         setIsLoading(true);
         setError(null);
-        const [planData, runData] = await Promise.all([
+        const [planData, runData, suiteData] = await Promise.all([
           testPlansAPI.getById(numericPlanId),
           testRunsAPI.getAll(numericProjectId, 0, 500, { test_plan_id: numericPlanId }).catch(() => []),
+          testSuitesAPI.getAll(numericProjectId, 0, 500).catch(() => []),
         ]);
 
         if (cancelled) return;
@@ -178,6 +218,7 @@ export function TestPlanDetail() {
 
         setPlan(planData);
         setRuns(Array.isArray(runData) ? runData : []);
+        setSuites(Array.isArray(suiteData) ? suiteData : []);
         loadLinkedRequirements(numericPlanId);
       } catch (err) {
         if (cancelled) return;
@@ -202,6 +243,7 @@ export function TestPlanDetail() {
         { label: t('linkedMilestone'), done: Boolean(plan.milestone_id) },
         { label: t('testPlanObjectives'), done: Boolean(plan.test_objectives) },
         { label: t('scopeIn'), done: Boolean(plan.scope_inclusions) },
+        { label: t('planTestSuites'), done: (plan.suite_ids?.length ?? 0) > 0 },
         { label: t('requirements'), done: linkedRequirements.length > 0 },
         { label: t('entryCriteria'), done: Boolean(plan.entry_criteria) },
         { label: t('exitCriteria'), done: Boolean(plan.exit_criteria) },
@@ -326,6 +368,72 @@ export function TestPlanDetail() {
     }
   };
 
+  const planSuiteIds = plan?.suite_ids ?? [];
+  const planSuites = suites.filter((suite) => planSuiteIds.includes(suite.id));
+  const plannedCaseCount = plan?.planned_case_count ?? 0;
+
+  const openScope = () => {
+    setSelectedSuiteIds(planSuiteIds);
+    setSuiteSearch('');
+    setScopeOpen(true);
+  };
+
+  const toggleSuite = (id: number) => {
+    setSelectedSuiteIds((current) => (current.includes(id) ? current.filter((x) => x !== id) : [...current, id]));
+  };
+
+  const filteredSuites = useMemo(() => {
+    const q = suiteSearch.trim().toLowerCase();
+    if (!q) return suites;
+    return suites.filter((suite) => suite.name.toLowerCase().includes(q));
+  }, [suites, suiteSearch]);
+
+  const saveScope = async () => {
+    if (!plan) return;
+    setScopeSaving(true);
+    setError(null);
+    try {
+      const scope = await testPlansAPI.setSuites(plan.id, selectedSuiteIds);
+      setPlan({ ...plan, suite_ids: scope.suite_ids, planned_case_count: scope.test_case_count });
+      setScopeOpen(false);
+    } catch (err) {
+      setError(getApiErrorMessage(err, t('failedToSavePlanScope')));
+    } finally {
+      setScopeSaving(false);
+    }
+  };
+
+  const openRunDialog = async () => {
+    if (!plan || !numericProjectId) return;
+    setRunBuild('');
+    setRunNameInput('');
+    setRunEnvironmentId('none');
+    setRunOpen(true);
+    if (environments.length === 0) {
+      const data = await environmentsAPI.getAll(numericProjectId, 0, 200).catch(() => []);
+      setEnvironments(Array.isArray(data) ? data : []);
+    }
+  };
+
+  const startRun = async () => {
+    if (!plan || !numericProjectId) return;
+    setRunStarting(true);
+    setError(null);
+    try {
+      const run = await testPlansAPI.createRun(plan.id, {
+        name: runNameInput.trim() || undefined,
+        build: runBuild.trim() || undefined,
+        environment_id: runEnvironmentId === 'none' ? undefined : Number(runEnvironmentId),
+      });
+      setRunOpen(false);
+      navigate(`/projects/${numericProjectId}/test-runs/${run.project_seq ?? run.id}`);
+    } catch (err) {
+      setError(getApiErrorMessage(err, t('failedToStartPlanRun')));
+    } finally {
+      setRunStarting(false);
+    }
+  };
+
   const goToRuns = (create = false) => {
     if (!plan || !numericProjectId) return;
     const params = new URLSearchParams({ test_plan_id: String(plan.id) });
@@ -417,9 +525,13 @@ export function TestPlanDetail() {
         </div>
         <div className="flex flex-wrap gap-2">
           <WatchButton entityType="test_plan" entityId={plan.id} />
-          <Button onClick={() => goToRuns(runs.length === 0)} className="gap-1">
-            {runs.length === 0 ? <CirclePlus className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-            {runs.length === 0 ? t('startNewRun') : t('viewTestRuns')}
+          <Button onClick={openRunDialog} disabled={plannedCaseCount === 0} title={plannedCaseCount === 0 ? t('planScopeEmptyHint') : undefined} className="gap-1">
+            <Play className="h-4 w-4" />
+            {t('runThisPlan')}
+          </Button>
+          <Button variant="outline" onClick={() => goToRuns(false)} className="gap-1">
+            <Layers className="h-4 w-4" />
+            {t('viewTestRuns')}
           </Button>
           <Button variant="outline" onClick={() => navigate(`/projects/${projectId}/test-plans?edit=${plan.id}`)} className="gap-1">
             <Pencil className="h-4 w-4" />
@@ -469,6 +581,51 @@ export function TestPlanDetail() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Test suites — what the plan executes. Runs are seeded from this scope,
+          so the same cases are re-executed per build instead of duplicated. */}
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between gap-3 space-y-0">
+          <CardTitle className="flex flex-wrap items-center gap-2">
+            <Layers className="h-4 w-4" />
+            {t('planTestSuites')}
+            <Badge variant="outline">{planSuites.length}</Badge>
+            <span className="text-xs font-normal text-muted-foreground">
+              {t('planCasesPerRun', { count: plannedCaseCount })}
+            </span>
+          </CardTitle>
+          <Button variant="outline" size="sm" onClick={openScope} className="gap-1.5">
+            <Link2 className="h-3.5 w-3.5" />
+            {t('managePlanSuites')}
+          </Button>
+        </CardHeader>
+        <CardContent>
+          {planSuites.length === 0 ? (
+            <div className="flex min-h-24 flex-col items-center justify-center gap-2 text-center text-sm text-muted-foreground">
+              <p>{t('planScopeEmptyHint')}</p>
+              <Button size="sm" variant="outline" onClick={openScope}>
+                <Link2 className="mr-1.5 h-3.5 w-3.5" />
+                {t('addTestSuites')}
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {planSuites.map((suite) => (
+                <button
+                  key={suite.id}
+                  onClick={() => navigate(`/projects/${projectId}/test-suites/${suite.project_seq ?? suite.id}`)}
+                  className="flex w-full items-center justify-between gap-3 rounded-lg border p-3 text-left transition-colors hover:bg-muted/60"
+                >
+                  <p className="truncate text-sm font-medium">{suite.name}</p>
+                  <Badge variant="outline" className="shrink-0">
+                    {t('testCasesCountSimple', { count: suite.test_case_count ?? 0 })}
+                  </Badge>
+                </button>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Linked requirements — the plan's traceable scope */}
       <Card>
@@ -550,23 +707,29 @@ export function TestPlanDetail() {
       <Card>
         <CardHeader className="flex flex-row items-center justify-between gap-3 space-y-0">
           <CardTitle>{t('testRuns')}</CardTitle>
-          <Button variant="outline" size="sm" onClick={openAssignRuns}>
-            <Link2 className="mr-1.5 h-3.5 w-3.5" />
-            {t('assignExistingRuns')}
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={openAssignRuns}>
+              <Link2 className="mr-1.5 h-3.5 w-3.5" />
+              {t('assignExistingRuns')}
+            </Button>
+            <Button size="sm" onClick={openRunDialog} disabled={plannedCaseCount === 0}>
+              <CirclePlus className="mr-1.5 h-3.5 w-3.5" />
+              {t('runThisPlan')}
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
           {runs.length === 0 ? (
             <div className="flex min-h-32 flex-col items-center justify-center gap-3 text-center text-sm text-muted-foreground">
-              <p>{t('noRunsForPlan')}</p>
+              <p>{plannedCaseCount === 0 ? t('planScopeEmptyHint') : t('noRunsForPlan')}</p>
               <div className="flex items-center gap-2">
                 <Button variant="outline" size="sm" onClick={openAssignRuns}>
                   <Link2 className="mr-1.5 h-3.5 w-3.5" />
                   {t('assignExistingRuns')}
                 </Button>
-                <Button size="sm" onClick={() => goToRuns(true)}>
+                <Button size="sm" onClick={plannedCaseCount === 0 ? openScope : openRunDialog}>
                   <CirclePlus className="mr-1.5 h-3.5 w-3.5" />
-                  {t('startNewRun')}
+                  {plannedCaseCount === 0 ? t('addTestSuites') : t('startNewRun')}
                 </Button>
               </div>
             </div>
@@ -575,14 +738,17 @@ export function TestPlanDetail() {
               {runs.slice(0, 5).map((run) => (
                 <button
                   key={run.id}
-                  onClick={() => navigate(`/projects/${projectId}/test-runs/${run.id}`)}
+                  onClick={() => navigate(`/projects/${projectId}/test-runs/${run.project_seq ?? run.id}`)}
                   className="flex w-full items-center justify-between gap-3 rounded-lg border p-3 text-left transition-colors hover:bg-muted/60"
                 >
                   <div className="min-w-0">
                     <p className="truncate text-sm font-medium">{run.name}</p>
                     <p className="text-xs text-muted-foreground">{formatDate(run.created_at, t('notSet'))}</p>
                   </div>
-                  <Badge variant="outline">{run.status}</Badge>
+                  <div className="flex shrink-0 items-center gap-2">
+                    {run.build && <Badge variant="outline">{t('buildLabel')}: {run.build}</Badge>}
+                    <Badge variant="outline">{run.status}</Badge>
+                  </div>
                 </button>
               ))}
               {runs.length > 5 && (
@@ -599,6 +765,108 @@ export function TestPlanDetail() {
           )}
         </CardContent>
       </Card>
+
+      <Dialog open={scopeOpen} onOpenChange={(open) => (open ? null : setScopeOpen(false))}>
+        <DialogContent isRTL={isRTL} className="max-h-[85vh] overflow-hidden sm:max-w-[560px]">
+          <DialogHeader>
+            <DialogTitle>{t('managePlanSuites')}</DialogTitle>
+            <DialogDescription>{t('selectSuitesForPlan')}</DialogDescription>
+          </DialogHeader>
+          <div className="relative">
+            <Search className={`absolute top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground ${isRTL ? 'right-3' : 'left-3'}`} />
+            <Input
+              value={suiteSearch}
+              placeholder={t('searchTestSuites')}
+              className={isRTL ? 'pr-9' : 'pl-9'}
+              onChange={(e) => setSuiteSearch(e.target.value)}
+            />
+          </div>
+          <div className="max-h-[45vh] space-y-1.5 overflow-y-auto pr-1">
+            {filteredSuites.length === 0 ? (
+              <p className="py-6 text-center text-sm text-muted-foreground">{t('noTestSuites')}</p>
+            ) : (
+              filteredSuites.map((suite) => (
+                <label
+                  key={suite.id}
+                  className="flex cursor-pointer items-center gap-3 rounded-lg border p-2.5 text-sm hover:bg-muted/60"
+                >
+                  <Checkbox
+                    checked={selectedSuiteIds.includes(suite.id)}
+                    onCheckedChange={() => toggleSuite(suite.id)}
+                  />
+                  <p className="min-w-0 flex-1 truncate font-medium">{suite.name}</p>
+                  <Badge variant="outline" className="shrink-0">
+                    {t('testCasesCountSimple', { count: suite.test_case_count ?? 0 })}
+                  </Badge>
+                </label>
+              ))
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setScopeOpen(false)} disabled={scopeSaving}>
+              {t('cancel')}
+            </Button>
+            <Button onClick={saveScope} disabled={scopeSaving}>
+              {scopeSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {t('save')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={runOpen} onOpenChange={(open) => (open ? null : setRunOpen(false))}>
+        <DialogContent isRTL={isRTL} className="sm:max-w-[480px]">
+          <DialogHeader>
+            <DialogTitle>{t('runThisPlan')}</DialogTitle>
+            <DialogDescription>{t('runThisPlanDescription', { count: plannedCaseCount })}</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="run-build">{t('buildLabel')}</Label>
+              <Input
+                id="run-build"
+                value={runBuild}
+                placeholder={t('buildPlaceholder')}
+                onChange={(e) => setRunBuild(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="run-name">{t('testRunName')}</Label>
+              <Input
+                id="run-name"
+                value={runNameInput}
+                placeholder={runBuild.trim() ? `${plan.title} - ${runBuild.trim()}` : plan.title}
+                onChange={(e) => setRunNameInput(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="run-environment">{t('environmentLabel')}</Label>
+              <Select value={runEnvironmentId} onValueChange={setRunEnvironmentId}>
+                <SelectTrigger id="run-environment">
+                  <SelectValue placeholder={t('selectTestEnvironment')} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">{t('notSet')}</SelectItem>
+                  {environments.map((environment) => (
+                    <SelectItem key={environment.id} value={environment.id.toString()}>
+                      {environment.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRunOpen(false)} disabled={runStarting}>
+              {t('cancel')}
+            </Button>
+            <Button onClick={startRun} disabled={runStarting}>
+              {runStarting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {t('startNewRun')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={manageOpen} onOpenChange={(open) => (open ? null : setManageOpen(false))}>
         <DialogContent isRTL={isRTL} className="max-h-[85vh] overflow-hidden sm:max-w-[560px]" onKeyDown={handleKeyDown}>

@@ -1,9 +1,11 @@
 """Integration coverage for the tester-role capability boundary.
 
-A tester may delete test *content* (test cases, defects, …) but not project
-*structure/config* (projects, requirements, milestones, …). The frontend reads
-``GET /users/me/permissions`` to gate controls accordingly. These tests drive
-the real routes as a tester to lock that boundary in.
+A tester is read + execute: they run the work assigned to them and file defects,
+but they author and delete nothing — not test cases, not project structure, not
+project config. The frontend reads ``GET /users/me/permissions`` to gate controls
+accordingly. These tests drive the real routes as a tester to lock that boundary
+in. Assignment-scoped execution has its own file,
+``test_test_run_execution_assignment.py``.
 """
 
 from conftest import make_http_client
@@ -81,10 +83,8 @@ def test_effective_permissions_endpoint_for_tester(client):
     assert resp.status_code == 200, resp.text
     body = resp.json()
 
-    # Global tester capability: delete test content, but not manage projects.
-    assert "delete" in body["global"]
-    assert "write" in body["global"]
-    assert "manage_projects" not in body["global"]
+    # Global tester capability: read and execute only — no authoring, no deleting.
+    assert set(body["global"]) == {"read", "execute"}
 
     # An assigned-as-tester project has the same perms as global, so it is
     # omitted from the map (the client falls back to `global`).
@@ -100,14 +100,14 @@ def test_test_case_detail_exposes_capability_flags(client):
     resp = client.get(f"/test-cases/{client.test_case_id}")
     assert resp.status_code == 200, resp.text
     body = resp.json()
-    assert body["can_edit"] is True
-    assert body["can_delete"] is True
+    assert body["can_edit"] is False
+    assert body["can_delete"] is False
 
 
-def test_tester_can_delete_test_content(client):
-    # Test case and defect are test content — a tester owns the delete.
-    assert client.delete(f"/test-cases/{client.test_case_id}").status_code == 200
-    assert client.delete(f"/defects/{client.defect_id}").status_code == 200
+def test_tester_cannot_delete_test_content(client):
+    # Authoring test content — including removing it — is manager+.
+    assert client.delete(f"/test-cases/{client.test_case_id}").status_code == 403
+    assert client.delete(f"/defects/{client.defect_id}").status_code == 403
 
 
 def test_tester_cannot_delete_project_structure(client):
@@ -128,13 +128,10 @@ def test_tester_bulk_requirement_delete_is_skipped_not_applied(client):
     assert client.get(f"/requirements/{client.requirement_id}").status_code == 200
 
 
-def test_tester_cannot_delete_defect_template(client):
-    # Defect templates are reusable project config (catalog) → manager+ to delete.
+def test_tester_cannot_create_defect_template(client):
+    # Defect templates are reusable project config (catalog) → manager+ to author.
     created = client.post(
         f"/projects/{client.project_id}/defect-templates",
         json={"name": "Tmpl", "description": "D"},
     )
-    assert created.status_code in (200, 201), created.text
-    template_id = created.json()["id"]
-    resp = client.delete(f"/projects/{client.project_id}/defect-templates/{template_id}")
-    assert resp.status_code == 403, resp.text
+    assert created.status_code == 403, created.text
