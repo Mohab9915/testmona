@@ -8,11 +8,13 @@ does the work per cycle. No separate worker process or broker is introduced.
 The job re-queries Azure DevOps for the *full* not-closed-bug set every cycle
 rather than tracking deltas. That single query does double duty: on the very
 first run it backfills every bug already open in the project, and on every
-later run it both discovers new bugs and re-affirms the status of ones
-already imported - a bug that drops out of the not-closed set has moved to
-Closed/Removed since the last cycle. Title/description are only written when
-a defect is first created; only status is kept in sync afterward, so a local
-edit to an imported defect's text isn't silently overwritten by the next poll.
+later run it both discovers new bugs and re-affirms the fields of ones
+already imported, mirroring title/description/severity/status from Azure
+DevOps - a bug that drops out of the not-closed set has moved to
+Closed/Removed (or been deleted outright) since the last cycle. A bug that
+was actually deleted in Azure DevOps (as opposed to closed) 404s when
+re-fetched directly; that's treated as confirmation the upstream item is
+gone, and the local defect is deleted too rather than left orphaned.
 """
 import logging
 from datetime import UTC, datetime
@@ -131,16 +133,30 @@ def _import_bugs_for_integration(db: Session, integration: models.IssueTrackerIn
             continue
 
         new_status = models.DefectStatus(mapped["status"])
-        if existing.status != new_status or existing.external_sync_status != "synced":
+        new_severity = models.DefectSeverity(mapped["severity"])
+        changed = (
+            existing.title != mapped["title"]
+            or existing.description != mapped["description"]
+            or existing.severity != new_severity
+            or existing.status != new_status
+            or existing.external_sync_status != "synced"
+        )
+        if changed:
+            existing.title = mapped["title"]
+            existing.description = mapped["description"]
+            existing.severity = new_severity
             existing.status = new_status
             existing.external_sync_status = "synced"
             existing.external_last_sync = now
             try:
                 db.commit()
+                logger.info(
+                    "ado-bug-import: bug %s updated, defect %s synced", external_id, existing.defect_id,
+                )
             except Exception:
                 db.rollback()
                 logger.exception(
-                    "ado-bug-import: failed to update status for defect %s", existing.defect_id,
+                    "ado-bug-import: failed to update defect %s", existing.defect_id,
                 )
 
     _close_out_stale_imports(db, integration, seen_external_ids, now)
@@ -153,8 +169,12 @@ def _close_out_stale_imports(
     now: datetime,
 ) -> None:
     """A previously-imported bug that no longer appears in the not-closed set
-    has moved to Closed/Removed since the last cycle - fetch it directly and
-    mirror its real status instead of leaving it stuck open in TestMona."""
+    has either moved to Closed/Removed or been deleted outright since the
+    last cycle - fetch it directly to tell the two apart. A 404 means Azure
+    DevOps no longer has the work item (deleted items don't 404 into a
+    recoverable state via this endpoint - they land in the recycle bin), so
+    the local defect is deleted too; any other outcome mirrors the real
+    status instead of leaving the defect stuck open in TestMona."""
     url_prefix = _url_prefix_for(integration)
     tracked = (
         db.query(models.Defect)
@@ -183,6 +203,26 @@ def _close_out_stale_imports(
             )
             continue
         if not result.get("success"):
+            if result.get("status_code") == 404:
+                defect_ref = defect.defect_id
+                db.delete(defect)
+                try:
+                    db.commit()
+                    logger.info(
+                        "ado-bug-import: bug %s deleted in Azure DevOps, removed defect %s",
+                        defect.external_issue_id, defect_ref,
+                    )
+                except Exception:
+                    db.rollback()
+                    logger.exception(
+                        "ado-bug-import: failed to remove defect %s after upstream deletion",
+                        defect_ref,
+                    )
+            else:
+                logger.warning(
+                    "ado-bug-import: could not re-check bug %s (project %s): %s",
+                    defect.external_issue_id, integration.project_id, result.get("message"),
+                )
             continue
 
         raw = result.get("work_item") or {}

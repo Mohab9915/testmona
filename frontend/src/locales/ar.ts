@@ -540,6 +540,13 @@ export const ar = {
     failedToAssignTestRun: 'فشل تخصيص تشغيل الاختبار',
     failedToSetEnvironment: 'فشل تعيين البيئة',
     failedToSaveBuild: 'فشل حفظ الإصدار',
+    // تعديل بيانات دورة الاختبار نفسها (الاسم/الوصف/الأولوية/الحالة)
+    editTestRun: 'تعديل دورة الاختبار',
+    editTestRunDescription: 'حدّث اسم هذه الدورة ووصفها وأولويتها. لن تتأثر حالتها ولا حالات الاختبار ولا النتائج المسجّلة.',
+    runNameRequired: 'يرجى إدخال اسم لدورة الاختبار.',
+    testRunUpdated: 'تم تحديث دورة الاختبار',
+    failedToUpdateTestRun: 'فشل تحديث دورة الاختبار. يرجى المحاولة مرة أخرى.',
+    noPriority: 'بدون أولوية',
     testRunStatusPending: 'قيد الانتظار',
     testRunStatusRunning: 'قيد التشغيل',
     testRunStatusInProgress: 'جاري التنفيذ',

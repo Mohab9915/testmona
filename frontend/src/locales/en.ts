@@ -584,6 +584,13 @@ export const en = {
   failedToAssignTestRun: 'Failed to assign test run',
   failedToSetEnvironment: 'Failed to set environment',
   failedToSaveBuild: 'Failed to save the build',
+  // Editing a test run's own metadata (name/description/priority/status)
+  editTestRun: 'Edit Test Run',
+  editTestRunDescription: 'Update this run\u2019s name, description, and priority. Its status, test cases, and recorded results are left untouched.',
+  runNameRequired: 'Please enter a name for this test run.',
+  testRunUpdated: 'Test run updated',
+  failedToUpdateTestRun: 'Failed to update the test run. Please try again.',
+  noPriority: 'No priority',
   testRunStatusPending: 'Pending',
   testRunStatusRunning: 'Running',
   testRunStatusInProgress: 'In progress',

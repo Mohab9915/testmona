@@ -1707,15 +1707,11 @@ def main():
             suite = suite_by_key[suite_def["key"]]
             test_cases = db.query(models.TestCase).filter(models.TestCase.test_suite_id == suite.id).all()
             primary_user = username_to_user[suite_def["primary"]]
-            secondary_note = ""
-            if suite_def["secondary"]:
-                secondary_user = username_to_user[suite_def["secondary"]]
-                secondary_note = f" Paired with {secondary_user.full_name} as secondary reviewer given this suite's regression risk."
             run = crud.create_seeded_test_run(
                 db,
                 project_id=PROJECT_ID,
                 name=f"{suite.name} — Build {BUILD}",
-                description=f"Execution of the '{suite.name}' suite for Release 1.0, build {BUILD}.{secondary_note}",
+                description=f"Execution of the '{suite.name}' suite for Release 1.0, build {BUILD}.",
                 test_cases=test_cases,
                 test_plan_id=plan.id,
                 milestone_id=milestone.id,
@@ -1736,7 +1732,7 @@ def main():
                     name=f"{suite.name} — Second Pass — Build {BUILD}",
                     description=(
                         f"Independent second pass over the '{suite.name}' suite for build {BUILD}, "
-                        f"executed by {secondary_user.full_name} as the suite's secondary reviewer."
+                        f"executed by {secondary_user.full_name}."
                     ),
                     test_cases=test_cases,
                     test_plan_id=plan.id,

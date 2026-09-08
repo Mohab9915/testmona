@@ -59,7 +59,7 @@ import {
 import { TestRunPieChart, TestRunBarChart, TestRunTrendChart } from '@/components/ui/chart';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useDateFormat } from '@/hooks/useDateFormat';
-import { defectsAPI, environmentsAPI, getApiErrorMessage, sectionsAPI, testCasesAPI, testRunsAPI, testResultsAPI, usersAPI } from '@/lib/api';
+import { defectsAPI, enumsAPI, environmentsAPI, getApiErrorMessage, sectionsAPI, testCasesAPI, testRunsAPI, testResultsAPI, usersAPI } from '@/lib/api';
 import { useResolvedEntityId } from '@/hooks/useResolvedEntityId';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { CustomFieldsPanel } from '@/components/CustomFieldsPanel';
@@ -104,6 +104,10 @@ export function TestRunDetail() {
   const [environments, setEnvironments] = useState<any[]>([]);
   const [isSettingEnvironment, setIsSettingEnvironment] = useState(false);
   const [isSavingBuild, setIsSavingBuild] = useState(false);
+  const [isEditRunOpen, setIsEditRunOpen] = useState(false);
+  const [isSavingRunDetails, setIsSavingRunDetails] = useState(false);
+  const [runDetailsDraft, setRunDetailsDraft] = useState({ name: '', description: '', priority: '' });
+  const [priorityOptions, setPriorityOptions] = useState<{ value: string; label: string }[]>([]);
 
   // Column sorting
   const [sortColumn, setSortColumn] = useState<string | null>(() => searchParams.get('sort') || null);
@@ -766,6 +770,17 @@ export function TestRunDetail() {
   const currentPage = Math.min(Math.max(1, page), totalPages);
   const pagedResults = sortedFilteredResults.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
 
+  // The full filtered/sorted order (not just the current page) - passed as nav
+  // state when opening a case so its Next/Previous walk this view instead of
+  // the run's raw creation order. See useTestCaseExecution's initial-load effect.
+  const executionNavState = {
+    orderedTestCases: sortedFilteredResults.map((r) => ({
+      id: r.test_case_id,
+      projectSeq: r.test_case?.project_seq ?? null,
+      title: r.test_case?.title || t('unknownTestCase'),
+    })),
+  };
+
   const statusCounts = testResults.reduce((acc: any, result) => {
     const normalizedStatus = normalizeRunStatus(result.status) || 'not_started';
     acc[normalizedStatus] = (acc[normalizedStatus] || 0) + 1;
@@ -1075,7 +1090,7 @@ export function TestRunDetail() {
       // Link by the case's per-project seq (the URL identity); fall back to the
       // global id only when the seq is unavailable. Passing the global id where a
       // seq is expected mis-resolves to a different case when they collide.
-      navigate(`/projects/${projectId}/test-runs/${id}/test-cases/${next.test_case?.project_seq ?? next.test_case_id}`);
+      navigate(`/projects/${projectId}/test-runs/${id}/test-cases/${next.test_case?.project_seq ?? next.test_case_id}`, { state: executionNavState });
     }
   };
 
@@ -1361,6 +1376,65 @@ export function TestRunDetail() {
     }
   };
 
+  // Name/description/priority/status are the run's own metadata rather than the
+  // single-field toggles above (assignee, environment, build), so they are
+  // edited together in a dialog and saved in one PUT.
+  const openEditRunDialog = async () => {
+    if (!testRun) return;
+    setRunDetailsDraft({
+      name: testRun.name || '',
+      description: testRun.description || '',
+      priority: testRun.priority || '',
+    });
+    setIsEditRunOpen(true);
+
+    // Priorities are project-configurable, so read them the way the runs list
+    // does. Fetched on open rather than on page load: only authors see this.
+    if (priorityOptions.length === 0) {
+      try {
+        const priorities = await enumsAPI.getPriorities(projectId ? Number(projectId) : undefined);
+        setPriorityOptions(
+          (Array.isArray(priorities) ? priorities : [])
+            .filter((item: any) => item?.name)
+            .sort((a: any, b: any) => Number(b.value || 0) - Number(a.value || 0))
+            .map((item: any) => ({ value: String(item.name).toLowerCase(), label: String(item.name) }))
+        );
+      } catch (error) {
+        console.error('Failed to load priorities:', error);
+      }
+    }
+  };
+
+  const handleSaveRunDetails = async () => {
+    if (!runGlobalId) return;
+    const nextName = runDetailsDraft.name.trim();
+    if (!nextName) {
+      toast({ title: t('error'), description: t('runNameRequired'), variant: 'destructive' });
+      return;
+    }
+
+    try {
+      setIsSavingRunDetails(true);
+      const updatedRun = await testRunsAPI.update(runGlobalId, {
+        name: nextName,
+        description: runDetailsDraft.description.trim() || null,
+        priority: runDetailsDraft.priority || null,
+      });
+      setTestRun((prev: any) => ({ ...prev, ...updatedRun }));
+      setIsEditRunOpen(false);
+      toast({ title: t('success'), description: t('testRunUpdated') });
+    } catch (error) {
+      console.error('Failed to update test run:', error);
+      toast({
+        title: t('error'),
+        description: getApiErrorMessage(error, t('failedToUpdateTestRun')),
+        variant: 'destructive',
+      });
+    } finally {
+      setIsSavingRunDetails(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="space-y-6">
@@ -1538,6 +1612,17 @@ export function TestRunDetail() {
           </div>
 
           <div className="grid w-full gap-2 sm:grid-cols-3 xl:w-auto xl:min-w-[520px]">
+            {canAuthorRun && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={openEditRunDialog}
+                className="h-11 justify-center rounded-xl border-slate-200 bg-white/80 text-slate-700 hover:bg-white hover:text-slate-950 dark:border-white/20 dark:bg-white/10 dark:text-white dark:hover:bg-white/20 dark:hover:text-white"
+              >
+                <Edit className={`h-4 w-4 ${isRTL ? 'ml-2' : 'mr-2'}`} />
+                {t('editTestRun')}
+              </Button>
+            )}
             {canAuthorRun && (
               <Button
                 size="sm"
@@ -2096,7 +2181,7 @@ export function TestRunDetail() {
                               className="h-auto max-w-[260px] justify-start p-0 text-left font-semibold text-blue-700 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300"
                               onClick={() => {
                                 if (result.test_case_id) {
-                                  navigate(`/projects/${projectId}/test-runs/${id}/test-cases/${result.test_case?.project_seq ?? result.test_case_id}`);
+                                  navigate(`/projects/${projectId}/test-runs/${id}/test-cases/${result.test_case?.project_seq ?? result.test_case_id}`, { state: executionNavState });
                                 }
                               }}
                               title={testCaseTitle}
@@ -2303,7 +2388,7 @@ export function TestRunDetail() {
                               variant="outline"
                               onClick={() => {
                                 if (result.test_case_id) {
-                                  navigate(`/projects/${projectId}/test-runs/${id}/test-cases/${result.test_case?.project_seq ?? result.test_case_id}`);
+                                  navigate(`/projects/${projectId}/test-runs/${id}/test-cases/${result.test_case?.project_seq ?? result.test_case_id}`, { state: executionNavState });
                                 }
                               }}
                             >
@@ -2729,6 +2814,71 @@ export function TestRunDetail() {
             <Button onClick={handleImportResults} disabled={!importFile || isImporting} className="gap-2">
               {isImporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
               {isImporting ? t('importing') : t('importResults')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isEditRunOpen} onOpenChange={(open) => { if (!open) setIsEditRunOpen(false); }}>
+        <DialogContent isRTL={isRTL} className="sm:max-w-[560px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Edit className="h-5 w-5" />
+              {t('editTestRun')}
+            </DialogTitle>
+            <DialogDescription>{t('editTestRunDescription')}</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium" htmlFor="edit-run-name">
+                {t('runName')}
+              </label>
+              <Input
+                id="edit-run-name"
+                value={runDetailsDraft.name}
+                onChange={(e) => setRunDetailsDraft((prev) => ({ ...prev, name: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium" htmlFor="edit-run-description">
+                {t('runDescriptionLabel')}
+              </label>
+              <Textarea
+                id="edit-run-description"
+                rows={4}
+                value={runDetailsDraft.description}
+                onChange={(e) => setRunDetailsDraft((prev) => ({ ...prev, description: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium" htmlFor="edit-run-priority">
+                {t('priority')}
+              </label>
+              <Select
+                value={runDetailsDraft.priority || 'none'}
+                onValueChange={(value) => setRunDetailsDraft((prev) => ({ ...prev, priority: value === 'none' ? '' : value }))}
+              >
+                <SelectTrigger id="edit-run-priority">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">{t('noPriority')}</SelectItem>
+                  {priorityOptions.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsEditRunOpen(false)} disabled={isSavingRunDetails}>
+              {t('cancel')}
+            </Button>
+            <Button onClick={handleSaveRunDetails} disabled={isSavingRunDetails} className="gap-2">
+              {isSavingRunDetails ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+              {isSavingRunDetails ? t('saving') : t('saveChanges')}
             </Button>
           </DialogFooter>
         </DialogContent>

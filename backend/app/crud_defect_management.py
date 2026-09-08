@@ -339,6 +339,78 @@ def _sync_defect_status_to_external(db: Session, defect: models.Defect):
         logger.error(f"Failed to sync defect {defect.id} status to external tracker: {e}")
 
 
+# Local field edits that are worth pushing to Azure DevOps - the same set
+# ``defect_autosync.build_defect_payload`` reads off the row, minus purely
+# local bookkeeping (assignee, tags formatting, etc.) that ADO has no field
+# for. Any other field changing (e.g. test_case_id) doesn't warrant a push.
+_ADO_PUSH_FIELDS = {
+    "title", "description", "severity", "priority", "status",
+    "steps_to_reproduce", "expected_result", "actual_result",
+    "environment", "root_cause",
+}
+
+
+def _sync_defect_to_azure_devops(db: Session, defect: models.Defect) -> None:
+    """Push a local edit (title/description/severity/priority/status/...) to
+    the Azure DevOps work item this defect is linked to, so an edit made in
+    TestMona doesn't silently drift from what ADO shows.
+
+    Same never-raise contract as ``auto_sync_new_defect``: the defect edit is
+    already committed by the time this runs, so a bad PAT or an unreachable
+    tracker must not turn a successful save into a 500 - it's recorded on the
+    row and logged instead.
+    """
+    if not defect.external_issue_id:
+        return
+
+    try:
+        integration = (
+            db.query(models.IssueTrackerIntegration)
+            .filter(
+                models.IssueTrackerIntegration.project_id == defect.project_id,
+                models.IssueTrackerIntegration.tracker_type == "azure-devops",
+                models.IssueTrackerIntegration.is_active.is_(True),
+                # sync_direction "import" means this integration only pulls from
+                # ADO; pushing local edits there would fight the import job.
+                models.IssueTrackerIntegration.sync_direction.in_(["export", "bidirectional"]),
+            )
+            .first()
+        )
+        if not integration:
+            return
+
+        from app.services.defect_autosync import build_defect_payload
+        from app.sync_service import SyncService
+
+        result = SyncService.sync_defect_to_external(
+            build_defect_payload(db, defect),
+            {
+                "id": integration.id,
+                "tracker_type": integration.tracker_type,
+                "api_url": integration.api_url,
+                "api_token": integration.api_token,
+                "project_key": integration.project_key,
+                "name": integration.name,
+                "sync_config": integration.sync_config or {},
+            },
+            action="update",
+        )
+
+        if result.get("success"):
+            defect.external_sync_status = "synced"
+            defect.external_last_sync = datetime.now(UTC)
+            db.commit()
+        else:
+            logger.warning(
+                "ado-push: failed to update work item %s for defect %s: %s",
+                defect.external_issue_id, defect.defect_id, result.get("message"),
+            )
+    except Exception:
+        logger.exception(
+            "ado-push: unexpected error updating work item for defect %s", defect.defect_id,
+        )
+
+
 def update_defect_management(
     db: Session,
     defect_id: int,
@@ -353,6 +425,7 @@ def update_defect_management(
     # Track changes for history
     update_data = defect_update.model_dump(exclude_unset=True)
     status_changed = False
+    changed_fields = set()
     for field_name, new_value in update_data.items():
         old_value = getattr(db_defect, field_name)
         if field_name == "status" and old_value != new_value:
@@ -360,6 +433,7 @@ def update_defect_management(
 
         # Only track if value actually changed
         if old_value != new_value:
+            changed_fields.add(field_name)
             # Convert enum values to strings for storage
             if hasattr(old_value, 'value'):
                 old_value_str = old_value.value
@@ -394,8 +468,15 @@ def update_defect_management(
     if status_changed:
         from app import crud
         crud.flag_linked_results_for_retest(db, defect_id)
-        # Auto-sync defect status to external issue tracker
+        # Auto-sync defect status to external issue tracker (Jira/GitHub)
         _sync_defect_status_to_external(db, db_defect)
+
+    # Azure DevOps gets the full edit (title/description/severity/status/...),
+    # not just status - a defect that already went through this branch above
+    # gets an extra ADO call, but sync_defect_to_external is idempotent so
+    # that's harmless.
+    if changed_fields & _ADO_PUSH_FIELDS:
+        _sync_defect_to_azure_devops(db, db_defect)
 
     return db_defect
 

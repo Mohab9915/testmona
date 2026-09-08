@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useResolvedEntityId } from '@/hooks/useResolvedEntityId';
 import { useToast } from '@/hooks/use-toast';
@@ -73,7 +73,13 @@ const BACKEND_TO_STATUS: Record<string, ExecutionStatus> = {
  */
 export function useTestCaseExecution() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { projectId, testRunId, testCaseId } = useParams();
+  // The run-detail page passes the exact filtered/sorted order the tester was
+  // looking at when they clicked in, so Next/Previous walk that view instead
+  // of the run's raw creation order. Read once at mount (see the effect
+  // below) - captured here only for that one read, not a live subscription.
+  const orderedTestCasesFromNav = (location.state as { orderedTestCases?: { id: number; projectSeq: number | null; title: string }[] } | null)?.orderedTestCases;
   // The URL carries per-project sequences; resolve both to global ids.
   const { id: runGlobalId, loading: runLoading } = useResolvedEntityId(projectId, 'test-runs', testRunId);
   const { id: tcGlobalId, loading: tcLoading } = useResolvedEntityId(projectId, 'test-cases', testCaseId);
@@ -405,13 +411,20 @@ export function useTestCaseExecution() {
         // every result in the system, corrupting the "X of N" count and the
         // prev/next list (cycling through cases that aren't in this run).
         if (testRunId && Number.isFinite(runGlobalId)) {
-          const results = await testResultsAPI.getAll(runGlobalId);
-          if (cancelled) return;
-          setAllTestCases(results.map((r: any) => ({
-            id: r.test_case_id,
-            projectSeq: r.test_case?.project_seq ?? null,
-            title: r.test_case?.title || `Test Case ${r.test_case_id}`,
-          })));
+          // A jump in from the run-detail table carries its current
+          // filter/sort as nav state - honor that order for Next/Previous
+          // instead of always walking the run's raw creation order.
+          if (orderedTestCasesFromNav && orderedTestCasesFromNav.length > 0) {
+            setAllTestCases(orderedTestCasesFromNav);
+          } else {
+            const results = await testResultsAPI.getAll(runGlobalId);
+            if (cancelled) return;
+            setAllTestCases(results.map((r: any) => ({
+              id: r.test_case_id,
+              projectSeq: r.test_case?.project_seq ?? null,
+              title: r.test_case?.title || `Test Case ${r.test_case_id}`,
+            })));
+          }
         }
       } catch (error) {
         if (cancelled) return;
@@ -424,6 +437,11 @@ export function useTestCaseExecution() {
     };
     loadInitialData();
     return () => { cancelled = true; };
+    // orderedTestCasesFromNav is deliberately not a dependency: it should only
+    // be read once, from whatever nav state this instance mounted with. The
+    // route doesn't remount between Next/Previous clicks (only :testCaseId
+    // changes), so re-reading it on every render would just resurface the
+    // original entry state indefinitely - never the plain run order again.
   }, [projectId, testRunId, runGlobalId, currentUser]);
 
   // Load any existing execution result for this case in this run.
@@ -764,16 +782,21 @@ export function useTestCaseExecution() {
   // needsDefectEvidence below) so a failure still saves immediately and the
   // reminder shows inline instead of holding the save hostage.
   const handleSaveExecution = useCallback(async (): Promise<boolean> => {
-    if (!testRunId || !testCaseId) return false;
-    if (executionStatus === 'pending') return false;
+    // These early returns are "nothing to save yet", not failures - see the
+    // comment above: a save that genuinely can't/shouldn't happen yet just
+    // skips this cycle. Returning `true` here tells the auto-save wrapper
+    // that as well, so it doesn't surface a "Couldn't save" error for e.g. a
+    // freshly-opened, not-yet-started case (executionStatus === 'pending').
+    if (!testRunId || !testCaseId) return true;
+    if (executionStatus === 'pending') return true;
 
     const isFailedOrBlocked = executionStatus === 'failed' || executionStatus === 'blocked';
     // Belt-and-suspenders: the auto-correct effect and the disabled
     // Passed/Skipped buttons should already prevent both of these, but a save
     // must never persist "passed" over a step that contradicts it.
-    if (!isFailedOrBlocked && hasFailedOrBlockedStep) return false;
-    if (executionStatus === 'passed' && stepsIncomplete) return false;
-    if (!isValidHttpUrl(defectLink) || !isValidHttpUrl(customLink)) return false;
+    if (!isFailedOrBlocked && hasFailedOrBlockedStep) return true;
+    if (executionStatus === 'passed' && stepsIncomplete) return true;
+    if (!isValidHttpUrl(defectLink) || !isValidHttpUrl(customLink)) return true;
 
     const startedAt = executionStartedAtRef.current || new Date().toISOString();
     const executionTimeSeconds = Math.max(0, computeElapsed());
@@ -808,8 +831,9 @@ export function useTestCaseExecution() {
     };
 
     // Guard against double-submit (rapid clicks / Ctrl+S spam) creating
-    // duplicate results.
-    if (savingRef.current) return false;
+    // duplicate results. Another save is already in flight and will persist
+    // this same data, so this is a skip, not a failure.
+    if (savingRef.current) return true;
     savingRef.current = true;
     setIsSaving(true);
     try {

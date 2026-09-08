@@ -482,7 +482,7 @@ class AzureDevOpsClient(BaseClient):
     
     def update_work_item(self, work_item_id: str, title: Optional[str] = None,
                         description: Optional[str] = None, priority: Optional[str] = None,
-                        work_item_type: Optional[str] = None) -> Dict[str, Any]:
+                        work_item_type: Optional[str] = None, state: Optional[str] = None) -> Dict[str, Any]:
         """
         Update an existing work item in Azure DevOps.
 
@@ -494,6 +494,9 @@ class AzureDevOpsClient(BaseClient):
             work_item_type: The item's type, so a Bug's Repro Steps field can be
                 kept in sync with the description alongside it (optional - the
                 caller may not always know the type, e.g. legacy call sites)
+            state: New workflow state, e.g. 'Active'/'Resolved'/'Closed' (optional -
+                a template that doesn't have this exact state name rejects the
+                whole patch, so only pass it when the caller means to change it)
 
         Returns:
             Dict with work item data or error
@@ -529,6 +532,13 @@ class AzureDevOpsClient(BaseClient):
                     "op": "add",
                     "path": "/fields/Microsoft.VSTS.Common.Priority",
                     "value": int(priority)
+                })
+
+            if state:
+                payload.append({
+                    "op": "add",
+                    "path": "/fields/System.State",
+                    "value": state
                 })
 
             if not payload:
@@ -594,6 +604,7 @@ class AzureDevOpsClient(BaseClient):
             else:
                 return {
                     'success': False,
+                    'status_code': response.status_code,
                     'message': f'Failed to get work item: {response.status_code}'
                 }
         except Exception as e:

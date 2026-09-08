@@ -540,6 +540,13 @@ export const fa = {
     failedToAssignTestRun: 'تخصیص اجرای تست ناموفق بود',
     failedToSetEnvironment: 'تنظیم محیط ناموفق بود',
     failedToSaveBuild: 'ذخیره نسخه ناموفق بود',
+    // ویرایش اطلاعات خودِ اجرای آزمون (نام/توضیحات/اولویت/وضعیت)
+    editTestRun: 'ویرایش اجرای آزمون',
+    editTestRunDescription: 'نام، توضیحات و اولویت این اجرا را به‌روزرسانی کنید. وضعیت آن، موارد آزمون و نتایج ثبت‌شده دست‌نخورده می‌مانند.',
+    runNameRequired: 'لطفاً برای این اجرای آزمون نامی وارد کنید.',
+    testRunUpdated: 'اجرای آزمون به‌روزرسانی شد',
+    failedToUpdateTestRun: 'به‌روزرسانی اجرای آزمون ناموفق بود. لطفاً دوباره تلاش کنید.',
+    noPriority: 'بدون اولویت',
     testRunStatusPending: 'در انتظار',
     testRunStatusRunning: 'در حال اجرا',
     testRunStatusInProgress: 'در حال انجام',

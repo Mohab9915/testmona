@@ -397,11 +397,16 @@ class SyncService:
             'low': '3'
         }
         priority = priority_map.get(defect.get('priority', 'medium').lower(), '2')
-        
+
+        state = SyncService._DEFECT_STATUS_TO_ADO_STATE.get(
+            (defect.get('status') or '').lower(), 'New',
+        )
+
         return {
             'title': title,
             'description': description,
             'priority': priority,
+            'state': state,
             'work_item_type': 'Bug'
         }
     
@@ -417,6 +422,21 @@ class SyncService:
         'resolved': 'fixed',
         'closed': 'closed', 'done': 'closed',
         'removed': 'rejected',
+    }
+
+    # Reverse of the above, used when pushing a local status change back to
+    # Azure DevOps. Not a true inverse - several ADO states collapse onto one
+    # defect status - so this picks the state name common to the Agile/Scrum/
+    # CMMI templates rather than trying to match whichever synonym the project
+    # actually uses; a template that doesn't have this exact state name just
+    # rejects the update (logged by the caller, never raised).
+    _DEFECT_STATUS_TO_ADO_STATE = {
+        'open': 'New',
+        'in_progress': 'Active',
+        'reopened': 'Active',
+        'fixed': 'Resolved',
+        'closed': 'Closed',
+        'rejected': 'Removed',
     }
 
     @staticmethod
@@ -1039,6 +1059,7 @@ class SyncService:
                             description=issue_data['description'],
                             priority=issue_data['priority'],
                             work_item_type=issue_data['work_item_type'],
+                            state=issue_data.get('state'),
                         )
                         return SyncService._normalize_azure_result(result)
                     else:

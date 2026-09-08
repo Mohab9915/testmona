@@ -167,7 +167,7 @@ def main():
                 name = f"{suite.name} — Second Pass — Build {build}"
                 description = (
                     f"Independent second pass over the '{suite.name}' suite for build {build}, "
-                    f"executed by {_display(user)} as the suite's secondary reviewer."
+                    f"executed by {_display(user)}."
                 )
                 priority = "high"
             else:
