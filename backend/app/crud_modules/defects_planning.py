@@ -189,6 +189,8 @@ def update_defect(db: Session, defect_id: int, defect: DefectUpdate):
 def delete_defect(db: Session, defect_id: int):
     db_defect = db.query(Defect).filter(Defect.id == defect_id).first()
     if db_defect:
+        from ..services.defect_autosync import sync_ado_delete
+        sync_ado_delete(db, db_defect)
         db.delete(db_defect)
         safe_commit(db)
     return db_defect

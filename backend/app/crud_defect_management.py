@@ -485,6 +485,8 @@ def delete_defect_management(db: Session, defect_id: int):
     """Delete a defect"""
     db_defect = db.query(models.Defect).filter(models.Defect.id == defect_id).first()
     if db_defect:
+        from app.services.defect_autosync import sync_ado_delete
+        sync_ado_delete(db, db_defect)
         db.delete(db_defect)
         db.commit()
         return True

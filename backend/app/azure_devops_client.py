@@ -620,3 +620,39 @@ class AzureDevOpsClient(BaseClient):
                 'success': False,
                 'message': f'Error getting work item: {str(e)}'
             }
+
+    def delete_work_item(self, work_item_id: str) -> Dict[str, Any]:
+        """
+        Delete a work item from Azure DevOps (moves it to the project's Recycle Bin).
+
+        Args:
+            work_item_id: Work item ID
+
+        Returns:
+            Dict with the deleted work item data or error
+        """
+        try:
+            response = self._make_request(
+                'DELETE',
+                f"{self.api_url}/{self.organization}/{self.project}/_apis/wit/workitems/{work_item_id}",
+                headers=self.headers,
+                params={"api-version": self.API_VERSION},
+                allow_redirects=False,
+            )
+
+            if response.status_code == 200:
+                return {
+                    'success': True,
+                    'work_item': response.json()
+                }
+            else:
+                return {
+                    'success': False,
+                    'status_code': response.status_code,
+                    'message': f'Failed to delete work item: {response.status_code}'
+                }
+        except Exception as e:
+            return {
+                'success': False,
+                'message': f'Error deleting work item: {str(e)}'
+            }

@@ -221,6 +221,47 @@ def sync_ado_parent_link(db: Session, defect: models.Defect, parent_changed: boo
         logger.exception("ado-parent-link: unexpected error for defect %s", defect.defect_id)
 
 
+def sync_ado_delete(db: Session, defect: models.Defect) -> None:
+    """Best-effort: delete the Azure DevOps work item linked to ``defect`` when
+    the defect itself is deleted from TestMona, so the two don't drift apart.
+
+    Must run before the defect row is removed, since it reads
+    ``external_issue_id``/``project_id`` off it. Same never-raise philosophy as
+    ``auto_sync_new_defect``: a bad PAT or an unreachable tracker must not turn
+    a successful local delete into a 500.
+    """
+    if defect is None or not defect.external_issue_id:
+        return
+
+    integration = (
+        db.query(models.IssueTrackerIntegration)
+        .filter(
+            models.IssueTrackerIntegration.project_id == defect.project_id,
+            models.IssueTrackerIntegration.tracker_type == "azure-devops",
+            models.IssueTrackerIntegration.is_active.is_(True),
+            # sync_direction "import" means this integration only pulls from
+            # ADO; deleting the work item from here would fight the import job.
+            models.IssueTrackerIntegration.sync_direction.in_(["export", "bidirectional"]),
+        )
+        .first()
+    )
+    if not integration:
+        return
+
+    try:
+        from ..sync_service import SyncService
+
+        client = SyncService.create_azure_devops_client(_integration_payload(integration))
+        result = client.delete_work_item(defect.external_issue_id)
+        if not result.get("success"):
+            logger.warning(
+                "ado-delete: defect %s -> work item %s failed: %s",
+                defect.defect_id, defect.external_issue_id, result.get("message"),
+            )
+    except Exception:
+        logger.exception("ado-delete: unexpected error for defect %s", defect.defect_id)
+
+
 def _record_failure(db: Session, defect: models.Defect, message: str) -> None:
     # Defect has no sync_error column; external_sync_status is the only signal,
     # so the detail goes to the log rather than a phantom attribute.
