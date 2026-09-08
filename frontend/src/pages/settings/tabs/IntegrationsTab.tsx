@@ -1,7 +1,7 @@
 // Issue-tracker Integrations tab, extracted from the SettingsPage monolith and
 // rebuilt on the shared settings primitives.
 import { useState, useEffect } from 'react';
-import { Link as LinkIcon, Plus, FolderTree, Loader2, RefreshCw, Edit, Trash2, AlertCircle } from 'lucide-react';
+import { Link as LinkIcon, Plus, FolderTree, Loader2, RefreshCw, Download, Edit, Trash2, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -195,6 +195,17 @@ export function IntegrationsTab({ projectId }: { projectId?: number }) {
                   <Button size="sm" variant="outline" onClick={() => data.testConnection(integration.id)} disabled={data.testingId === integration.id}>
                     {data.testingId === integration.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
                   </Button>
+                  {integration.tracker_type === 'azure-devops' && ['import', 'bidirectional'].includes(integration.sync_direction) && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      title={t('resyncBugs')}
+                      onClick={() => data.resyncBugs(integration.id)}
+                      disabled={data.resyncingId === integration.id}
+                    >
+                      {data.resyncingId === integration.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                    </Button>
+                  )}
                   <Button size="sm" variant="outline" onClick={() => openEdit(integration)}><Edit className="h-4 w-4" /></Button>
                   {canManageProject && (
                     <Button size="sm" variant="outline" onClick={() => setToDelete(integration)} className="text-destructive hover:text-destructive">

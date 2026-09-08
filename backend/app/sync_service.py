@@ -486,6 +486,11 @@ class SyncService:
             'external_issue_id': str(work_item_id) if work_item_id is not None else None,
             'external_issue_url': work_item.get('url'),
             'external_sync_status': 'synced',
+            # Who filed the bug in Azure DevOps, so the import job can attribute
+            # it to the matching local user instead of always defaulting to
+            # whoever created the integration.
+            'reporter_email': (work_item.get('reporter_email') or '').strip().lower() or None,
+            'reporter_name': work_item.get('reporter_name'),
         }
 
     @staticmethod

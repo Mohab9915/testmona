@@ -18,7 +18,9 @@ gone, and the local defect is deleted too rather than left orphaned.
 """
 import logging
 from datetime import UTC, datetime
+from typing import Optional
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from .. import models
@@ -72,7 +74,28 @@ def _url_prefix_for(integration: models.IssueTrackerIntegration) -> str:
     return f"{integration.project_key or ''}/_workitems/edit/"
 
 
-def _import_bugs_for_integration(db: Session, integration: models.IssueTrackerIntegration) -> None:
+def _resolve_reporter(db: Session, integration: models.IssueTrackerIntegration, mapped: dict) -> int:
+    """The local user id to attribute an imported bug to.
+
+    Matches the Azure DevOps identity's email against a local account so the
+    defect is credited to whoever actually filed it in ADO, not always the
+    person who set up the integration. Falls back to the integration owner
+    when there's no email (older ADO orgs without AAD) or no matching account.
+    """
+    email = mapped.get("reporter_email")
+    if not email:
+        return integration.created_by
+    user = (
+        db.query(models.User)
+        .filter(func.lower(models.User.email) == email)
+        .first()
+    )
+    return user.id if user else integration.created_by
+
+
+def _import_bugs_for_integration(
+    db: Session, integration: models.IssueTrackerIntegration, stats: Optional[dict] = None,
+) -> None:
     from ..sync_service import SyncService
 
     payload = _integration_payload(integration)
@@ -82,6 +105,9 @@ def _import_bugs_for_integration(db: Session, integration: models.IssueTrackerIn
             "ado-bug-import: listing bugs failed for integration %s (project %s): %s",
             integration.name, integration.project_id, result.get("message"),
         )
+        if stats is not None:
+            stats["errors"] = stats.get("errors", 0) + 1
+            stats["message"] = result.get("message")
         return
 
     work_items = result.get("work_items") or []
@@ -111,7 +137,7 @@ def _import_bugs_for_integration(db: Session, integration: models.IssueTrackerIn
                 severity=models.DefectSeverity(mapped["severity"]),
                 status=models.DefectStatus(mapped["status"]),
                 project_id=integration.project_id,
-                reported_by=integration.created_by,
+                reported_by=_resolve_reporter(db, integration, mapped),
                 external_issue_id=external_id,
                 external_issue_url=mapped["external_issue_url"],
                 external_sync_status="synced",
@@ -124,28 +150,39 @@ def _import_bugs_for_integration(db: Session, integration: models.IssueTrackerIn
                     "ado-bug-import: imported bug %s as %s (project %s)",
                     external_id, defect.defect_id, integration.project_id,
                 )
+                if stats is not None:
+                    stats["created"] = stats.get("created", 0) + 1
             except Exception:
                 db.rollback()
                 logger.exception(
                     "ado-bug-import: failed to create defect for bug %s (project %s)",
                     external_id, integration.project_id,
                 )
+                if stats is not None:
+                    stats["errors"] = stats.get("errors", 0) + 1
             continue
 
         new_status = models.DefectStatus(mapped["status"])
         new_severity = models.DefectSeverity(mapped["severity"])
+        new_reported_by = _resolve_reporter(db, integration, mapped)
         changed = (
             existing.title != mapped["title"]
             or existing.description != mapped["description"]
             or existing.severity != new_severity
             or existing.status != new_status
             or existing.external_sync_status != "synced"
+            # Only overwrite a prior guess (the integration owner) once the real
+            # reporter is known - never clobber a match already recorded with
+            # the fallback again, and never overwrite with the same fallback.
+            or (new_reported_by != integration.created_by and existing.reported_by != new_reported_by)
         )
         if changed:
             existing.title = mapped["title"]
             existing.description = mapped["description"]
             existing.severity = new_severity
             existing.status = new_status
+            if new_reported_by != integration.created_by:
+                existing.reported_by = new_reported_by
             existing.external_sync_status = "synced"
             existing.external_last_sync = now
             try:
@@ -153,13 +190,17 @@ def _import_bugs_for_integration(db: Session, integration: models.IssueTrackerIn
                 logger.info(
                     "ado-bug-import: bug %s updated, defect %s synced", external_id, existing.defect_id,
                 )
+                if stats is not None:
+                    stats["updated"] = stats.get("updated", 0) + 1
             except Exception:
                 db.rollback()
                 logger.exception(
                     "ado-bug-import: failed to update defect %s", existing.defect_id,
                 )
+                if stats is not None:
+                    stats["errors"] = stats.get("errors", 0) + 1
 
-    _close_out_stale_imports(db, integration, seen_external_ids, now)
+    _close_out_stale_imports(db, integration, seen_external_ids, now, stats)
 
 
 def _close_out_stale_imports(
@@ -167,6 +208,7 @@ def _close_out_stale_imports(
     integration: models.IssueTrackerIntegration,
     seen_external_ids: set,
     now: datetime,
+    stats: Optional[dict] = None,
 ) -> None:
     """A previously-imported bug that no longer appears in the not-closed set
     has either moved to Closed/Removed or been deleted outright since the
@@ -212,12 +254,16 @@ def _close_out_stale_imports(
                         "ado-bug-import: bug %s deleted in Azure DevOps, removed defect %s",
                         defect.external_issue_id, defect_ref,
                     )
+                    if stats is not None:
+                        stats["deleted"] = stats.get("deleted", 0) + 1
                 except Exception:
                     db.rollback()
                     logger.exception(
                         "ado-bug-import: failed to remove defect %s after upstream deletion",
                         defect_ref,
                     )
+                    if stats is not None:
+                        stats["errors"] = stats.get("errors", 0) + 1
             else:
                 logger.warning(
                     "ado-bug-import: could not re-check bug %s (project %s): %s",
@@ -239,11 +285,15 @@ def _close_out_stale_imports(
                     "ado-bug-import: bug %s moved to %s, defect %s -> %s",
                     defect.external_issue_id, state, defect.defect_id, mapped_status,
                 )
+                if stats is not None:
+                    stats["updated"] = stats.get("updated", 0) + 1
             except Exception:
                 db.rollback()
                 logger.exception(
                     "ado-bug-import: failed to close out defect %s", defect.defect_id,
                 )
+                if stats is not None:
+                    stats["errors"] = stats.get("errors", 0) + 1
 
 
 def run_import_cycle(db: Session) -> None:
@@ -262,6 +312,33 @@ def run_import_cycle(db: Session) -> None:
                 "ado-bug-import: cycle failed for integration %s (project %s)",
                 integration.name, integration.project_id,
             )
+
+
+def resync_integration_now(db: Session, integration: models.IssueTrackerIntegration) -> dict:
+    """On-demand counterpart to the background poll, for a "resync" button.
+
+    Runs the same import/update/close-out logic as one background cycle, but
+    for a single integration, outside the cluster-wide lease (a user pressing
+    a button doesn't need to wait for or coordinate with the poll interval)
+    and with per-run stats to report back to the UI instead of just logging.
+    Notably this is what retroactively fixes already-imported defects (e.g.
+    a description or reporter that was missing before a mapping bug was
+    fixed) - the background job only reconciles bugs still in the not-closed
+    set, but so does this, so nothing here is skipped either.
+    """
+    stats: dict = {"created": 0, "updated": 0, "deleted": 0, "errors": 0}
+    try:
+        _import_bugs_for_integration(db, integration, stats)
+    except Exception:
+        db.rollback()
+        logger.exception(
+            "ado-bug-import: manual resync failed for integration %s (project %s)",
+            integration.name, integration.project_id,
+        )
+        stats["errors"] = stats.get("errors", 0) + 1
+        stats["message"] = stats.get("message") or "Resync failed - see server logs."
+    stats["success"] = not stats.get("message")
+    return stats
 
 
 def _try_acquire_import_lease(db: Session) -> bool:

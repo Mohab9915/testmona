@@ -729,6 +729,34 @@ def test_issue_tracker_connection(
     result = SyncService.test_connection(integration_dict)
     return result
 
+@router.post("/projects/{project_id}/issue-tracker-integrations/{integration_id}/resync-bugs")
+def resync_issue_tracker_bugs(
+    project_id: int,
+    integration_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    """On-demand re-import of Azure DevOps bugs for this integration.
+
+    The background job (services/ado_bug_import.py) already does this every
+    10s, but only for bugs still open in Azure DevOps - and a user fixing a
+    mapping bug (e.g. missing descriptions/reporters on already-imported
+    defects) wants it applied immediately, not on the next poll tick.
+    """
+    if not has_permission(current_user, "view", project_id, db):
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    if not has_permission(current_user, "manage_projects", project_id, db):
+        raise HTTPException(status_code=403, detail="Manage projects permission required")
+
+    integration = _get_project_integration_or_404(db, project_id, integration_id)
+
+    if (integration.tracker_type or "").lower() != "azure-devops":
+        raise HTTPException(status_code=400, detail="Resync is only available for Azure DevOps integrations")
+
+    from app.services.ado_bug_import import resync_integration_now
+    return resync_integration_now(db, integration)
+
 @router.get("/projects/{project_id}/issue-tracker-integrations/{integration_id}/work-item-types")
 def get_integration_work_item_types(
     project_id: int,

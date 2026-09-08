@@ -233,6 +233,21 @@ export const defectManagementAPI = {
     return response.data;
   },
 
+  // Azure DevOps only. Forces an immediate re-import of not-closed bugs
+  // instead of waiting for the background poll - mainly useful right after
+  // fixing a mapping bug, so already-imported defects pick up the fix now.
+  resyncIssueTrackerBugs: async (projectId: number, integrationId: number): Promise<{
+    success: boolean;
+    created: number;
+    updated: number;
+    deleted: number;
+    errors: number;
+    message?: string;
+  }> => {
+    const response = await api.post(`/projects/${projectId}/issue-tracker-integrations/${integrationId}/resync-bugs`);
+    return response.data;
+  },
+
   // Azure DevOps only. The available types depend on the project process
   // template, so the integration form offers the real set rather than
   // assuming "Bug" (which the Basic template does not have).

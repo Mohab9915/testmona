@@ -343,8 +343,8 @@ class AzureDevOpsClient(BaseClient):
                 return {'success': True, 'work_items': []}
 
             fields = (
-                "System.Id,System.Title,System.Description,System.State,"
-                "System.CreatedDate,System.ChangedDate,Microsoft.VSTS.Common.Severity"
+                "System.Id,System.Title,System.Description,Microsoft.VSTS.TCM.ReproSteps,System.State,"
+                "System.CreatedDate,System.ChangedDate,System.CreatedBy,Microsoft.VSTS.Common.Severity"
             )
             batch_response = self._make_request(
                 'GET',
@@ -363,14 +363,22 @@ class AzureDevOpsClient(BaseClient):
             work_items = []
             for item in batch_response.json().get('value', []):
                 item_fields = item.get('fields', {})
+                created_by = item_fields.get('System.CreatedBy') or {}
                 work_items.append({
                     'id': str(item.get('id')),
                     'title': item_fields.get('System.Title'),
-                    'description': item_fields.get('System.Description'),
+                    # The Bug type's default form (Agile/Scrum/CMMI) shows Repro
+                    # Steps, not Description - most real Bugs have their content
+                    # there instead, same reasoning as create/update_work_item.
+                    'description': item_fields.get('System.Description') or item_fields.get('Microsoft.VSTS.TCM.ReproSteps'),
                     'state': item_fields.get('System.State'),
                     'severity': item_fields.get('Microsoft.VSTS.Common.Severity'),
                     'created_date': item_fields.get('System.CreatedDate'),
                     'changed_date': item_fields.get('System.ChangedDate'),
+                    # uniqueName is the identity's email/UPN in AAD-backed orgs;
+                    # displayName is kept only as a log-friendly fallback label.
+                    'reporter_email': created_by.get('uniqueName') or created_by.get('mailAddress'),
+                    'reporter_name': created_by.get('displayName'),
                     'url': f"{self.api_url}/{self.organization}/{self.project}/_workitems/edit/{item.get('id')}",
                 })
             return {'success': True, 'work_items': work_items}

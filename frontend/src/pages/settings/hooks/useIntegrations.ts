@@ -49,6 +49,7 @@ export function useIntegrations(preferredProjectId?: number) {
   const [integrations, setIntegrations] = useState<IssueTrackerIntegration[]>([]);
   const [loadingIntegrations, setLoadingIntegrations] = useState(true);
   const [testingId, setTestingId] = useState<number | null>(null);
+  const [resyncingId, setResyncingId] = useState<number | null>(null);
 
   const success = useCallback((description: string) => toast({ title: t('success'), description }), [toast, t]);
   const error = useCallback(
@@ -176,6 +177,24 @@ export function useIntegrations(preferredProjectId?: number) {
     }
   }, [selectedProjectId, success, error, toast, t]);
 
+  const resyncBugs = useCallback(async (integrationId: number): Promise<void> => {
+    if (!selectedProjectId) return;
+    setResyncingId(integrationId);
+    try {
+      const result = await defectManagementAPI.resyncIssueTrackerBugs(selectedProjectId, integrationId);
+      if (result.success) {
+        success(t('resyncCompleted', { created: result.created, updated: result.updated, deleted: result.deleted }));
+        await loadIntegrations();
+      } else {
+        toast({ title: t('resyncFailed'), description: result.message || t('resyncFailed'), variant: 'destructive' });
+      }
+    } catch (err) {
+      error(err, t('resyncFailed'));
+    } finally {
+      setResyncingId(null);
+    }
+  }, [selectedProjectId, success, error, toast, t, loadIntegrations]);
+
   return {
     projects,
     loadingProjects,
@@ -184,10 +203,12 @@ export function useIntegrations(preferredProjectId?: number) {
     integrations,
     loadingIntegrations,
     testingId,
+    resyncingId,
     reload: loadIntegrations,
     saveIntegration,
     deleteIntegration,
     testConnection,
+    resyncBugs,
   };
 }
 
