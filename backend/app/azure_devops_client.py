@@ -343,7 +343,8 @@ class AzureDevOpsClient(BaseClient):
                 return {'success': True, 'work_items': []}
 
             fields = (
-                "System.Id,System.Title,System.Description,Microsoft.VSTS.TCM.ReproSteps,System.State,"
+                "System.Id,System.Title,System.Description,Microsoft.VSTS.TCM.ReproSteps,"
+                "Microsoft.VSTS.TCM.SystemInfo,System.State,"
                 "System.CreatedDate,System.ChangedDate,System.CreatedBy,Microsoft.VSTS.Common.Severity"
             )
             batch_response = self._make_request(
@@ -370,7 +371,14 @@ class AzureDevOpsClient(BaseClient):
                     # The Bug type's default form (Agile/Scrum/CMMI) shows Repro
                     # Steps, not Description - most real Bugs have their content
                     # there instead, same reasoning as create/update_work_item.
-                    'description': item_fields.get('System.Description') or item_fields.get('Microsoft.VSTS.TCM.ReproSteps'),
+                    # System Info is the last fallback: some bugs (e.g. ones filed
+                    # from a browser extension or copied in from another tool) put
+                    # the whole write-up there and leave both other fields blank.
+                    'description': (
+                        item_fields.get('System.Description')
+                        or item_fields.get('Microsoft.VSTS.TCM.ReproSteps')
+                        or item_fields.get('Microsoft.VSTS.TCM.SystemInfo')
+                    ),
                     'state': item_fields.get('System.State'),
                     'severity': item_fields.get('Microsoft.VSTS.Common.Severity'),
                     'created_date': item_fields.get('System.CreatedDate'),

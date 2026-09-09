@@ -13,6 +13,7 @@ from urllib.parse import unquote
 
 import pytest
 
+from app.azure_devops_client import AzureDevOpsClient
 from app.services.ado_attachment_proxy import (
     rewrite_ado_image_srcs,
     resolve_media_type,
@@ -59,6 +60,59 @@ class TestMappingKeepsHtml:
         assert mapped["description"] == f"<div>Steps:</div>{ADO_IMG}"
         assert mapped["status"] == "fixed"
         assert mapped["severity"] == "medium"
+
+
+class _FakeResponse:
+    def __init__(self, payload):
+        self.status_code = 200
+        self._payload = payload
+
+    def json(self):
+        return self._payload
+
+
+class TestListActiveBugsDescriptionFallback:
+    """``list_active_bugs`` maps a bug's content from whichever field the
+    project actually fills: Description, then Repro Steps, then System Info.
+    Real Azure DevOps projects vary - the ASAL-AI/AgentHub Bug form only ever
+    writes Repro Steps, and a handful of bugs put the whole write-up in the
+    System Info field and leave the other two blank."""
+
+    def _client_returning(self, bug_fields):
+        client = AzureDevOpsClient("https://dev.azure.com", "pat", "org", "proj")
+
+        def fake_request(method, url, **kwargs):
+            if url.endswith("/_apis/wit/wiql"):
+                return _FakeResponse({"workItems": [{"id": 42}]})
+            return _FakeResponse({"value": [{"id": 42, "fields": bug_fields}]})
+
+        client._make_request = fake_request
+        return client
+
+    def test_prefers_description_then_repro_then_system_info(self):
+        cases = [
+            ({"System.Description": "D", "Microsoft.VSTS.TCM.ReproSteps": "R",
+              "Microsoft.VSTS.TCM.SystemInfo": "S"}, "D"),
+            ({"Microsoft.VSTS.TCM.ReproSteps": "R",
+              "Microsoft.VSTS.TCM.SystemInfo": "S"}, "R"),
+            ({"Microsoft.VSTS.TCM.SystemInfo": "S"}, "S"),
+            ({}, None),
+        ]
+        for fields, expected in cases:
+            client = self._client_returning({"System.Title": "t", **fields})
+            result = client.list_active_bugs()
+            assert result["success"] is True
+            assert result["work_items"][0]["description"] == expected
+
+    def test_system_info_only_bug_maps_to_a_defect_description(self):
+        client = self._client_returning({
+            "System.Title": "Agent crashes on invalid tenure",
+            "Microsoft.VSTS.TCM.SystemInfo": "<div>0 tenure -> float division by zero</div>",
+            "System.State": "Resolved",
+        })
+        work_item = client.list_active_bugs()["work_items"][0]
+        mapped = SyncService.map_azure_devops_work_item_to_defect(work_item)
+        assert mapped["description"] == "<div>0 tenure -> float division by zero</div>"
 
 
 class TestRewriteAdoImageSrcs:
