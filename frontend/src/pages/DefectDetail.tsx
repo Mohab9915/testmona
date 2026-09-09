@@ -43,6 +43,8 @@ import { useToast } from '@/hooks/use-toast';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useDateFormat } from '@/hooks/useDateFormat';
 import { getApiErrorMessage } from '@/lib/api';
+import { sanitizeHtml } from '@/lib/sanitize';
+import { looksLikeRichHtml } from '@/lib/htmlText';
 import {
   useDefectDetail,
   useDefectEditRequirements,
@@ -484,12 +486,24 @@ export function DefectDetail() {
             )}
 
             <Field label={t('description')}>
-              <Textarea
-                value={editForm.description}
-                onChange={(event) => updateEditField('description', event.target.value)}
-                rows={4}
-                maxLength={1000}
-              />
+              {looksLikeRichHtml(editForm.description) ? (
+                // A bug imported from Azure DevOps keeps its description as HTML.
+                // Show it read-only here rather than as raw markup in a textarea —
+                // it is authoritative from the tracker and is refreshed on sync.
+                <div data-rich-text-editor className="rounded-lg border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-950/40">
+                  <div
+                    className="rich-text-preview text-sm leading-6 text-slate-700 break-words dark:text-slate-300"
+                    dangerouslySetInnerHTML={{ __html: sanitizeHtml(editForm.description || '') }}
+                  />
+                </div>
+              ) : (
+                <Textarea
+                  value={editForm.description}
+                  onChange={(event) => updateEditField('description', event.target.value)}
+                  rows={4}
+                  maxLength={1000}
+                />
+              )}
             </Field>
 
             <Field label={t('stepsToReproduce')}>
@@ -594,6 +608,7 @@ export function DefectDetail() {
               <EditableTextBlock
                 label={t('description')} value={defect.description} empty={t('noDescriptionProvided')}
                 onSave={(v) => patchDefect({ description: v })} rows={4} maxLength={1000} editLabel={t('edit')}
+                allowRichText
               />
               <EditableTextBlock
                 label={t('stepsToReproduce')} value={defect.steps_to_reproduce} empty={t('noStepsProvided')}
@@ -938,23 +953,37 @@ function InlineEditable({
 }
 
 // Read-only-styled block (description / steps / …) made click-to-edit.
+// When `allowRichText` is set and the value is HTML (a bug imported from Azure
+// DevOps keeps its description as HTML), it renders sanitised read-only markup
+// instead — preserving the structure and inline images from the tracker. Plain
+// text stays click-to-edit as before.
 function EditableTextBlock({
-  label, value, empty, onSave, rows = 4, maxLength, editLabel,
-}: { label: string; value?: string | null; empty: string; onSave: SaveFn; rows?: number; maxLength?: number; editLabel: string }) {
+  label, value, empty, onSave, rows = 4, maxLength, editLabel, allowRichText = false,
+}: { label: string; value?: string | null; empty: string; onSave: SaveFn; rows?: number; maxLength?: number; editLabel: string; allowRichText?: boolean }) {
+  const isRich = allowRichText && looksLikeRichHtml(value);
   return (
     <section>
       <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">{label}</h3>
       <div className="mt-2 rounded-lg border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-950/40">
-        <InlineEditable
-          value={value}
-          onSave={onSave}
-          placeholder={empty}
-          multiline
-          rows={rows}
-          maxLength={maxLength}
-          editLabel={editLabel}
-          displayClass="block whitespace-pre-wrap text-sm leading-6 text-slate-700 dark:text-slate-300"
-        />
+        {isRich ? (
+          <div data-rich-text-editor>
+            <div
+              className="rich-text-preview text-sm leading-6 text-slate-700 break-words dark:text-slate-300"
+              dangerouslySetInnerHTML={{ __html: sanitizeHtml(value as string) }}
+            />
+          </div>
+        ) : (
+          <InlineEditable
+            value={value}
+            onSave={onSave}
+            placeholder={empty}
+            multiline
+            rows={rows}
+            maxLength={maxLength}
+            editLabel={editLabel}
+            displayClass="block whitespace-pre-wrap text-sm leading-6 text-slate-700 dark:text-slate-300"
+          />
+        )}
       </div>
     </section>
   );

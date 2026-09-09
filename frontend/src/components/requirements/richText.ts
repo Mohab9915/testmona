@@ -5,14 +5,11 @@ import { htmlToMarkdown } from '@/components/ui/content-editor';
 // every reader here had to decode first; the API now stores text verbatim and
 // escaping happens at render time, so these helpers work on the raw value.
 
-export const isHtmlMarkup = (value: string): boolean => /<[a-z][\s\S]*>/i.test(value);
-
-export const htmlToReadableText = (value?: string | null): string => {
-  if (!value || !value.trim()) return '';
-  if (typeof window === 'undefined' || !isHtmlMarkup(value)) return value;
-  const parsed = new DOMParser().parseFromString(value, 'text/html');
-  return parsed.body.textContent?.replace(/\n{3,}/g, '\n\n').trim() || value;
-};
+// `isHtmlMarkup` / `htmlToReadableText` now live in the dependency-free
+// `@/lib/htmlText` (so pages can use them without pulling in the editor stack);
+// re-exported here to keep existing imports working.
+export { isHtmlMarkup, htmlToReadableText } from '@/lib/htmlText';
+import { isHtmlMarkup } from '@/lib/htmlText';
 
 export const richTextToMarkdownForEdit = (value?: string | null): string => {
   if (!value) return '';

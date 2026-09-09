@@ -6,7 +6,7 @@ import requests
 import time
 from typing import Optional, Dict, Any, List
 from datetime import datetime
-from .base_client import BaseClient
+from .base_client import BaseClient, TrackerHTTPError
 
 
 class AzureDevOpsClient(BaseClient):
@@ -615,11 +615,47 @@ class AzureDevOpsClient(BaseClient):
                     'status_code': response.status_code,
                     'message': f'Failed to get work item: {response.status_code}'
                 }
+        except TrackerHTTPError as e:
+            return {
+                'success': False,
+                'status_code': e.status_code,
+                'message': f'Error getting work item: {str(e)}'
+            }
         except Exception as e:
             return {
                 'success': False,
                 'message': f'Error getting work item: {str(e)}'
             }
+
+    def stream_attachment(self, attachment_id: str) -> Dict[str, Any]:
+        """Fetch a work-item attachment's raw bytes as a streaming response.
+
+        Used by the defect image proxy: an inline ``<img>`` in an imported bug's
+        description points at ``_apis/wit/attachments/{guid}``, which needs the
+        PAT to read. On success returns ``{'success': True, 'response': <resp>}``
+        where ``resp`` is a live ``requests.Response`` with ``stream=True`` - the
+        caller MUST iterate and then close it. Attachments are addressed at the
+        organization level, so no project segment is needed.
+        """
+        try:
+            response = self._make_request(
+                'GET',
+                f"{self.api_url}/{self.organization}/_apis/wit/attachments/{attachment_id}",
+                headers=self.headers,
+                params={"api-version": self.API_VERSION},
+                allow_redirects=False,
+                stream=True,
+            )
+            if response.status_code == 200:
+                return {'success': True, 'response': response}
+            response.close()
+            return {
+                'success': False,
+                'status_code': response.status_code,
+                'message': self.get_error_message(response.status_code),
+            }
+        except Exception as e:
+            return {'success': False, 'message': f'Error fetching attachment: {str(e)}'}
 
     def delete_work_item(self, work_item_id: str) -> Dict[str, Any]:
         """

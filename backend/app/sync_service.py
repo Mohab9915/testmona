@@ -441,12 +441,35 @@ class SyncService:
 
     @staticmethod
     def _html_to_text(value: Optional[str]) -> str:
-        """Azure DevOps returns System.Description as HTML; defects store plain text."""
+        """Flatten HTML to a single whitespace-collapsed line.
+
+        Kept for callers that genuinely want plain text; the Azure DevOps bug
+        import no longer uses it for descriptions (see ``_clean_ado_html``) -
+        collapsing every ``<div>``/``<br>``/``<li>`` to a space destroyed the
+        line breaks, lists and paragraphs that make an imported bug readable.
+        """
         if not value:
             return ''
         text = SyncService._HTML_TAG_RE.sub(' ', value)
         text = html.unescape(text)
         return re.sub(r'\s+', ' ', text).strip()
+
+    _ADO_HTML_STRIP_RE = re.compile(r'(?is)<(script|style)\b[^>]*>.*?</\1\s*>')
+
+    @staticmethod
+    def _clean_ado_html(value: Optional[str]) -> str:
+        """Keep an Azure DevOps Description / Repro Steps field as HTML on import.
+
+        ADO returns these fields as HTML and pasted screenshots live in them as
+        ``<img>`` tags. Storing the markup (instead of the old flattened text)
+        lets the defect view show the same structure and images the bug has in
+        ADO. The render side sanitises with DOMPurify - the security boundary,
+        same as requirement bodies - so here we only strip the couple of
+        constructs that must never be stored and trim the outer whitespace.
+        """
+        if not value:
+            return ''
+        return SyncService._ADO_HTML_STRIP_RE.sub('', value).strip()
 
     @staticmethod
     def map_azure_devops_work_item_to_defect(work_item: Dict[str, Any]) -> Dict[str, Any]:
@@ -480,7 +503,7 @@ class SyncService:
         work_item_id = work_item.get('id')
         return {
             'title': work_item.get('title') or f'Azure DevOps Bug #{work_item_id}',
-            'description': SyncService._html_to_text(work_item.get('description')),
+            'description': SyncService._clean_ado_html(work_item.get('description')),
             'severity': severity,
             'status': status,
             'external_issue_id': str(work_item_id) if work_item_id is not None else None,

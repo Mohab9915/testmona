@@ -10,7 +10,8 @@ import { useDefectsList } from '@/hooks/queries/defects';
 import { Checkbox } from '@/components/ui/checkbox';
 import { SavedFilters } from '@/components/SavedFilters';
 import { BulkEditDefectsDialog } from '@/components/BulkEditDefectsDialog';
-import { defectManagementAPI, IssueTrackerIntegration } from '@/lib/defectManagementAPI';
+import { defectManagementAPI } from '@/lib/defectManagementAPI';
+import { htmlToReadableText } from '@/lib/htmlText';
 import { IntegrationsTab } from '@/pages/settings/tabs/IntegrationsTab';
 import { SearchableRequirementSelect } from '@/components/Defects/SearchableRequirementSelect';
 import { SearchableTestCaseSelect } from '@/components/Defects/SearchableTestCaseSelect';
@@ -474,18 +475,6 @@ export function Defects() {
   const defectTitleInputRef = useRef<HTMLInputElement>(null);
   const [isIntegrationDialogOpen, setIsIntegrationDialogOpen] = useState(false);
 
-  // Read-only integration list for the "sync this defect to an external
-  // tracker" picker below; management (add/edit/delete/test) lives in the
-  // shared IntegrationsTab embedded in the dialog above.
-  const [integrations, setIntegrations] = useState<IssueTrackerIntegration[]>([]);
-  const [isLoadingIntegrations, setIsLoadingIntegrations] = useState(false);
-  const [isSyncing, setIsSyncing] = useState(false);
-
-  // Sync dialog state
-  const [isSyncDialogOpen, setIsSyncDialogOpen] = useState(false);
-  const [syncingDefectId, setSyncingDefectId] = useState<number | null>(null);
-  const [selectedSyncIntegrationId, setSelectedSyncIntegrationId] = useState<number | null>(null);
-  
   // Form states
   const [defectId, setDefectId] = useState('');
   const [defectTitle, setDefectTitle] = useState('');
@@ -577,31 +566,6 @@ export function Defects() {
     setDefectAdoParentTitle(null);
     setDefectTouchedFields({});
   };
-
-  const fetchIntegrations = useCallback(async () => {
-    if (!projectId) return;
-
-    setIsLoadingIntegrations(true);
-    try {
-      const data = await defectManagementAPI.getIssueTrackerIntegrations(parseInt(projectId));
-      setIntegrations(data);
-    } catch (error) {
-      console.error('Failed to fetch integrations:', error);
-      toast({
-        title: t('error'),
-        description: t('failedToLoadIntegrations'),
-        variant: 'destructive',
-      });
-    } finally {
-      setIsLoadingIntegrations(false);
-    }
-  }, [projectId, t, toast]);
-
-  // Defects + form reference data are fetched via react-query above; integrations
-  // keep their own self-contained loader.
-  useEffect(() => {
-    fetchIntegrations();
-  }, [fetchIntegrations]);
 
   useEffect(() => {
     if (!routeDefectId || defects.length === 0) return;
@@ -1312,62 +1276,6 @@ export function Defects() {
     return labels[value] || value;
   };
 
-  const handleOpenSyncDialog = (defectId: number) => {
-    if (integrations.length === 0) {
-      toast({
-        title: t('noIntegrationsAvailable'),
-        description: t('pleaseAddIntegrationFirst'),
-        variant: 'destructive',
-      });
-      return;
-    }
-    setSyncingDefectId(defectId);
-    setSelectedSyncIntegrationId(null);
-    setIsSyncDialogOpen(true);
-  };
-
-  const handleSyncWithExternal = async () => {
-    if (!projectId || !syncingDefectId || !selectedSyncIntegrationId) return;
-
-    setIsSyncing(true);
-    try {
-      const result = await defectManagementAPI.syncDefectWithExternal(
-        parseInt(projectId),
-        syncingDefectId,
-        {
-          integration_id: selectedSyncIntegrationId,
-          sync_type: 'bidirectional',
-          action: 'create'
-        }
-      );
-
-      if (result.success) {
-        toast({
-          title: t('syncSuccessful'),
-          description: t('syncSuccessfulDesc', { issueId: result.issue_id }),
-        });
-        setIsSyncDialogOpen(false);
-        // Refresh defects to update sync status
-        loadDefects();
-      } else {
-        toast({
-          title: t('syncFailed'),
-          description: result.message || t('syncFailedDesc'),
-          variant: 'destructive',
-        });
-      }
-    } catch (error) {
-      console.error('Failed to sync defect:', error);
-      toast({
-        title: t('error'),
-        description: t('syncFailedDesc'),
-        variant: 'destructive',
-      });
-    } finally {
-      setIsSyncing(false);
-    }
-  };
-
   const handleViewInExternal = (externalUrl: string) => {
     window.open(externalUrl, '_blank');
   };
@@ -1391,13 +1299,7 @@ export function Defects() {
           </Button>
           <Dialog
             open={isIntegrationDialogOpen}
-            onOpenChange={(open) => {
-              setIsIntegrationDialogOpen(open);
-              // The embedded panel manages integrations through its own state;
-              // refetch on close so the "sync to external tracker" picker below
-              // reflects anything added/edited/removed while the dialog was open.
-              if (!open) fetchIntegrations();
-            }}
+            onOpenChange={setIsIntegrationDialogOpen}
           >
             <DialogTrigger asChild>
               <Button variant="outline">
@@ -2206,7 +2108,10 @@ export function Defects() {
                       </CardTitle>
                       {defect.description && (
                         <p className="line-clamp-2 text-sm text-gray-600 dark:text-gray-400">
-                          {defect.description}
+                          {/* Azure DevOps bugs import their description as HTML; show a
+                              plain-text preview here and keep the rich rendering for the
+                              defect detail page. */}
+                          {htmlToReadableText(defect.description)}
                         </p>
                       )}
                       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-500 dark:text-gray-400">
@@ -2308,13 +2213,6 @@ export function Defects() {
                               {t('defectsOpenInTracker')}
                             </DropdownMenuItem>
                           )}
-                          <DropdownMenuItem
-                            onClick={() => handleOpenSyncDialog(defect.id)}
-                            disabled={integrations.length === 0}
-                          >
-                            <RefreshCw className={`h-4 w-4 ${isRTL ? 'ml-2' : 'mr-2'}`} />
-                            {t('defectsSyncAction')}
-                          </DropdownMenuItem>
                           <DropdownMenuSeparator />
                           <DropdownMenuItem
                             onClick={() => handleDeleteDefect(defect.id)}
@@ -2510,70 +2408,6 @@ export function Defects() {
           </div>
         </div>
       )}
-
-      {/* Sync Dialog */}
-      <Dialog open={isSyncDialogOpen} onOpenChange={setIsSyncDialogOpen}>
-        <DialogContent isRTL={isRTL} className="sm:max-w-[500px]">
-          <DialogHeader>
-            <DialogTitle>{t('syncDefectWithExternal')}</DialogTitle>
-            <DialogDescription>
-              {t('syncDefectWithExternalDesc')}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="sync-integration">{t('selectIntegration')} *</Label>
-              <Select
-                value={selectedSyncIntegrationId?.toString()}
-                onValueChange={(value) => setSelectedSyncIntegrationId(parseInt(value))}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder={t('selectAnIntegration')} />
-                </SelectTrigger>
-                <SelectContent>
-                  {integrations.map((integration) => (
-                    <SelectItem key={integration.id} value={integration.id.toString()}>
-                      <div className="flex items-center gap-2">
-                        <span className="capitalize">{integration.tracker_type}</span>
-                        <span className="text-gray-500">- {integration.name}</span>
-                        {!integration.is_active && <Badge variant="outline" className="text-xs ml-2">{t('inactive')}</Badge>}
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {integrations.length === 0 && (
-              <div className="text-center py-4 text-gray-500 dark:text-gray-400">
-                <p>{t('noIntegrationsAvailable')}</p>
-              </div>
-            )}
-
-            <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded p-3">
-              <p className="text-sm text-blue-800 dark:text-blue-200">
-                <AlertCircle className="h-4 w-4 inline mr-2" />
-                {t('defectWillBeSynced')}
-              </p>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsSyncDialogOpen(false)}>
-              {t('cancel')}
-            </Button>
-            <Button onClick={handleSyncWithExternal} disabled={!selectedSyncIntegrationId || isSyncing}>
-              {isSyncing ? (
-                <div className="flex items-center gap-2">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  {t('syncingDefect')}
-                </div>
-              ) : (
-                t('syncDefect')
-              )}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       {/* Edit Defect Dialog */}
       <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>

@@ -9,6 +9,19 @@ from abc import ABC, abstractmethod
 from .retry_utils import RetryableTrackerError, tracker_retry
 
 
+class TrackerHTTPError(Exception):
+    """A terminal (non-retryable) HTTP error from an external tracker.
+
+    Carries the response's ``status_code`` so callers can distinguish, e.g.,
+    "work item deleted" (404) from other failures - a bare ``Exception``
+    loses that distinction once raised.
+    """
+
+    def __init__(self, status_code: int, message: str):
+        super().__init__(message)
+        self.status_code = status_code
+
+
 class BaseClient(ABC):
     """Base class for external API clients with common retry/rate limiting logic."""
     
@@ -126,13 +139,13 @@ class BaseClient(ABC):
                 )
 
         if response.status_code == 401:
-            raise Exception("API authentication failed. Invalid or expired token.")
+            raise TrackerHTTPError(401, "API authentication failed. Invalid or expired token.")
         elif response.status_code == 403:
-            raise Exception("API access forbidden. Check permissions.")
+            raise TrackerHTTPError(403, "API access forbidden. Check permissions.")
         elif response.status_code == 404:
-            raise Exception("Resource not found.")
+            raise TrackerHTTPError(404, "Resource not found.")
         elif response.status_code == 422:
-            raise Exception(f"Validation error: {response.json().get('message', 'Invalid data')}")
+            raise TrackerHTTPError(422, f"Validation error: {response.json().get('message', 'Invalid data')}")
         elif response.status_code >= 500:
             raise RetryableTrackerError(f"API server error: {response.status_code}")
 

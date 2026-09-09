@@ -1,5 +1,6 @@
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Request
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from app import crud, crud_defect_management, models, schemas
 from app.database import get_db
@@ -165,11 +166,47 @@ def _get_project_template_or_404(db: Session, project_id: int, template_id: int)
         raise HTTPException(status_code=404, detail="Template not found")
     return template
 
+
+def _active_azure_devops_integration(db: Session, project_id: int):
+    """The project's active Azure DevOps integration, if any (first wins).
+
+    Used by the inline-image proxy to know which PAT/org to fetch an imported
+    bug's description attachments with.
+    """
+    return (
+        db.query(models.IssueTrackerIntegration)
+        .filter(
+            models.IssueTrackerIntegration.project_id == project_id,
+            models.IssueTrackerIntegration.tracker_type == "azure-devops",
+            models.IssueTrackerIntegration.is_active.is_(True),
+        )
+        .first()
+    )
+
+
+def _present_defect(defect, project_id: int, request: Request, *, detail: bool):
+    """Serialise a defect for the API, pointing any Azure DevOps inline-image
+    ``<img>`` in its (HTML) description at this server's streaming proxy so a
+    browser can load images that otherwise need the integration PAT."""
+    from app.services.ado_attachment_proxy import rewrite_ado_image_srcs
+
+    schema = schemas.DefectManagementDetail if detail else schemas.DefectManagement
+    model = schema.model_validate(defect)
+    if model.description:
+        model.description = rewrite_ado_image_srcs(
+            model.description,
+            api_base_url=str(request.base_url),
+            project_id=project_id,
+            defect_id=model.id,
+        )
+    return model
+
 # Defect Management Endpoints
 
 @router.get("/projects/{project_id}/defects-management", response_model=List[schemas.DefectManagement])
 def get_defects_management(
     project_id: int,
+    request: Request,
     skip: int = 0,
     limit: int = 100,
     status: Optional[str] = None,
@@ -184,8 +221,8 @@ def get_defects_management(
     # Check project access
     if not has_permission(current_user, "view", project_id, db):
         raise HTTPException(status_code=403, detail="Access denied")
-    
-    return crud_defect_management.get_defects_management(
+
+    defects = crud_defect_management.get_defects_management(
         db=db,
         project_id=project_id,
         skip=skip,
@@ -196,11 +233,13 @@ def get_defects_management(
         assigned_to=assigned_to,
         search=search
     )
+    return [_present_defect(d, project_id, request, detail=False) for d in defects]
 
 @router.get("/projects/{project_id}/defects-management/{defect_id}", response_model=schemas.DefectManagementDetail)
 def get_defect_management_detail(
     project_id: int,
     defect_id: int,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
 ):
@@ -208,12 +247,12 @@ def get_defect_management_detail(
     # Check project access
     if not has_permission(current_user, "view", project_id, db):
         raise HTTPException(status_code=403, detail="Access denied")
-    
+
     defect = crud_defect_management.get_defect_management_detail(db, defect_id=defect_id)
     if not defect or defect.project_id != project_id:
         raise HTTPException(status_code=404, detail="Defect not found")
-    
-    return defect
+
+    return _present_defect(defect, project_id, request, detail=True)
 
 @router.post("/projects/{project_id}/defects-management", response_model=schemas.DefectManagement)
 def create_defect_management(
@@ -547,8 +586,85 @@ def delete_defect_attachment(
     success = crud_defect_management.delete_defect_attachment(db, attachment_id=attachment_id)
     if not success:
         raise HTTPException(status_code=404, detail="Attachment not found")
-    
+
     return {"message": "Attachment deleted successfully"}
+
+
+@router.get("/projects/{project_id}/defects-management/{defect_id}/ado-attachment")
+def get_defect_ado_attachment(
+    project_id: int,
+    defect_id: int,
+    token: str,
+    name: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
+    """Stream one Azure DevOps work-item attachment (an inline description image)
+    through the server so a browser ``<img>`` can display it.
+
+    Authorisation is the signed ``token`` rather than the usual bearer/cookie:
+    an ``<img>`` request carries neither. The token is minted only inside the
+    (access-controlled) defect payload, is bound to this ``(defect, attachment)``
+    pair, and expires. Bytes are streamed straight from ADO - nothing is written
+    to disk.
+    """
+    from app.services.ado_attachment_proxy import resolve_media_type, verify_attachment_ref
+    from app.sync_service import SyncService
+
+    ref = verify_attachment_ref(token)
+    if not ref or ref[0] != defect_id:
+        raise HTTPException(status_code=404, detail="Attachment not found")
+    _, attachment_guid = ref
+
+    defect = crud_defect_management.get_defect_management_detail(db, defect_id=defect_id)
+    if not defect or defect.project_id != project_id:
+        raise HTTPException(status_code=404, detail="Attachment not found")
+
+    # Only serve an attachment the defect's description actually references, so a
+    # minted URL stops working once the image is edited out of the bug upstream.
+    if not defect.description or attachment_guid not in defect.description:
+        raise HTTPException(status_code=404, detail="Attachment not found")
+
+    integration = _active_azure_devops_integration(db, project_id)
+    if not integration:
+        raise HTTPException(status_code=404, detail="Attachment not found")
+
+    client = SyncService.create_azure_devops_client({
+        'tracker_type': integration.tracker_type,
+        'api_url': integration.api_url,
+        'api_token': integration.api_token,
+        'project_key': integration.project_key,
+    })
+    result = client.stream_attachment(attachment_guid)
+    if not result.get("success"):
+        raise HTTPException(status_code=502, detail="Could not load attachment from Azure DevOps")
+
+    upstream = result["response"]
+    chunks = upstream.iter_content(chunk_size=65536)
+    try:
+        head = next(chunks)
+    except StopIteration:
+        head = b""
+    except Exception:
+        upstream.close()
+        raise HTTPException(status_code=502, detail="Could not load attachment from Azure DevOps")
+
+    media_type = resolve_media_type(upstream.headers.get("Content-Type"), head, name)
+
+    def _stream():
+        try:
+            if head:
+                yield head
+            for chunk in chunks:
+                if chunk:
+                    yield chunk
+        finally:
+            upstream.close()
+
+    return StreamingResponse(
+        _stream(),
+        media_type=media_type,
+        headers={"Cache-Control": "private, max-age=3600"},
+    )
 
 # Defect History Endpoints
 

@@ -67,13 +67,6 @@ def _active_ado_integrations(db: Session):
     )
 
 
-def _url_prefix_for(integration: models.IssueTrackerIntegration) -> str:
-    """The 'organization/project/_workitems/edit/' substring identifying this
-    integration's work items among defects, since Defect has no per-row
-    tracker-type column. ``project_key`` is already stored as 'org/project'."""
-    return f"{integration.project_key or ''}/_workitems/edit/"
-
-
 def _resolve_reporter(db: Session, integration: models.IssueTrackerIntegration, mapped: dict) -> int:
     """The local user id to attribute an imported bug to.
 
@@ -216,15 +209,20 @@ def _close_out_stale_imports(
     DevOps no longer has the work item (deleted items don't 404 into a
     recoverable state via this endpoint - they land in the recycle bin), so
     the local defect is deleted too; any other outcome mirrors the real
-    status instead of leaving the defect stuck open in TestMona."""
-    url_prefix = _url_prefix_for(integration)
+    status instead of leaving the defect stuck open in TestMona.
+
+    Matched by '.../_workitems/edit/<id>' rather than this integration's
+    current ``project_key`` prefix, so a defect imported before the
+    integration was repointed at a different org/project still gets
+    rechecked (and cleaned up if it 404s) instead of being permanently
+    orphaned just because the configured project changed underneath it."""
     tracked = (
         db.query(models.Defect)
         .filter(
             models.Defect.project_id == integration.project_id,
             models.Defect.external_sync_status == "synced",
             models.Defect.external_issue_id.isnot(None),
-            models.Defect.external_issue_url.ilike(f"%{url_prefix}%"),
+            models.Defect.external_issue_url.ilike("%/_workitems/edit/%"),
         )
         .all()
     )
