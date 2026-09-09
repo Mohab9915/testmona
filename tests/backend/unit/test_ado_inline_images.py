@@ -62,15 +62,16 @@ class TestMappingKeepsHtml:
 
 
 class TestRewriteAdoImageSrcs:
-    def test_rewrites_attachment_img_to_signed_proxy_url(self):
+    def test_rewrites_attachment_img_to_signed_relative_proxy_url(self):
         out = rewrite_ado_image_srcs(
             f"<p>before</p>{ADO_IMG}<p>after</p>",
-            api_base_url="http://localhost:8000/",
             project_id=7,
             defect_id=42,
         )
         assert "dev.azure.com" not in out
-        assert "/projects/7/defects-management/42/ado-attachment?token=" in out
+        # API-root-relative: no scheme/host (the frontend prepends its API base).
+        assert 'src="/projects/7/defects-management/42/ado-attachment?token=' in out
+        assert "://" not in re.search(r'src="([^"]*ado-attachment[^"]*)"', out).group(1)
         assert "name=screenshot.png" in out
         assert "<p>before</p>" in out and "<p>after</p>" in out
 
@@ -79,24 +80,18 @@ class TestRewriteAdoImageSrcs:
 
     def test_non_ado_images_are_left_untouched(self):
         html = '<img src="https://example.com/pic.png"><img src="/local/a.png">'
-        assert rewrite_ado_image_srcs(
-            html, api_base_url="http://x", project_id=1, defect_id=1
-        ) == html
+        assert rewrite_ado_image_srcs(html, project_id=1, defect_id=1) == html
 
     def test_no_images_is_a_noop(self):
         html = "<div>just text</div>"
-        assert rewrite_ado_image_srcs(
-            html, api_base_url="http://x", project_id=1, defect_id=1
-        ) == html
+        assert rewrite_ado_image_srcs(html, project_id=1, defect_id=1) == html
 
     def test_handles_single_quoted_src_and_extra_query(self):
         html = (
             "<img alt='x' src='https://acme.visualstudio.com/web/_apis/wit/attachments/"
             "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee?fileName=a.png&api-version=5.0'/>"
         )
-        out = rewrite_ado_image_srcs(
-            html, api_base_url="http://h", project_id=2, defect_id=3
-        )
+        out = rewrite_ado_image_srcs(html, project_id=2, defect_id=3)
         assert "/projects/2/defects-management/3/ado-attachment?token=" in out
         token = unquote(re.search(r"token=([^&']+)", out).group(1))
         assert verify_attachment_ref(token) == (3, "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")

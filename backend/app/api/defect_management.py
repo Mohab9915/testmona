@@ -1,5 +1,5 @@
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Request
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from app import crud, crud_defect_management, models, schemas
@@ -184,7 +184,7 @@ def _active_azure_devops_integration(db: Session, project_id: int):
     )
 
 
-def _present_defect(defect, project_id: int, request: Request, *, detail: bool):
+def _present_defect(defect, project_id: int, *, detail: bool):
     """Serialise a defect for the API, pointing any Azure DevOps inline-image
     ``<img>`` in its (HTML) description at this server's streaming proxy so a
     browser can load images that otherwise need the integration PAT."""
@@ -195,7 +195,6 @@ def _present_defect(defect, project_id: int, request: Request, *, detail: bool):
     if model.description:
         model.description = rewrite_ado_image_srcs(
             model.description,
-            api_base_url=str(request.base_url),
             project_id=project_id,
             defect_id=model.id,
         )
@@ -206,7 +205,6 @@ def _present_defect(defect, project_id: int, request: Request, *, detail: bool):
 @router.get("/projects/{project_id}/defects-management", response_model=List[schemas.DefectManagement])
 def get_defects_management(
     project_id: int,
-    request: Request,
     skip: int = 0,
     limit: int = 100,
     status: Optional[str] = None,
@@ -233,13 +231,12 @@ def get_defects_management(
         assigned_to=assigned_to,
         search=search
     )
-    return [_present_defect(d, project_id, request, detail=False) for d in defects]
+    return [_present_defect(d, project_id, detail=False) for d in defects]
 
 @router.get("/projects/{project_id}/defects-management/{defect_id}", response_model=schemas.DefectManagementDetail)
 def get_defect_management_detail(
     project_id: int,
     defect_id: int,
-    request: Request,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
 ):
@@ -252,7 +249,7 @@ def get_defect_management_detail(
     if not defect or defect.project_id != project_id:
         raise HTTPException(status_code=404, detail="Defect not found")
 
-    return _present_defect(defect, project_id, request, detail=True)
+    return _present_defect(defect, project_id, detail=True)
 
 @router.post("/projects/{project_id}/defects-management", response_model=schemas.DefectManagement)
 def create_defect_management(

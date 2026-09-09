@@ -1,6 +1,8 @@
 import type React from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import {
   AlertTriangle,
   ArrowLeft,
@@ -608,7 +610,7 @@ export function DefectDetail() {
               <EditableTextBlock
                 label={t('description')} value={defect.description} empty={t('noDescriptionProvided')}
                 onSave={(v) => patchDefect({ description: v })} rows={4} maxLength={1000} editLabel={t('edit')}
-                allowRichText
+                allowRichText renderMarkdownIfSynced={defect.external_sync_status === 'synced'}
               />
               <EditableTextBlock
                 label={t('stepsToReproduce')} value={defect.steps_to_reproduce} empty={t('noStepsProvided')}
@@ -955,12 +957,19 @@ function InlineEditable({
 // Read-only-styled block (description / steps / …) made click-to-edit.
 // When `allowRichText` is set and the value is HTML (a bug imported from Azure
 // DevOps keeps its description as HTML), it renders sanitised read-only markup
-// instead — preserving the structure and inline images from the tracker. Plain
-// text stays click-to-edit as before.
+// instead — preserving the structure and inline images from the tracker.
+// `renderMarkdownIfSynced` covers the other shape a tracker field comes in: some
+// ADO bugs are filed by automation that writes plain Markdown (no wrapping tag),
+// which `looksLikeRichHtml` correctly refuses to treat as HTML - rendering that
+// as literal escaped text left `**bold**`/`##heading`/`&quot;` visible verbatim.
+// Since it is still tracker content (not hand-typed), it renders as Markdown
+// instead of click-to-edit, same read-only reasoning as the HTML branch.
+// Hand-typed defects (not synced) always keep the plain click-to-edit path.
 function EditableTextBlock({
-  label, value, empty, onSave, rows = 4, maxLength, editLabel, allowRichText = false,
-}: { label: string; value?: string | null; empty: string; onSave: SaveFn; rows?: number; maxLength?: number; editLabel: string; allowRichText?: boolean }) {
+  label, value, empty, onSave, rows = 4, maxLength, editLabel, allowRichText = false, renderMarkdownIfSynced = false,
+}: { label: string; value?: string | null; empty: string; onSave: SaveFn; rows?: number; maxLength?: number; editLabel: string; allowRichText?: boolean; renderMarkdownIfSynced?: boolean }) {
   const isRich = allowRichText && looksLikeRichHtml(value);
+  const isMarkdown = !isRich && allowRichText && renderMarkdownIfSynced && !!value?.trim();
   return (
     <section>
       <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">{label}</h3>
@@ -971,6 +980,10 @@ function EditableTextBlock({
               className="rich-text-preview text-sm leading-6 text-slate-700 break-words dark:text-slate-300"
               dangerouslySetInnerHTML={{ __html: sanitizeHtml(value as string) }}
             />
+          </div>
+        ) : isMarkdown ? (
+          <div className="rich-text-preview prose prose-sm max-w-none text-sm leading-6 text-slate-700 break-words dark:prose-invert dark:text-slate-300">
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>{value}</ReactMarkdown>
           </div>
         ) : (
           <InlineEditable

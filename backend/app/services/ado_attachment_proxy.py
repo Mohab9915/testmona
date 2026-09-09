@@ -81,16 +81,22 @@ def has_ado_attachments(description: Optional[str]) -> bool:
 def rewrite_ado_image_srcs(
     description: Optional[str],
     *,
-    api_base_url: str,
     project_id: int,
     defect_id: int,
 ) -> Optional[str]:
     """Point every ADO-attachment ``<img>`` in ``description`` at the streaming
-    proxy. A no-op (returns the input unchanged) when there is nothing to do."""
+    proxy. A no-op (returns the input unchanged) when there is nothing to do.
+
+    The emitted ``src`` is an **API-root-relative** path
+    (``/projects/{id}/defects-management/{id}/ado-attachment?...``) with no
+    scheme or host: the frontend prepends its own API base (same-origin
+    ``/api`` behind nginx in Docker, ``http://localhost:8000`` for a bare dev
+    server). Building an absolute URL server-side is not reliable here - behind
+    nginx the backend sees the internal ``Host`` and ``http`` scheme, which
+    would yield mixed-content, unproxied URLs.
+    """
     if not has_ado_attachments(description):
         return description
-
-    base = (api_base_url or "").rstrip("/")
 
     def _replace(match: "re.Match[str]") -> str:
         guid = match.group("guid")
@@ -100,7 +106,7 @@ def rewrite_ado_image_srcs(
         if name_match:
             query += f"&name={quote(unquote(name_match.group('name')), safe='')}"
         proxied = (
-            f"{base}/projects/{project_id}/defects-management/{defect_id}"
+            f"/projects/{project_id}/defects-management/{defect_id}"
             f"/ado-attachment?{query}"
         )
         return f"{match.group('attr')}{match.group('q')}{proxied}{match.group('q')}"
