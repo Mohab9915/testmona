@@ -73,7 +73,10 @@ def test_detail_rewrites_ado_image_src_to_proxy(client):
     desc = resp.json()["description"]
 
     assert "dev.azure.com" not in desc
-    assert f"/projects/{client.project_id}/defects-management/{defect_id}/ado-attachment?token=" in desc
+    assert f'src="/projects/{client.project_id}/defects-management/{defect_id}/ado-attachment?token=' in desc
+    # the proxied src is API-root-relative (no scheme/host) so it works both
+    # behind nginx (/api) and against a bare dev server
+    assert "://" not in _proxied_src(desc)
     # structure survived the import
     assert "<div>Repro steps:</div>" in desc
     assert "name=shot.png" in desc
