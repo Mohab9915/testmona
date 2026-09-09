@@ -850,41 +850,45 @@ export function useTestCaseExecution() {
     savingRef.current = true;
     setIsSaving(true);
     try {
-      // Once we know the result row, update it straight away. Only re-fetch to
-      // find/avoid-duplicating a row when we don't have its id yet (first save
-      // of a never-executed case) - that extra round-trip on every keystroke's
-      // worth of auto-save was a big chunk of the "save takes seconds" lag.
-      let savedResult: any;
-      if (testResultId) {
-        savedResult = await testResultsAPI.update(testResultId, executionData);
-      } else {
-        const existing = await testResultsAPI.getAll(runGlobalId, tcGlobalId);
-        savedResult = existing.length > 0
-          ? await testResultsAPI.update(existing[0].id, executionData)
-          : await testResultsAPI.create(executionData);
-      }
-
-      const stillCurrent = currentCaseKeyRef.current === caseKeyAtSave;
-
-      let stepSaveError: unknown = null;
-      if (savedResult?.id) {
-        if (stillCurrent) {
-          setTestResultId(savedResult.id);
-          setRetestNeeded(Boolean(savedResult.retest_needed));
-          // Not on the critical path - the result itself is already saved.
-          void loadResultDefectLinks(savedResult.id);
-        }
-
-        // Persist per-step outcomes for multistep cases.
-        if (testSteps.length > 0) {
-          const stepPayload = testSteps
+      const stepPayload = testSteps.length > 0
+        ? testSteps
             .filter((s) => ['passed', 'failed', 'blocked'].includes(stepStatuses[s.step_number]))
             .map((s) => ({
               step_number: s.step_number,
               step_name: (s.action || `Step ${s.step_number}`).slice(0, 500),
               step_status: stepStatuses[s.step_number],
               step_duration: 0,
-            }));
+            }))
+        : null;
+
+      let savedResult: any;
+      let stepSaveError: unknown = null;
+      if (testResultId) {
+        // The id is already known, so the step-results save doesn't need to
+        // wait on the result update's response - run them concurrently rather
+        // than back-to-back. Each round trip to the server costs the same
+        // fixed latency regardless of payload size, so halving the *number*
+        // of sequential round trips is what actually cuts save time - this
+        // matters most over a slow/high-latency connection.
+        const [updateOutcome, stepOutcome] = await Promise.allSettled([
+          testResultsAPI.update(testResultId, executionData),
+          stepPayload ? testResultsAPI.saveStepResults(testResultId, stepPayload) : Promise.resolve(null),
+        ]);
+        if (updateOutcome.status === 'rejected') throw updateOutcome.reason;
+        savedResult = updateOutcome.value;
+        if (stepOutcome.status === 'rejected') {
+          console.error('Failed to save step results:', stepOutcome.reason);
+          stepSaveError = stepOutcome.reason;
+        }
+      } else {
+        // No id yet (first save of a never-executed case): must create/find
+        // the row before the step results can reference it, so this leg
+        // stays sequential - it only happens once per case.
+        const existing = await testResultsAPI.getAll(runGlobalId, tcGlobalId);
+        savedResult = existing.length > 0
+          ? await testResultsAPI.update(existing[0].id, executionData)
+          : await testResultsAPI.create(executionData);
+        if (savedResult?.id && stepPayload) {
           try {
             await testResultsAPI.saveStepResults(savedResult.id, stepPayload);
           } catch (stepError) {
@@ -892,6 +896,15 @@ export function useTestCaseExecution() {
             stepSaveError = stepError;
           }
         }
+      }
+
+      const stillCurrent = currentCaseKeyRef.current === caseKeyAtSave;
+
+      if (savedResult?.id && stillCurrent) {
+        setTestResultId(savedResult.id);
+        setRetestNeeded(Boolean(savedResult.retest_needed));
+        // Not on the critical path - the result itself is already saved.
+        void loadResultDefectLinks(savedResult.id);
       }
       if (stillCurrent) {
         setExecutionStart(savedResult.execution_started_at || startedAt);
