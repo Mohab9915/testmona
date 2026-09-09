@@ -157,6 +157,12 @@ export function useTestCaseExecution() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const savingRef = useRef(false); // re-entry guard against double-submit
+  // Which run+case the form is showing *right now*. A save fired via
+  // guardedNavigate keeps running after the route has moved on; its request
+  // still lands (good), but its post-save state writes must not repaint the
+  // case the tester has already moved to.
+  const currentCaseKeyRef = useRef('');
+  currentCaseKeyRef.current = `${runGlobalId}:${tcGlobalId}`;
   const [loadError, setLoadError] = useState<string | null>(null);
   const [users, setUsers] = useState<any[]>([]);
   const [allTestCases, setAllTestCases] = useState<any[]>([]);
@@ -808,6 +814,13 @@ export function useTestCaseExecution() {
         }))
       : null;
 
+    // The case this save belongs to. guardedNavigate fires the save and then
+    // navigates immediately, so by the time it resolves the form may already
+    // be showing a different case - the request still lands, but the post-save
+    // state writes below are skipped when that's happened (they'd repaint the
+    // new case with this one's result).
+    const caseKeyAtSave = `${runGlobalId}:${tcGlobalId}`;
+
     // Recording a result completes the execution: stop the clock and persist the
     // full timing snapshot so reloads and analytics stay consistent.
     const executionData = {
@@ -837,16 +850,30 @@ export function useTestCaseExecution() {
     savingRef.current = true;
     setIsSaving(true);
     try {
-      const existing = await testResultsAPI.getAll(runGlobalId, tcGlobalId);
-      const savedResult = existing.length > 0
-        ? await testResultsAPI.update(existing[0].id, executionData)
-        : await testResultsAPI.create(executionData);
+      // Once we know the result row, update it straight away. Only re-fetch to
+      // find/avoid-duplicating a row when we don't have its id yet (first save
+      // of a never-executed case) - that extra round-trip on every keystroke's
+      // worth of auto-save was a big chunk of the "save takes seconds" lag.
+      let savedResult: any;
+      if (testResultId) {
+        savedResult = await testResultsAPI.update(testResultId, executionData);
+      } else {
+        const existing = await testResultsAPI.getAll(runGlobalId, tcGlobalId);
+        savedResult = existing.length > 0
+          ? await testResultsAPI.update(existing[0].id, executionData)
+          : await testResultsAPI.create(executionData);
+      }
+
+      const stillCurrent = currentCaseKeyRef.current === caseKeyAtSave;
 
       let stepSaveError: unknown = null;
       if (savedResult?.id) {
-        setTestResultId(savedResult.id);
-        setRetestNeeded(Boolean(savedResult.retest_needed));
-        await loadResultDefectLinks(savedResult.id);
+        if (stillCurrent) {
+          setTestResultId(savedResult.id);
+          setRetestNeeded(Boolean(savedResult.retest_needed));
+          // Not on the critical path - the result itself is already saved.
+          void loadResultDefectLinks(savedResult.id);
+        }
 
         // Persist per-step outcomes for multistep cases.
         if (testSteps.length > 0) {
@@ -866,12 +893,16 @@ export function useTestCaseExecution() {
           }
         }
       }
-      setExecutionStart(savedResult.execution_started_at || startedAt);
-      rebaseTimer(savedResult.execution_time ?? executionTimeSeconds);
-      setExecutionState('completed');
-      setIsPaused(true);
-      setPausedAt(null);
-      await refreshHistory();
+      if (stillCurrent) {
+        setExecutionStart(savedResult.execution_started_at || startedAt);
+        rebaseTimer(savedResult.execution_time ?? executionTimeSeconds);
+        setExecutionState('completed');
+        setIsPaused(true);
+        setPausedAt(null);
+        // The execution-history card can catch up a beat later - don't hold the
+        // save (and the next auto-save cycle) on a 50-row history refetch.
+        void refreshHistory();
+      }
 
       // The overall result saved either way - but a caller must never read
       // "saved" as "everything you entered is on the server" when the step
@@ -903,6 +934,7 @@ export function useTestCaseExecution() {
     hasIterations, dataset, iterationStatuses, testSteps, stepStatuses,
     executionNotes, assignee, executionLogs, t, toast, loadResultDefectLinks, refreshHistory,
     rebaseTimer, setExecutionStart, testStepsLoadError, selectedFailureStep, failureStepActual,
+    testResultId, runGlobalId, tcGlobalId,
   ]);
 
   // --- Auto-save ---
@@ -925,7 +957,9 @@ export function useTestCaseExecution() {
       if (!ok) throw new Error('Execution did not save');
     },
     enabled: !isLoading && executionStatus !== 'pending' && !autoSaveDisabled,
-    delay: 900,
+    // Snappy enough that picking an outcome and moving on feels instant, still
+    // long enough to coalesce a burst of typing in the notes field.
+    delay: 600,
   });
 
   // A timer started before the first save lives only in memory until the

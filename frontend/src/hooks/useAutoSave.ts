@@ -9,7 +9,12 @@ interface UseAutoSaveOptions<T> {
   onSave: (value: T) => Promise<void>;
   /** Debounce window in ms between the last edit and the save call. */
   delay?: number;
-  /** Set false to pause entirely - no debounce, no save, no dirty tracking (e.g. while a required field is empty). */
+  /**
+   * Set false to pause entirely - no debounce, no save, no dirty tracking (e.g.
+   * while a required field is empty, or while a record is still loading). While
+   * paused the saved baseline follows `value`, so resuming only counts edits
+   * made after that point as unsaved.
+   */
   enabled?: boolean;
   /** Defaults to a deep JSON comparison; pass a cheaper one for simple values. */
   isEqual?: (a: T, b: T) => boolean;
@@ -69,10 +74,28 @@ export function useAutoSave<T>({ value, onSave, delay = 900, enabled = true, isE
   }, [isEqual]);
 
   useEffect(() => {
-    if (!enabled) return;
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+
+    // Paused: no dirty tracking (see `enabled` doc). Pin the saved baseline to
+    // whatever's current so that *resuming* - e.g. after a different record's
+    // data loads into the same still-mounted form - treats only edits made
+    // after resuming as unsaved, never the freshly loaded data itself. Without
+    // this, the baseline stays stuck on the previously-saved record and the
+    // next edit that happens to match it (marking case after case "Passed")
+    // is seen as "no change" and silently never saved.
+    if (!enabled) {
+      savedValueRef.current = value;
+      // Drop a stale "pending"/"saved" pill, but keep "saving"/"error" - an
+      // in-flight or failed save from before the pause still needs surfacing.
+      setStatus((s) => (s === 'pending' || s === 'saved' ? 'idle' : s));
+      return;
+    }
+
     if (isEqual(value, savedValueRef.current)) return;
     setStatus('pending');
-    if (timerRef.current) clearTimeout(timerRef.current);
     timerRef.current = setTimeout(runSave, delay);
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
